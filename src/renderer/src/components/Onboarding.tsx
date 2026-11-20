@@ -1,0 +1,63 @@
+import { useAppInfo } from '../hooks/useAppInfo'
+import { saveKeys } from '../lib/keys'
+import { useAppStore } from '../store/appStore'
+import { KeyFields, useKeyFields } from './KeyFields'
+
+export function Onboarding() {
+  const open = useAppStore((s) => s.onboardingOpen)
+  return open ? <OnboardingDialog /> : null
+}
+
+function OnboardingDialog() {
+  const initial = useAppStore((s) => s.keys)
+  const secrets = useAppStore((s) => s.secrets)
+  const set = useAppStore((s) => s.set)
+  const patchSettings = useAppStore((s) => s.patchSettings)
+  const info = useAppInfo()
+  const { keys, setKeys, result, validating, validate } = useKeyFields(initial)
+
+  const finish = async () => {
+    await saveKeys(keys)
+    patchSettings((d) => void (d.onboardingComplete = true))
+    set({ onboardingOpen: false })
+  }
+
+  return (
+    <div className="scrim center">
+      <div className="panel onboarding" role="dialog" aria-label="Welcome to PhotoEarth">
+        <h1>Welcome to PhotoEarth</h1>
+        <p>
+          Scout photo locations on a photorealistic 3D globe: read the terrain, then simulate the sun for any date and time to see
+          where light and shadow fall.
+        </p>
+        <p>
+          PhotoEarth uses your own keys. <strong>Google Maps Platform</strong> provides the photorealistic 3D tiles, satellite imagery
+          and place search. <strong>Cesium ion</strong> provides the elevation data for contours, tint, slope and profiles. Both have
+          free tiers.
+        </p>
+        {secrets?.memoryOnly && (
+          <div className="notice">
+            No system keyring is available ({secrets.backend}), so keys can’t be stored encrypted. They’ll be kept for this session
+            only, never written to disk in plaintext.
+          </div>
+        )}
+        <KeyFields keys={keys} setKeys={setKeys} result={result} referer={info?.googleReferer ?? ''} />
+        <div className="row" style={{ justifyContent: 'flex-end', marginTop: 8 }}>
+          <button className="btn ghost" onClick={() => void finish()}>
+            {keys.googleApiKey || keys.cesiumIonToken ? 'Continue without checking' : 'Skip for now'}
+          </button>
+          <button className="btn" disabled={validating || (!keys.googleApiKey && !keys.cesiumIonToken)} onClick={() => void validate()}>
+            {validating ? 'Checking…' : 'Validate'}
+          </button>
+          <button
+            className="btn primary"
+            disabled={validating || (!keys.googleApiKey && !keys.cesiumIonToken)}
+            onClick={() => void validate().then(() => finish())}
+          >
+            Validate & start
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}

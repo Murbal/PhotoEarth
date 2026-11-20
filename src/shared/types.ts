@@ -1,0 +1,218 @@
+// Types shared by the main, preload and renderer processes.
+
+export type MapMode = 'photorealistic' | 'elevation'
+export type QualityPreset = 'low' | 'medium' | 'high' | 'ultra'
+export type Units = 'metric' | 'imperial'
+export type CoordFormat = 'decimal' | 'dms'
+export type Theme = 'dark' | 'light'
+export type ImageryType = 'satellite' | 'terrain' | 'roadmap'
+export type LightingMode = 'sun' | 'flat'
+export type PaletteId = 'terrain' | 'viridis' | 'spectral' | 'magma' | 'grayscale'
+
+/** Camera pose. Angles in degrees, height in meters above the WGS84 ellipsoid. */
+export interface CameraView {
+  longitude: number
+  latitude: number
+  height: number
+  heading: number
+  pitch: number
+  roll: number
+}
+
+export interface QualityOverrides {
+  maximumScreenSpaceError: number | null
+  shadowMapSize: number | null
+  shadowCascades: 1 | 4 | null
+  softShadows: boolean | null
+  msaaSamples: number | null
+  fxaa: boolean | null
+  resolutionScale: number | null
+}
+
+export interface QualitySettings {
+  preset: QualityPreset
+  overrides: QualityOverrides
+  /** Render at the device pixel ratio instead of CSS pixels. */
+  devicePixelRatioAware: boolean
+  showFps: boolean
+}
+
+export interface NavigationSettings {
+  /** 0 = off, 1 = maximum glide. */
+  inertia: number
+  speedMultiplier: number
+  invertFlyY: boolean
+  /** Minimum camera clearance above the surface, meters. */
+  minClearance: number
+}
+
+export interface ElevationStyleSettings {
+  tint: {
+    enabled: boolean
+    opacity: number
+    palette: PaletteId
+    autoRange: boolean
+    /** Manual range in meters above sea level. */
+    min: number
+    max: number
+  }
+  contours: {
+    enabled: boolean
+    interval: number
+    width: number
+    color: string
+    opacity: number
+  }
+  slope: { enabled: boolean; opacity: number }
+  hillshade: { enabled: boolean; opacity: number; followSun: boolean }
+}
+
+export interface Settings {
+  version: 1
+  units: Units
+  coordFormat: CoordFormat
+  theme: Theme
+  quality: QualitySettings
+  navigation: NavigationSettings
+  lastCamera: CameraView | null
+  lastMode: MapMode
+  imagery: ImageryType
+  elevation: ElevationStyleSettings
+  verticalExaggeration: number
+  lighting: LightingMode
+  shadows: boolean
+  showSunIndicator: boolean
+  /** Heightmap-based terrain shadow overlay (§8.1.1 fallback). */
+  terrainShadowOverlay: boolean
+  bookmarkIncludeTime: boolean
+  onboardingComplete: boolean
+}
+
+export interface BookmarkTime {
+  /** ISO 8601 UTC instant. */
+  utc: string
+  /** IANA zone of the bookmarked location at save time. */
+  timeZone: string
+}
+
+export interface Bookmark {
+  id: string
+  name: string
+  createdAt: string
+  camera: CameraView
+  mode: MapMode
+  time?: BookmarkTime
+}
+
+export type NewBookmark = Omit<Bookmark, 'id' | 'createdAt'>
+
+export interface ApiKeys {
+  googleApiKey: string | null
+  cesiumIonToken: string | null
+}
+
+export interface SecretsStatus {
+  /** OS-backed encryption (DPAPI / Keychain / libsecret) is available. */
+  encryptionAvailable: boolean
+  /** Electron safeStorage backend (Linux only, otherwise "os"). */
+  backend: string
+  /** True when keys can only be held for this session (never written in plaintext). */
+  memoryOnly: boolean
+  hasGoogleApiKey: boolean
+  hasCesiumIonToken: boolean
+}
+
+export type CheckStatus =
+  | 'ok'
+  | 'missing'
+  | 'invalid'
+  | 'disabled'
+  | 'quota'
+  | 'offline'
+  | 'forbidden'
+  | 'error'
+
+export interface ApiCheck {
+  status: CheckStatus
+  message: string
+}
+
+export interface ValidationResult {
+  mapTiles: ApiCheck
+  places: ApiCheck
+  ion: ApiCheck
+}
+
+export interface LatLng {
+  latitude: number
+  longitude: number
+}
+
+export interface PlaceSuggestion {
+  placeId: string
+  mainText: string
+  secondaryText: string
+}
+
+export interface PlaceDetails {
+  id: string
+  name: string
+  formattedAddress: string
+  location: LatLng
+  viewport?: { low: LatLng; high: LatLng }
+}
+
+export interface AutocompleteRequest {
+  input: string
+  sessionToken: string
+  bias?: LatLng
+}
+
+export type Result<T> = { ok: true; data: T } | { ok: false; error: ApiCheck }
+
+export interface AppInfo {
+  version: string
+  platform: string
+  /** Referer sent with Google requests (for referrer-restricted keys). */
+  googleReferer: string
+}
+
+/** Commands sent from the main-process menu to the renderer. */
+export type MenuCommand =
+  | 'open-settings'
+  | 'open-palette'
+  | 'open-shortcuts'
+  | 'mode-photorealistic'
+  | 'mode-elevation'
+  | 'toggle-fps'
+  | 'save-bookmark'
+  | 'toggle-bookmarks'
+  | 'toggle-time-panel'
+
+export interface PhotoEarthApi {
+  info(): Promise<AppInfo>
+  settings: {
+    get(): Promise<Settings>
+    set(settings: Settings): Promise<void>
+    /** Best-effort synchronous flush, used while the window unloads. */
+    flush(settings: Settings): void
+  }
+  keys: {
+    get(): Promise<ApiKeys>
+    set(keys: Partial<ApiKeys>): Promise<SecretsStatus>
+    status(): Promise<SecretsStatus>
+    validate(keys: ApiKeys): Promise<ValidationResult>
+  }
+  bookmarks: {
+    list(): Promise<Bookmark[]>
+    create(bookmark: NewBookmark): Promise<Bookmark>
+    update(id: string, patch: Partial<NewBookmark>): Promise<Bookmark | null>
+    remove(id: string): Promise<boolean>
+  }
+  places: {
+    autocomplete(request: AutocompleteRequest): Promise<Result<PlaceSuggestion[]>>
+    details(placeId: string, sessionToken: string): Promise<Result<PlaceDetails>>
+  }
+  openExternal(url: string): Promise<void>
+  onMenuCommand(listener: (command: MenuCommand) => void): () => void
+}

@@ -1,0 +1,19 @@
+// IPC channel names. Keep in sync between main/ipc.ts and preload/index.ts.
+export const IPC = {
+  info: 'app:info',
+  openExternal: 'app:open-external',
+  menuCommand: 'app:menu-command',
+  settingsGet: 'settings:get',
+  settingsSet: 'settings:set',
+  settingsFlush: 'settings:flush',
+  keysGet: 'keys:get',
+  keysSet: 'keys:set',
+  keysStatus: 'keys:status',
+  keysValidate: 'keys:validate',
+  bookmarksList: 'bookmarks:list',
+  bookmarksCreate: 'bookmarks:create',
+  bookmarksUpdate: 'bookmarks:update',
+  bookmarksRemove: 'bookmarks:remove',
+  placesAutocomplete: 'places:autocomplete',
+  placesDetails: 'places:details'
+} as const

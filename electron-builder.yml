@@ -1,0 +1,28 @@
+appId: app.photoearth.desktop
+productName: PhotoEarth
+copyright: Copyright © 2026 PhotoEarth
+directories:
+  output: release/${version}
+  buildResources: build
+# Everything the app needs is bundled by electron-vite into out/; no node_modules ship.
+files:
+  - out/**
+  - package.json
+  - '!**/*.map'
+asar: true
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: PhotoEarth
+linux:
+  target: [AppImage]
+  category: Graphics
+  icon: build/icon.png
+  synopsis: 3D globe for photography location scouting
