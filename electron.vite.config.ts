@@ -1,4 +1,5 @@
 import { cpSync, createReadStream, existsSync, statSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { extname, join, normalize, resolve } from 'node:path'
 import { defineConfig } from 'electron-vite'
 import type { Plugin } from 'vite'
@@ -8,6 +9,13 @@ import { applyWslGpuEnv } from './src/main/wslGpu'
 // Under WSL, Electron (started by electron-vite with this process's environment) renders on
 // the GPU through Mesa d3d12 instead of software OpenGL. See src/main/wslGpu.ts.
 applyWslGpuEnv()
+
+// Electron (45 here) has no postinstall: its binary is downloaded the first time the
+// package is required. electron-vite looks for the binary without requiring the package, so
+// on a fresh install (where nothing else, like Playwright, has required it yet) dev and
+// preview fail with "Electron uninstall". Requiring it here downloads the binary for this
+// platform if needed and hands electron-vite its path.
+process.env.ELECTRON_EXEC_PATH ||= createRequire(__filename)('electron') as string
 
 // Cesium ships pre-built workers, assets and third-party wasm that must be served
 // from CESIUM_BASE_URL at runtime. This plugin serves them in dev and copies them
