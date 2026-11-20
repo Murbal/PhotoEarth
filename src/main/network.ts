@@ -1,4 +1,4 @@
-import { net } from 'electron'
+import { net, session } from 'electron'
 import { classifyGoogleError, classifyIonError, MISSING, OK } from '@shared/apiErrors'
 import {
   AUTOCOMPLETE_FIELD_MASK,
@@ -53,12 +53,33 @@ const okStatus = (s: number): boolean => s >= 200 && s < 300
 
 async function checkMapTiles(key: string): Promise<ApiCheck> {
   // A 2D session request exercises the Map Tiles API without a billable 3D root request.
-  const res = await request(`https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(key)}`, {
+  const res = await request(`${MAP_TILES_SESSION_URL}?key=${encodeURIComponent(key)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Referer: GOOGLE_REFERER },
     body: JSON.stringify({ mapType: 'satellite', language: 'en-US', region: 'US' })
   })
   return okStatus(res.status) ? OK : classifyGoogleError('Map Tiles API', res.status, res.body, net.isOnline())
+}
+
+const MAP_TILES_SESSION_URL = 'https://tile.googleapis.com/v1/createSession'
+
+/**
+ * Whether the Map Tiles key needs the fixed Referer: it does unless a request without one
+ * succeeds. Uses its own in-memory session, which has no Referer hook. Unknown (offline,
+ * quota, other errors) counts as needed, which is always safe.
+ */
+export async function mapTilesNeedsReferer(key: string): Promise<boolean> {
+  try {
+    const res = await session.fromPartition('photoearth-referer-probe').fetch(`${MAP_TILES_SESSION_URL}?key=${encodeURIComponent(key)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mapType: 'satellite', language: 'en-US', region: 'US' }),
+      signal: AbortSignal.timeout(10000)
+    })
+    return !okStatus(res.status)
+  } catch {
+    return true
+  }
 }
 
 async function checkPlaces(key: string): Promise<ApiCheck> {

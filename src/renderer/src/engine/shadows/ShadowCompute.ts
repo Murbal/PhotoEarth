@@ -50,8 +50,8 @@ interface LevelState {
   heights: Texture | undefined
   /** Data changed since the heights were uploaded. */
   uploadPending: boolean
-  /** Sun/data revision the mask was last computed for. */
-  maskRevision: number
+  /** Sun the mask was last computed for; null when it must be recomputed regardless. */
+  maskSun: SunVector | null
   /** The mask reflects this level's current data (otherwise the rect stays inactive). */
   maskForData: boolean
   framebuffer: Framebuffer | undefined
@@ -61,13 +61,30 @@ interface LevelState {
 const INACTIVE = (): Cartesian4 => new Cartesian4(0, 0, 1, 0)
 
 /**
+ * While the sun animates (playback, slider drags), a level is recomputed only once its mask
+ * is this far behind the sun (radians), and sun-driven recomputes are spaced at least this
+ * far apart. Once the sun stops, every level converges to the exact sun.
+ */
+const MOVING_MIN_ANGLE = (0.02 * Math.PI) / 180
+const MOVING_MIN_INTERVAL_MS = 30
+/** Staleness weight per level: the fine level carries the closest, sharpest edges. */
+const LEVEL_PRIORITY = [2, 1, 1]
+
+/** Angle between two unit vectors (accurate for tiny angles). */
+function sunAngle(a: SunVector, b: SunVector): number {
+  const d = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+  return 2 * Math.asin(Math.min(1, d / 2))
+}
+
+/**
  * Runs the terrain shadow pass inside Cesium's compute pass, so the masks are computed on the
  * GPU right before the frame that uses them and never round-trip through the CPU. Added to
  * scene.primitives; `update()` is Cesium's per-frame hook.
  *
- * One level is recomputed per frame (finest first), which spreads the cost of sun playback;
- * a level whose data just changed is computed in the same frame its rect switches over, so a
- * mask and its placement are always consistent.
+ * At most one level is recomputed per frame. A level whose data just changed goes first and is
+ * computed in the same frame its rect switches over, so a mask and its placement are always
+ * consistent. Otherwise the level whose mask lags the sun the most goes next (so no level
+ * starves during playback), throttled while the sun is moving (see MOVING_MIN_ANGLE).
  */
 export class ShadowCompute {
   readonly binding: ShadowBinding = {
@@ -84,7 +101,7 @@ export class ShadowCompute {
     level: null,
     heights: undefined,
     uploadPending: false,
-    maskRevision: -1,
+    maskSun: null,
     maskForData: false,
     framebuffer: undefined,
     command: undefined
@@ -92,7 +109,10 @@ export class ShadowCompute {
   private sun: SunVector = { x: 0, y: 0, z: 1 }
   private sunUp = false
   private enabled = false
-  private revision = 0
+  /** Frame number of the last update() and of the last sun change. */
+  private frameNumber = 0
+  private sunChangedFrame = Number.NEGATIVE_INFINITY
+  private lastComputeAt = Number.NEGATIVE_INFINITY
   private radius = 6371000
   private base = 0
   private farHeight = 0
@@ -124,10 +144,14 @@ export class ShadowCompute {
 
   /** Sun direction in the local frame; `up` false once it's far enough below the horizon. */
   setSun(sun: SunVector, up: boolean): void {
-    this.sun = sun
+    const s = this.sun
+    const changed = sun.x !== s.x || sun.y !== s.y || sun.z !== s.z || up !== this.sunUp
+    this.sun = { x: sun.x, y: sun.y, z: sun.z }
     this.sunUp = up
     this.binding.params.z = up ? 1 : 0
-    this.invalidate()
+    if (!changed) return
+    this.sunChangedFrame = this.frameNumber
+    this.requestRender()
   }
 
   /**
@@ -171,8 +195,9 @@ export class ShadowCompute {
     }
   }
 
+  /** Every mask must be recomputed: each level's march reads all levels' heights. */
   private invalidate(): void {
-    this.revision++
+    for (const s of this.levels) s.maskSun = null
     this.requestRender()
   }
 
@@ -181,25 +206,49 @@ export class ShadowCompute {
   update(frameState: CesiumFrameState): void {
     if (this.destroyed || !this.show || !frameState.passes.render) return
     const context = frameState.context
+    this.frameNumber = frameState.frameNumber
     if (!this.context) this.initialize(context)
     for (let i = 0; i < LEVEL_COUNT; i++) this.upload(i)
     this.binding.params.x = this.base
     if (!this.enabled || !this.sunUp) return
 
-    // Pick one level: one whose data changed first (it isn't visible until computed), then
-    // the finest stale one.
+    const pick = this.pickLevel()
+    if (pick >= 0) {
+      this.schedule(pick, frameState)
+      this.lastComputeAt = performance.now()
+    }
+    // Keep frames coming until every mask matches the sun.
+    if (this.levels.some((s) => s.level && s.heights && this.staleness(s) > 0)) this.requestRender()
+  }
+
+  /** How far a level's mask lags the current sun (radians; Infinity: must recompute). */
+  private staleness(s: LevelState): number {
+    return s.maskSun ? sunAngle(s.maskSun, this.sun) : Number.POSITIVE_INFINITY
+  }
+
+  private pickLevel(): number {
+    // A level whose data changed isn't visible until computed: always first, never throttled.
+    for (let i = 0; i < LEVEL_COUNT; i++) {
+      const s = this.levels[i]
+      if (s.level && s.heights && !s.maskForData) return i
+    }
+    // The sun changed this frame or the last one: it's animating.
+    const moving = this.frameNumber - this.sunChangedFrame <= 1
+    if (moving && performance.now() - this.lastComputeAt < MOVING_MIN_INTERVAL_MS) return -1
     let pick = -1
-    for (let i = 0; i < LEVEL_COUNT && pick < 0; i++) {
+    let best = 0
+    for (let i = 0; i < LEVEL_COUNT; i++) {
       const s = this.levels[i]
-      if (s.level && s.heights && !s.maskForData) pick = i
+      if (!s.level || !s.heights) continue
+      const lag = this.staleness(s)
+      if (lag === 0 || (moving && lag < MOVING_MIN_ANGLE)) continue
+      const priority = lag * LEVEL_PRIORITY[i]
+      if (priority > best) {
+        best = priority
+        pick = i
+      }
     }
-    for (let i = 0; i < LEVEL_COUNT && pick < 0; i++) {
-      const s = this.levels[i]
-      if (s.level && s.heights && s.maskRevision !== this.revision) pick = i
-    }
-    if (pick < 0) return
-    this.schedule(pick, frameState)
-    if (this.levels.some((s) => s.level && s.heights && s.maskRevision !== this.revision)) this.requestRender()
+    return pick
   }
 
   private initialize(context: CesiumContext): void {
@@ -305,7 +354,7 @@ export class ShadowCompute {
       }
     }
     frameState.commandList.push(this.computeCommands[index])
-    s.maskRevision = this.revision
+    s.maskSun = { x: sun.x, y: sun.y, z: sun.z }
     s.maskForData = true
     Cartesian4.fromElements(minX, minY, cell, l.n, this.binding.rects[index])
   }

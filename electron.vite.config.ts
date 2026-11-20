@@ -3,6 +3,11 @@ import { extname, join, normalize, resolve } from 'node:path'
 import { defineConfig } from 'electron-vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import { applyWslGpuEnv } from './src/main/wslGpu'
+
+// Under WSL, Electron (started by electron-vite with this process's environment) renders on
+// the GPU through Mesa d3d12 instead of software OpenGL. See src/main/wslGpu.ts.
+applyWslGpuEnv()
 
 // Cesium ships pre-built workers, assets and third-party wasm that must be served
 // from CESIUM_BASE_URL at runtime. This plugin serves them in dev and copies them

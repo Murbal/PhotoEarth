@@ -39,11 +39,28 @@ export function contentSecurityPolicy(devServer?: string): string {
 
 const ALLOWED_PERMISSIONS = new Set(['pointerLock', 'clipboard-sanitized-write', 'fullscreen'])
 
+const GOOGLE_REQUESTS = { urls: ['https://*.googleapis.com/*'] }
+const refererHooked = new WeakMap<Session, boolean>()
+
+/**
+ * Fixed Referer for Google origins so referrer-restricted keys can work from app://. The hook
+ * makes every matching request (each 3D tile) wait on this process's JS thread, so it's only
+ * installed while the key may need it (see mapTilesNeedsReferer).
+ */
+export function setGoogleRefererHook(ses: Session, enabled: boolean): void {
+  if ((refererHooked.get(ses) ?? false) === enabled) return
+  refererHooked.set(ses, enabled)
+  ses.webRequest.onBeforeSendHeaders(
+    GOOGLE_REQUESTS,
+    enabled
+      ? (details, callback) => callback({ requestHeaders: { ...details.requestHeaders, Referer: GOOGLE_REFERER } })
+      : null
+  )
+}
+
 export function hardenSession(ses: Session, devServer?: string): void {
-  // Fixed Referer for Google origins so referrer-restricted keys can work from app://.
-  ses.webRequest.onBeforeSendHeaders({ urls: ['https://*.googleapis.com/*'] }, (details, callback) => {
-    callback({ requestHeaders: { ...details.requestHeaders, Referer: GOOGLE_REFERER } })
-  })
+  // On until a probe shows the key works without it.
+  setGoogleRefererHook(ses, true)
 
   if (devServer) {
     const origin = new URL(devServer).origin

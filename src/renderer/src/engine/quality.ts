@@ -1,10 +1,18 @@
 import type { QualityOverrides, QualityPreset } from '@shared/types'
 
+/**
+ * Largest shadow-map texture allocated, per side. Cesium packs 4 cascades into one atlas
+ * twice the cascade size (so 4096 per cascade is already 8192², ~256 MB of depth); 8192 per
+ * cascade would be a 16384² (~1 GB) atlas.
+ */
+export const MAX_SHADOW_ATLAS = 8192
+
 export interface QualityConfig {
   /** 3D Tiles screen-space error (lower = sharper, more data). */
   maximumScreenSpaceError: number
   /** Terrain screen-space error for the globe. */
   terrainScreenSpaceError: number
+  /** Per cascade; see MAX_SHADOW_ATLAS. */
   shadowMapSize: number
   shadowCascades: 1 | 4
   softShadows: boolean
@@ -62,7 +70,8 @@ export const PRESETS: Record<QualityPreset, QualityConfig> = {
   ultra: {
     maximumScreenSpaceError: 6,
     terrainScreenSpaceError: 1.2,
-    shadowMapSize: 8192,
+    // 4096 per cascade = an 8192² atlas (MAX_SHADOW_ATLAS).
+    shadowMapSize: 4096,
     shadowCascades: 4,
     softShadows: true,
     shadowDistance: 30000,
@@ -88,11 +97,13 @@ export function resolveQuality(
   const base = PRESETS[preset]
   const pick = <K extends keyof QualityOverrides & keyof QualityConfig>(key: K): QualityConfig[K] =>
     (overrides[key] ?? base[key]) as QualityConfig[K]
+  const shadowCascades = pick('shadowCascades')
+  const atlasPerCascade = shadowCascades === 4 ? 2 : 1
   return {
     ...base,
     maximumScreenSpaceError: pick('maximumScreenSpaceError'),
-    shadowMapSize: Math.min(pick('shadowMapSize'), limits.maxTextureSize),
-    shadowCascades: pick('shadowCascades'),
+    shadowMapSize: Math.min(pick('shadowMapSize'), Math.min(limits.maxTextureSize, MAX_SHADOW_ATLAS) / atlasPerCascade),
+    shadowCascades,
     softShadows: pick('softShadows'),
     terrainShadowResolution: pick('terrainShadowResolution'),
     msaaSamples: Math.max(1, Math.min(pick('msaaSamples'), limits.maxSamples)),

@@ -1,5 +1,5 @@
 import { getPosition, getTimes } from 'suncalc'
-import { offsetMinutes, utcToZoned, zonedToUtc } from './time'
+import { addDays, offsetMinutes, utcToZoned, zonedToUtc } from './time'
 
 export interface SunPosition {
   /** Degrees clockwise from true north. */
@@ -76,9 +76,15 @@ export function altitudeProfile(
   steps = 96
 ): number[] {
   const out: number[] = []
+  // On a day without a clock change, local minutes map linearly to UTC: two zone conversions
+  // instead of one per sample (each costs several Intl calls).
+  const start = zonedToUtc(date, 0, timeZone)
+  const end = zonedToUtc(addDays(date, 1), 0, timeZone)
+  const linear = end - start === 1440 * 60000 && offsetMinutes(start, timeZone) === offsetMinutes(end, timeZone)
   for (let i = 0; i <= steps; i++) {
     const minutes = (i / steps) * 1440
-    out.push(sunPosition(zonedToUtc(date, minutes, timeZone), latitude, longitude).altitude)
+    const utc = linear ? start + minutes * 60000 : zonedToUtc(date, minutes, timeZone)
+    out.push(sunPosition(utc, latitude, longitude).altitude)
   }
   return out
 }

@@ -2,6 +2,7 @@
 // classes the tests need; importing the whole namespace would defeat tree-shaking and pull in
 // code that evaluates strings, which the CSP (correctly) blocks.
 import {
+  Cartesian2,
   Cartesian3,
   GeometryInstance,
   MaterialAppearance,
@@ -15,6 +16,7 @@ import {
 import * as terrainShadow from './lib/terrainShadow'
 
 export const testCesium = {
+  Cartesian2,
   Cartesian3,
   GeometryInstance,
   MaterialAppearance,

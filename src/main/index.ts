@@ -8,16 +8,25 @@ import { JsonFile } from './jsonStore'
 import { buildMenu } from './menu'
 import { handleAppScheme, registerAppScheme } from './protocol'
 import { SecretStore } from './secrets'
-import { APP_ORIGIN, hardenSession, hardenWebContents } from './security'
+import { mapTilesNeedsReferer } from './network'
+import { APP_ORIGIN, hardenSession, hardenWebContents, setGoogleRefererHook } from './security'
+import { relaunchForWslGpu } from './wslGpu'
 
 const devServer = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined
 
 // Allow isolated test runs (Playwright) to use a throwaway profile.
 if (process.env.PHOTOEARTH_USER_DATA) app.setPath('userData', process.env.PHOTOEARTH_USER_DATA)
 
+// Under WSL, a packaged build started without GPU support in its environment restarts with it
+// (dev, preview and test launchers set it themselves; see wslGpu.ts). Before the lock below.
+const relaunching = app.isPackaged && relaunchForWslGpu(app)
+if (relaunching) app.exit(0)
+
 registerAppScheme()
 
-if (!app.requestSingleInstanceLock()) {
+if (relaunching) {
+  // Exiting; don't take the lock the new instance needs.
+} else if (!app.requestSingleInstanceLock()) {
   app.quit()
 }
 
@@ -55,6 +64,7 @@ function createWindow(): BrowserWindow {
 }
 
 void app.whenReady().then(async () => {
+  if (relaunching) return
   const settings = new JsonFile(join(app.getPath('userData'), 'settings.json'), sanitizeSettings, 500)
   const secrets = await SecretStore.create()
   if (devServer) {
@@ -68,11 +78,33 @@ void app.whenReady().then(async () => {
   hardenSession(session.defaultSession, devServer)
   handleAppScheme(join(__dirname, '../renderer'))
 
+  // Drop the per-request Referer hook when the key doesn't need it. It goes back on while a
+  // new key is probed, so requests never go out without it while that's unknown.
+  let probe = 0
+  let probedKey: string | null | undefined
+  const updateRefererHook = (key: string | null): void => {
+    if (key === probedKey) return
+    probedKey = key
+    const id = ++probe
+    setGoogleRefererHook(session.defaultSession, true)
+    if (!key) return
+    void mapTilesNeedsReferer(key).then((needed) => {
+      if (id === probe) setGoogleRefererHook(session.defaultSession, needed)
+    })
+  }
+  updateRefererHook(secrets.get().googleApiKey)
+
   const isTrustedSender = (event: IpcMainInvokeEvent | IpcMainEvent): boolean => {
     const url = event.senderFrame?.url ?? ''
     return url.startsWith(`${APP_ORIGIN}/`) || (!!devServer && url.startsWith(devServer))
   }
-  registerIpc({ settings, secrets, bookmarks, isTrustedSender })
+  registerIpc({
+    settings,
+    secrets,
+    bookmarks,
+    isTrustedSender,
+    onKeysChanged: (keys) => updateRefererHook(keys.googleApiKey)
+  })
   buildMenu()
 
   mainWindow = createWindow()

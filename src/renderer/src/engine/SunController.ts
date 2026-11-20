@@ -18,7 +18,7 @@ import {
 } from 'cesium'
 import type { LightingMode, MapMode } from '@shared/types'
 import { SUN, type CelestialBody } from '../lib/celestial'
-import { altitudeProfile, sunDirectionENU } from '../lib/sun'
+import { altitudeProfile, sunDirectionENU, type SunDay } from '../lib/sun'
 import { addDays, addMinutes, isValidTimeZone, offsetMinutes, utcToZoned, zoneAbbreviation, zonedToUtc } from '../lib/time'
 import { lookupTimeZone } from '../lib/timezone'
 import { appState, useAppStore, type PlaybackSpeedId, type SunInfo } from '../store/appStore'
@@ -47,6 +47,8 @@ export class SunController {
   private dayAccumulator = 0
   private profileKey = ''
   private profile: number[] = []
+  private dayKey = ''
+  private day: SunDay | null = null
   private indicator: Entity[] = []
   private mode: MapMode = 'photorealistic'
   private lighting: LightingMode = 'sun'
@@ -178,7 +180,13 @@ export class SunController {
     const pos = this.body.position(utc, lat, lon)
     this.altitude = pos.altitude
     this.azimuth = pos.azimuth
-    const day = this.body.day(sim.date, sim.timeZone, lat, lon)
+    // Rise/set times only depend on the date and place; playback changes neither per frame.
+    const dayKey = `${sim.date}|${sim.timeZone}|${lat}|${lon}`
+    if (dayKey !== this.dayKey || !this.day) {
+      this.dayKey = dayKey
+      this.day = this.body.day(sim.date, sim.timeZone, lat, lon)
+    }
+    const day = this.day
     const key = `${sim.date}|${sim.timeZone}|${lat.toFixed(2)}|${lon.toFixed(2)}`
     if (key !== this.profileKey) {
       this.profileKey = key

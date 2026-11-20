@@ -1,8 +1,15 @@
-import { Cartesian2, Cartesian3, Cartographic, type Scene } from 'cesium'
+import { Cartesian2, Cartesian3, Cartographic, Ellipsoid, IntersectionTests, Ray, type Scene } from 'cesium'
 import { toMsl } from '../lib/geoid'
 import { niceScale } from '../lib/units'
 import { appState } from '../store/appStore'
 import { cameraTarget, pickSurface, surfaceHeight, toDeg } from './util'
+
+/** The cursor readout waits this long after the view stops moving (picking stalls the GPU). */
+const CURSOR_SETTLE_MS = 120
+
+const scratchRay = new Ray()
+const scratchPixel = new Cartesian2()
+const scratchScreen = new Cartesian2()
 
 /**
  * Status-bar readouts: cursor position and elevation, camera altitude (MSL / AGL),
@@ -12,6 +19,10 @@ export class Readouts {
   private cursorTimer: number | null = null
   private pendingCursor: Cartesian2 | null = null
   private lastCamera = { pos: new Cartesian3(), dir: new Cartesian3() }
+  /** Camera of the previous rendered frame, to tell when the view is moving. */
+  private prevFrame = { pos: new Cartesian3(), dir: new Cartesian3() }
+  private lastMoveAt = Number.NEGATIVE_INFINITY
+  private targetHeight: number | null = null
   private lastCameraUpdate = 0
   private lastTargetUpdate = 0
   private frames = 0
@@ -36,14 +47,26 @@ export class Readouts {
     if (this.cursorTimer !== null) window.clearTimeout(this.cursorTimer)
   }
 
-  /** Cursor sampling is throttled: picking reads back the depth buffer. */
+  /**
+   * Cursor sampling is throttled, and paused while the view moves: picking reads back the
+   * depth buffer, which stalls until the GPU has finished the frame.
+   */
   onMouseMove(position: Cartesian2): void {
     this.pendingCursor = Cartesian2.clone(position)
+    this.scheduleCursor(70)
+  }
+
+  private scheduleCursor(delay: number): void {
     if (this.cursorTimer !== null) return
     this.cursorTimer = window.setTimeout(() => {
       this.cursorTimer = null
       const p = this.pendingCursor
       if (!p) return
+      const sinceMove = performance.now() - this.lastMoveAt
+      if (sinceMove < CURSOR_SETTLE_MS) {
+        this.scheduleCursor(CURSOR_SETTLE_MS - sinceMove)
+        return
+      }
       const hit = pickSurface(this.scene, p.x, p.y)
       if (!hit) {
         appState().set({ cursor: null })
@@ -56,7 +79,7 @@ export class Readouts {
       const rel = this.scene.verticalExaggerationRelativeHeight
       const real = (c.height - rel) / ex + rel
       appState().set({ cursor: { longitude, latitude, elevation: toMsl(latitude, longitude, real) } })
-    }, 70)
+    }, delay)
   }
 
   onMouseLeave(): void {
@@ -76,6 +99,12 @@ export class Readouts {
       }
     }
     const cam = this.scene.camera
+    const prev = this.prevFrame
+    if (!Cartesian3.equalsEpsilon(cam.positionWC, prev.pos, 0, 0.01) || !Cartesian3.equalsEpsilon(cam.directionWC, prev.dir, 1e-6)) {
+      this.lastMoveAt = now
+      Cartesian3.clone(cam.positionWC, prev.pos)
+      Cartesian3.clone(cam.directionWC, prev.dir)
+    }
     const moved =
       !Cartesian3.equalsEpsilon(cam.positionWC, this.lastCamera.pos, 0, 0.01) ||
       !Cartesian3.equalsEpsilon(cam.directionWC, this.lastCamera.dir, 1e-6)
@@ -86,7 +115,9 @@ export class Readouts {
     this.updateCamera()
     if (now - this.lastTargetUpdate > 300) {
       this.lastTargetUpdate = now
-      this.updateTarget()
+      // While moving: no depth readback (it stalls every slow frame); refresh() on move end
+      // picks precisely.
+      this.updateTarget(true)
     }
   }
 
@@ -113,15 +144,16 @@ export class Readouts {
         heading: (toDeg(cam.heading) + 360) % 360,
         pitch: toDeg(cam.pitch)
       },
-      scale: this.computeScale()
+      scale: this.computeScale(ground ?? this.targetHeight ?? 0)
     })
   }
 
-  private updateTarget(): void {
-    const target = cameraTarget(this.scene)
+  private updateTarget(fast = false): void {
+    const target = cameraTarget(this.scene, fast)
     const c = Cartographic.fromCartesian(target)
     if (!c) return
     const next = { longitude: toDeg(c.longitude), latitude: toDeg(c.latitude) }
+    this.targetHeight = c.height
     const prev = appState().target
     if (!prev || Math.abs(prev.longitude - next.longitude) > 1e-4 || Math.abs(prev.latitude - next.latitude) > 1e-4) {
       appState().set({ target: next })
@@ -129,14 +161,28 @@ export class Readouts {
     this.onTarget(target)
   }
 
-  private computeScale(): { pixels: number; label: string } | null {
-    const canvas = this.scene.canvas
-    const y = canvas.clientHeight - 60
-    const x = canvas.clientWidth / 2
-    const a = pickSurface(this.scene, x - 50, y)
-    const b = pickSurface(this.scene, x + 50, y)
-    if (!a || !b) return null
-    const metersPerPixel = Cartesian3.distance(a, b) / 100
+  /**
+   * Scale at the bottom of the view, without picking: the ray through the bar's pixel meets
+   * the ellipsoid raised to the ground height near the camera, and a pixel's footprint at
+   * that depth follows from the frustum.
+   */
+  private computeScale(groundHeight: number): { pixels: number; label: string } | null {
+    const scene = this.scene
+    const canvas = scene.canvas
+    const w = canvas.clientWidth
+    const h = canvas.clientHeight
+    if (!w || !h) return null
+    const cam = scene.camera
+    const ray = cam.getPickRay(Cartesian2.fromElements(w / 2, h - 60, scratchScreen), scratchRay)
+    if (!ray) return null
+    const r = scene.ellipsoid.radii
+    const surface = new Ellipsoid(r.x + groundHeight, r.y + groundHeight, r.z + groundHeight)
+    const hit = IntersectionTests.rayEllipsoid(ray, surface)
+    // No hit (sky), or the camera is below the estimated surface.
+    if (!hit || hit.start <= 0) return null
+    const depth = hit.start * Cartesian3.dot(ray.direction, cam.directionWC)
+    if (!(depth > 0)) return null
+    const metersPerPixel = cam.frustum.getPixelDimensions(w, h, depth, 1, scratchPixel).x
     if (!Number.isFinite(metersPerPixel) || metersPerPixel <= 0) return null
     const nice = niceScale(metersPerPixel * 120, appState().settings.units)
     return nice ? { pixels: nice.meters / metersPerPixel, label: nice.label } : null

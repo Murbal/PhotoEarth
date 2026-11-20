@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
@@ -41,6 +41,18 @@ test('renders the Cesium globe after skipping onboarding', async () => {
   await expect(page.locator('.map canvas')).toBeVisible()
   await page.waitForFunction(() => !!(window as unknown as { __photoearth?: unknown }).__photoearth)
   await expect(page.locator('.statusbar')).toContainText('Cam')
+})
+
+test('under WSL with GPU support, WebGL runs on the GPU rather than a software renderer', async () => {
+  // playwright.config.ts selects Mesa d3d12 exactly when this applies (see src/main/wslGpu.ts).
+  test.skip(!existsSync('/dev/dxg') || process.env.GALLIUM_DRIVER !== 'd3d12', 'not WSL2 with GPU paravirtualization')
+  const renderer = await page.evaluate(() => {
+    const gl = (window as unknown as { __photoearth: any }).__photoearth.scene.context._gl as WebGL2RenderingContext
+    const ext = gl.getExtension('WEBGL_debug_renderer_info')
+    return String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER))
+  })
+  expect(renderer).toContain('D3D12')
+  expect(renderer).not.toMatch(/SwiftShader|llvmpipe/)
 })
 
 test('the custom elevation material compiles', async () => {
@@ -348,7 +360,14 @@ test('a fast-moving camera preloads tiles where it is heading', async () => {
     const seconds = (performance.now() - t0) / 1000
     const whileMoving = e.preloader.preloading
     const moving = preloads.slice()
-    for (let i = 0; i < 60; i++) await frame()
+    // Keep rendering while stationary for 2 s: the preloader re-evaluates only on rendered
+    // frames, and its smoothed speed (τ = 0.2 s) needs ~1.1 s to fall from 600 m/s below its
+    // 2 m/s threshold. (A frame count would depend on the frame rate.)
+    const stopped = performance.now()
+    while (performance.now() - stopped < 2000) {
+      e.scene.requestRender()
+      await frame()
+    }
     const afterStop = e.preloader.preloading
     e.scene.primitives.remove(spy)
     return { preloads: moving.slice(-5), count: moving.length, speed: 900 / seconds, whileMoving, afterStop }
@@ -370,7 +389,115 @@ test('coordinates in the palette fly the camera there', async () => {
   await expect
     .poll(async () => page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.currentView().longitude), { timeout: 15_000 })
     .toBeLessThan(-119)
+  // Let the flight finish: later tests move the camera themselves.
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(async () => {
+          const e = (window as unknown as { __photoearth: any }).__photoearth
+          const a = e.currentView()
+          await new Promise((r) => setTimeout(r, 250))
+          const b = e.currentView()
+          return Math.abs(a.longitude - b.longitude) + Math.abs(a.latitude - b.latitude) + Math.abs(a.height - b.height) / 1e5
+        }),
+      { timeout: 15_000 }
+    )
+    .toBeLessThan(1e-7)
 })
+
+/** Runs a test away from the current view, then restores it (later tests rely on it). */
+async function awayFromView(run: () => Promise<void>): Promise<void> {
+  const view = await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.currentView())
+  try {
+    await run()
+  } finally {
+    await page.evaluate((v) => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      e.camera.setView(v)
+      e.scene.requestRender()
+    }, view)
+  }
+}
+
+test('the scale bar (computed without picking) matches a picked ground distance', () => awayFromView(async () => {
+  const result = await page.evaluate(() => {
+    const w = window as unknown as { Cesium: Record<string, any>; __photoearth: any }
+    const C = w.Cesium
+    const e = w.__photoearth
+    const out: Array<{ pitch: number; analytic: number; picked: number }> = []
+    for (const pitch of [-90, -45]) {
+      e.scene.camera.setView({
+        destination: C.Cartesian3.fromDegrees(8, 46, 6000),
+        orientation: { heading: 0, pitch: (pitch * Math.PI) / 180, roll: 0 }
+      })
+      e.scene.requestRender()
+      e.scene.render()
+      const canvas = e.scene.canvas
+      const scale = e.readouts.computeScale(0)
+      // Reference: the previous method, two picks 100 px apart at the bar's row.
+      const y = canvas.clientHeight - 60
+      const x = canvas.clientWidth / 2
+      const pick = (px: number) => e.scene.camera.pickEllipsoid(new C.Cartesian2(px, y))
+      const a = pick(x - 50)
+      const b = pick(x + 50)
+      const picked = C.Cartesian3.distance(a, b) / 100
+      // The bar's length in meters over its pixels is the analytic meters per pixel.
+      const meters = Number.parseFloat(scale.label) * (scale.label.includes('km') ? 1000 : 1)
+      out.push({ pitch, analytic: meters / scale.pixels, picked })
+    }
+    return out
+  })
+  for (const r of result) expect(Math.abs(r.analytic / r.picked - 1), JSON.stringify(result)).toBeLessThan(0.02)
+}))
+
+test('a drag keeps its height above rising ground instead of hugging it', () => awayFromView(async () => {
+  const box = (await page.locator('.map canvas').boundingBox())!
+  await page.evaluate(() => {
+    const w = window as unknown as { Cesium: Record<string, any>; __photoearth: any }
+    w.__photoearth.scene.camera.setView({
+      destination: w.Cesium.Cartesian3.fromDegrees(8, 46, 300),
+      orientation: { heading: 0, pitch: -0.4, roll: 0 }
+    })
+    w.__photoearth.scene.requestRender()
+  })
+  // Let the globe refine first: coarse tiles sag below the surface.
+  await page.waitForFunction(() => {
+    const e = (window as unknown as { __photoearth: any }).__photoearth
+    e.scene.requestRender()
+    return e.scene.globe.tilesLoaded
+  }, null, { timeout: 15_000 })
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.7)
+  await page.mouse.down()
+  await page.waitForTimeout(200)
+  // Offline the ground is the flat ellipsoid; sinking the camera stands in for ground rising
+  // under a drag (the drag itself keeps a constant altitude).
+  const heights = await page.evaluate(async () => {
+    const w = window as unknown as { Cesium: Record<string, any>; __photoearth: any }
+    const e = w.__photoearth
+    const C = w.Cesium
+    const height = () => e.scene.globe.ellipsoid.cartesianToCartographic(e.scene.camera.positionWC).height
+    const frame = () => new Promise((r) => requestAnimationFrame(() => r(null)))
+    const before = height()
+    e.scene.camera.position = C.Cartesian3.fromDegrees(8, 46, 100)
+    for (let i = 0; i < 3; i++) {
+      e.scene.requestRender()
+      await frame()
+    }
+    return { before, after: height(), ground: e.scene.globeHeight }
+  })
+  await page.mouse.up()
+  expect(Math.abs(heights.after - heights.before), JSON.stringify(heights)).toBeLessThan(5)
+}))
+
+test('arrow keys stop pitching up at 60° outside fly mode', () => awayFromView(async () => {
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  await page.keyboard.down('ArrowUp')
+  await page.waitForTimeout(3000)
+  await page.keyboard.up('ArrowUp')
+  const pitch = await page.evaluate(() => ((window as unknown as { __photoearth: any }).__photoearth.scene.camera.pitch * 180) / Math.PI)
+  expect(pitch).toBeLessThanOrEqual(60.01)
+  expect(pitch).toBeGreaterThan(55)
+}))
 
 test('time zone follows the viewed location', async () => {
   await page.keyboard.press('t')

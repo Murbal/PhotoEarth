@@ -13,11 +13,13 @@ interface Stores {
   secrets: SecretStore
   bookmarks: BookmarkStore
   isTrustedSender: (event: IpcMainInvokeEvent | Electron.IpcMainEvent) => boolean
+  /** Called after the stored keys change. */
+  onKeysChanged?: (keys: ApiKeys) => void
 }
 
 const str = (v: unknown, max = 500): string => (typeof v === 'string' ? v.slice(0, max) : '')
 
-export function registerIpc({ settings, secrets, bookmarks, isTrustedSender }: Stores): void {
+export function registerIpc({ settings, secrets, bookmarks, isTrustedSender, onKeysChanged }: Stores): void {
   const handle = <A extends unknown[], R>(channel: string, fn: (...args: A) => R) => {
     ipcMain.handle(channel, (event, ...args) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender')
@@ -43,7 +45,10 @@ export function registerIpc({ settings, secrets, bookmarks, isTrustedSender }: S
     const clean: Partial<ApiKeys> = {}
     if ('googleApiKey' in p) clean.googleApiKey = str(p.googleApiKey) || null
     if ('cesiumIonToken' in p) clean.cesiumIonToken = str(p.cesiumIonToken, 4000) || null
-    return secrets.set(clean)
+    return secrets.set(clean).then((status) => {
+      onKeysChanged?.(secrets.get())
+      return status
+    })
   })
   handle(IPC.keysValidate, (keys: unknown) => {
     const k = (keys ?? {}) as Partial<ApiKeys>

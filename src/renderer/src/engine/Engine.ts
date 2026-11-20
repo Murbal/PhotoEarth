@@ -4,6 +4,7 @@ import {
   Cartographic,
   CesiumWidget,
   Color,
+  ContextLimits,
   EllipsoidTerrainProvider,
   KeyboardEventModifier,
   ScreenSpaceEventHandler,
@@ -371,7 +372,10 @@ export class Engine {
 
   private applyQuality(): void {
     const { quality } = appState().settings
-    const q = resolveQuality(quality.preset, quality.overrides, { maxTextureSize: 8192, maxSamples: 8 })
+    const q = resolveQuality(quality.preset, quality.overrides, {
+      maxTextureSize: ContextLimits.maximumTextureSize || 4096,
+      maxSamples: ContextLimits.maximumSamples || 1
+    })
     this.tiles.setScreenSpaceError(q.maximumScreenSpaceError)
     this.terrainShadows.setResolution(q.terrainShadowResolution)
     this.scene.globe.maximumScreenSpaceError = q.terrainScreenSpaceError

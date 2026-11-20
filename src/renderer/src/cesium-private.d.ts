@@ -16,6 +16,7 @@ declare module 'cesium' {
 
   export interface CesiumFrameState {
     context: CesiumContext
+    frameNumber: number
     commandList: unknown[]
     passes: { render: boolean; pick: boolean }
   }
@@ -98,12 +99,22 @@ declare module 'cesium' {
 
   export const Pass: { readonly COMPUTE: number }
 
+  /** WebGL limits of the current context (filled in when the first context is created). */
+  export const ContextLimits: { readonly maximumTextureSize: number; readonly maximumSamples: number }
+
   // Cesium's "preload flight" tileset pass (Scene.updatePreloadFlightPass), driven by
   // TilePreloader with a predicted camera.
   interface Camera {
     canPreloadFlight(): boolean
   }
+  interface Cesium3DTileset {
+    /** CPU ray cast against the loaded (selected) tiles; needs WebGL 2 or enablePick. */
+    pick(ray: Ray, frameState: CesiumFrameState, result?: Cartesian3): Cartesian3 | undefined
+  }
   interface Scene {
+    readonly frameState: CesiumFrameState
+    /** Surface height below the camera (terrain and collidable 3D tiles), as of this frame's start. */
+    readonly globeHeight: number | undefined
     preloadFlightCamera: Camera
     preloadFlightCullingVolume: CullingVolume | undefined
   }

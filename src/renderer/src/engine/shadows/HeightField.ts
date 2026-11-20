@@ -77,6 +77,14 @@ const MAX_CONCURRENT = 12
 // ~80 kB per decoded tile: enough to re-center without refetching the overlap.
 const CACHE_LIMIT = 600
 const TILE_TIMEOUT_MS = 20000
+/** Rasterizing yields to the event loop after this much work, so panning stays smooth. */
+const SLICE_MS = 4
+
+/** Yields to pending input and rendering; scheduler.yield resumes ahead of other tasks. */
+function yieldToMain(): Promise<void> {
+  const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler
+  return scheduler?.yield ? scheduler.yield() : new Promise((resolve) => setTimeout(resolve, 0))
+}
 
 /**
  * Loads terrain heights into shadow levels. Tiles come straight from the terrain provider
@@ -87,6 +95,10 @@ export class HeightField {
   private readonly cache = new Map<string, Promise<TileResult | null>>()
   private active = 0
   private readonly waiting: Array<() => void> = []
+  /** Per-vertex grid coordinates, reused across tiles (grown as needed). */
+  private gx = new Float64Array(0)
+  private gy = new Float64Array(0)
+  private gh = new Float64Array(0)
 
   constructor(readonly provider: TerrainProvider) {}
 
@@ -117,18 +129,20 @@ export class HeightField {
     const minX = cx - half
     const minY = cy - half
     const seen = new Set<string>()
-    let sinceYield = 0
+    let sliceStart = performance.now()
     for (const t of tiles) {
       const id = `${t.level}/${t.x}/${t.y}`
       if (seen.has(id)) continue
       seen.add(id)
       this.rasterize(t, frame, minX, minY, cell, n, heights)
-      if (++sinceYield >= 16) {
-        sinceYield = 0
-        await new Promise((r) => setTimeout(r, 0))
+      if (performance.now() - sliceStart >= SLICE_MS) {
+        await yieldToMain()
         if (cancelled()) return null
+        sliceStart = performance.now()
       }
     }
+    await yieldToMain()
+    if (cancelled()) return null
     const result: ShadowLevel = { cx, cy, half, n, heights, minHeight: 0, maxHeight: 0 }
     if (fillGaps(result, coarser) < 0.5) return null
     const range = heightRange(heights)
@@ -233,9 +247,12 @@ export class HeightField {
     const minH = mesh._minimumHeight ?? 0
     const maxH = mesh._maximumHeight ?? 0
     const MAX = 32767
-    const gx = new Float64Array(count)
-    const gy = new Float64Array(count)
-    const gh = new Float64Array(count)
+    if (this.gx.length < count) {
+      this.gx = new Float64Array(count)
+      this.gy = new Float64Array(count)
+      this.gh = new Float64Array(count)
+    }
+    const { gx, gy, gh } = this
     const tw = tileRect.east - tileRect.west
     const th = tileRect.north - tileRect.south
     const p = new Cartesian3()

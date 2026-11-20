@@ -2,9 +2,11 @@ import {
   Cartesian2,
   Cartesian3,
   Cartographic,
+  Cesium3DTileset,
   HeightReference,
   Math as CesiumMath,
   RequestErrorEvent,
+  type Ray,
   type Scene
 } from 'cesium'
 import type { CameraView } from '@shared/types'
@@ -52,10 +54,48 @@ export function pickSurface(scene: Scene, x: number, y: number): Cartesian3 | un
   return scene.camera.pickEllipsoid(p, scene.ellipsoid) ?? undefined
 }
 
-/** The point the camera looks at (screen center), or the point below the camera. */
-export function cameraTarget(scene: Scene): Cartesian3 {
+/**
+ * World position under a window pixel by ray casting on the CPU against the loaded 3D tiles
+ * and the globe. Unlike pickSurface it never reads back the depth buffer, which stalls until
+ * the GPU has finished the frame, so it suits per-frame use while the view moves.
+ */
+export function pickSurfaceCpu(scene: Scene, x: number, y: number): Cartesian3 | undefined {
+  const p = new Cartesian2(x, y)
+  const ray = scene.camera.getPickRay(p)
+  if (!ray) return undefined
+  return raycastSurface(scene, ray) ?? scene.camera.pickEllipsoid(p, scene.ellipsoid) ?? undefined
+}
+
+/** First hit of a ray on the loaded 3D tiles or globe (CPU; only tiles selected for rendering). */
+export function raycastSurface(scene: Scene, ray: Ray): Cartesian3 | undefined {
+  let best: Cartesian3 | undefined
+  let bestDistance = Number.POSITIVE_INFINITY
+  const consider = (hit: Cartesian3 | undefined) => {
+    if (!hit || !Number.isFinite(hit.x)) return
+    const d = Cartesian3.distanceSquared(hit, ray.origin)
+    if (d < bestDistance) {
+      bestDistance = d
+      best = hit
+    }
+  }
+  const primitives = scene.primitives
+  for (let i = 0; i < primitives.length; i++) {
+    const primitive: unknown = primitives.get(i)
+    if (primitive instanceof Cesium3DTileset && primitive.show) consider(primitive.pick(ray, scene.frameState, new Cartesian3()))
+  }
+  if (scene.globe.show) consider(scene.globe.pick(ray, scene))
+  return best
+}
+
+/**
+ * The point the camera looks at (screen center), or the point below the camera. `fast` ray
+ * casts on the CPU instead of picking the depth buffer (see pickSurfaceCpu).
+ */
+export function cameraTarget(scene: Scene, fast = false): Cartesian3 {
   const canvas = scene.canvas
-  const hit = pickSurface(scene, canvas.clientWidth / 2, canvas.clientHeight / 2)
+  const x = canvas.clientWidth / 2
+  const y = canvas.clientHeight / 2
+  const hit = fast ? pickSurfaceCpu(scene, x, y) : pickSurface(scene, x, y)
   if (hit) return hit
   const c = Cartographic.fromCartesian(scene.camera.positionWC)
   return Cartesian3.fromRadians(c.longitude, c.latitude, 0)

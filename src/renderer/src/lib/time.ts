@@ -173,17 +173,30 @@ export function formatOffset(offsetMin: number): string {
   return `UTC${sign}${h}${m ? `:${String(m).padStart(2, '0')}` : ''}`
 }
 
+const zoneNameFormatters = new Map<string, Intl.DateTimeFormat | null>()
+
 /** Time-zone abbreviation such as "CEST", falling back to the offset. */
 export function zoneAbbreviation(utcMs: number, timeZone: string): string {
+  let f = zoneNameFormatters.get(timeZone)
+  if (f === undefined) {
+    // Building a formatter costs ~20× formatting with one; this runs every playback frame.
+    try {
+      f = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'short' })
+    } catch {
+      f = null
+    }
+    zoneNameFormatters.set(timeZone, f)
+  }
+  if (!f) return ''
   try {
-    const parts = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'short' }).formatToParts(new Date(utcMs))
-    return parts.find((p) => p.type === 'timeZoneName')?.value ?? ''
+    return f.formatToParts(new Date(utcMs)).find((p) => p.type === 'timeZoneName')?.value ?? ''
   } catch {
     return ''
   }
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 export function formatShortDate(date: string): string {
   const { month, day } = parseDate(date)
@@ -192,10 +205,7 @@ export function formatShortDate(date: string): string {
 
 export function formatLongDate(date: string): string {
   const { year, month, day } = parseDate(date)
-  const weekday = new Date(Date.UTC(year, month - 1, day)).toLocaleDateString('en-US', {
-    weekday: 'short',
-    timeZone: 'UTC'
-  })
+  const weekday = WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()]
   return `${weekday}, ${MONTHS[month - 1]} ${day}, ${year}`
 }
 

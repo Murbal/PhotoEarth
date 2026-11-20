@@ -64,21 +64,26 @@ export function TimePanel() {
     [year, sim.timeZone]
   )
 
+  // `sun` is replaced every playback frame; these only change with the date and place.
+  const sunrise = sun?.sunrise ?? null
+  const solarNoon = sun?.solarNoon ?? null
+  const sunset = sun?.sunset ?? null
+  const dayTimes = useMemo(() => {
+    const rise = markerMinutes(sunrise, sim.date, sim.timeZone)
+    const noon = markerMinutes(solarNoon, sim.date, sim.timeZone)
+    const set = markerMinutes(sunset, sim.date, sim.timeZone)
+    const markers: SliderMarker[] = []
+    if (rise !== null) markers.push({ value: rise, label: `↑ ${formatClock(rise)}`, title: 'Sunrise' })
+    if (noon !== null) markers.push({ value: noon, label: `noon ${formatClock(noon)}`, title: 'Solar noon' })
+    if (set !== null) markers.push({ value: set, label: `↓ ${formatClock(set)}`, title: 'Sunset' })
+    const clock = (m: number | null) => (m === null ? '—' : formatClock(m))
+    return { markers, rise: clock(rise), noon: clock(noon), set: clock(set) }
+  }, [sunrise, solarNoon, sunset, sim.date, sim.timeZone])
+  const profile = sun?.profile
+  const dayBackground = useMemo(() => dayGradient(profile ?? []), [profile])
+
   if (!open) return null
   const engine = getEngine()
-  const local = (utc: number | null) => {
-    const m = markerMinutes(utc, sim.date, sim.timeZone)
-    return m === null ? '—' : formatClock(m)
-  }
-  const dayMarkers: SliderMarker[] = []
-  if (sun) {
-    const rise = markerMinutes(sun.sunrise, sim.date, sim.timeZone)
-    const noon = markerMinutes(sun.solarNoon, sim.date, sim.timeZone)
-    const set = markerMinutes(sun.sunset, sim.date, sim.timeZone)
-    if (rise !== null) dayMarkers.push({ value: rise, label: `↑ ${formatClock(rise)}`, title: 'Sunrise' })
-    if (noon !== null) dayMarkers.push({ value: noon, label: `noon ${formatClock(noon)}`, title: 'Solar noon' })
-    if (set !== null) dayMarkers.push({ value: set, label: `↓ ${formatClock(set)}`, title: 'Sunset' })
-  }
   const dayLength =
     sun?.sunrise && sun?.sunset ? `${Math.floor((sun.sunset - sun.sunrise) / 3600000)} h ${Math.round(((sun.sunset - sun.sunrise) % 3600000) / 60000)} min` : sun?.polar === 'day' ? '24 h' : sun?.polar === 'night' ? '0 h' : '—'
   const simulated = settings.lighting === 'sun'
@@ -147,8 +152,8 @@ export function TimePanel() {
           value={Math.min(1439, sim.minutes)}
           valueText={formatClock(sim.minutes)}
           onChange={(minutes) => patchSim({ minutes })}
-          background={dayGradient(sun?.profile ?? [])}
-          markers={dayMarkers}
+          background={dayBackground}
+          markers={dayTimes.markers}
         />
         <div className="slider-ticks">
           {['00', '03', '06', '09', '12', '15', '18', '21', '24'].map((t) => (
@@ -198,9 +203,9 @@ export function TimePanel() {
           <span className="mono" style={{ color: sun && sun.altitude < 0 ? 'var(--text-muted)' : 'var(--sun)' }}>
             {sun ? `${sun.altitude.toFixed(1)}°` : '—'}
           </span>
-          <span className="mono">{sun?.polar === 'day' ? 'polar day' : sun?.polar === 'night' ? 'polar night' : local(sun?.sunrise ?? null)}</span>
-          <span className="mono">{sun ? local(sun.solarNoon) : '—'}</span>
-          <span className="mono">{sun?.polar ? '—' : local(sun?.sunset ?? null)}</span>
+          <span className="mono">{sun?.polar === 'day' ? 'polar day' : sun?.polar === 'night' ? 'polar night' : dayTimes.rise}</span>
+          <span className="mono">{sun ? dayTimes.noon : '—'}</span>
+          <span className="mono">{sun?.polar ? '—' : dayTimes.set}</span>
         </div>
         <div className="small muted">Day length {dayLength}</div>
       </div>

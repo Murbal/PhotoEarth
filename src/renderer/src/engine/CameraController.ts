@@ -12,10 +12,12 @@ import {
   Matrix4,
   PerspectiveFrustum,
   Quaternion,
+  Ray,
   type Scene
 } from 'cesium'
 import type { CameraView, NavigationSettings } from '@shared/types'
-import { cameraTarget, clamp, pickSurface, surfaceHeight, toDeg, toRad } from './util'
+import { MovementSpeed } from './MovementSpeed'
+import { cameraTarget, clamp, pickSurface, raycastSurface, surfaceHeight, toDeg, toRad } from './util'
 
 /** Standing eye height for eye-level mode, meters. */
 export const EYE_HEIGHT = 1.7
@@ -32,6 +34,15 @@ export function focalLengthToFov(mm: number): number {
 export const FLY_FOCAL_LENGTH = 20
 const ORBIT_FOV = CesiumMath.toRadians(60)
 const FOV_EASE_MS = 300
+
+/** How often the distance ahead (a CPU ray cast) is re-measured during keyboard movement. */
+const AHEAD_PROBE_MS = 100
+
+/** Longest time step of keyboard movement and inertia. */
+const MAX_TICK_SECONDS = 0.25
+
+/** Outside fly mode, the view can't pitch further up than this (looking straight up breaks zoom and movement). */
+const MAX_ORBIT_PITCH_UP = CesiumMath.toRadians(60)
 
 const MOVEMENT_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
 
@@ -79,6 +90,14 @@ export class CameraController {
   private alt = false
   private raf: number | null = null
   private lastTick = 0
+  /** Ground height found by the previous tick's clearance check (saves a second sample). */
+  private tickGround: number | undefined
+  private readonly speed = new MovementSpeed()
+  /** Distance to the first surface along the direction of travel, and when it was measured. */
+  private ahead: number | null = null
+  private aheadAt = Number.NEGATIVE_INFINITY
+  /** Last known height above the ground below, kept while the ground is briefly unknown. */
+  private lastAgl: number | null = null
   private flyMode = false
   private eyeLevel = false
   private settings: NavigationSettings = { inertia: 0.8, speedMultiplier: 1, invertFlyY: false, minClearance: 2 }
@@ -87,6 +106,18 @@ export class CameraController {
   private headingPivot: Cartesian3 | null = null
   private animationToken = 0
   private fovRaf: number | null = null
+  /**
+   * Terrain following during drags, their inertia and keyboard movement: the height above
+   * ground to keep (null: off; NaN: record it on the next frame). These all move the camera
+   * at a constant altitude, so rising ground would otherwise push it down to the minimum
+   * clearance and leave it there.
+   */
+  private followAgl: number | null = null
+  /** Pointer of the drag that started following. */
+  private followPointer: number | null = null
+  /** Ground height and camera position seen on the previous following frame. */
+  private followGround = 0
+  private readonly followPosition = new Cartesian3()
   private mouse: { x: number; y: number } | null = null
   private readonly disposers: Array<() => void> = []
 
@@ -106,6 +137,14 @@ export class CameraController {
     c.maximumZoomDistance = 4.0e7
     c.zoomFactor = 4
     this.attach()
+    // After Cesium's camera controller has moved the camera, before the frame renders.
+    this.disposers.push(
+      scene.preUpdate.addEventListener(() => this.followTerrain()),
+      scene.camera.moveEnd.addEventListener(() => {
+        // Drag or zoom inertia and keyboard movement have come to rest.
+        if (this.followPointer === null && this.keys.size === 0) this.endFollow()
+      })
+    )
   }
 
   get isFlyMode(): boolean {
@@ -145,7 +184,12 @@ export class CameraController {
     this.listen(canvas, 'pointerdown', (e) => this.onPointerDown(e))
     this.listen(window, 'pointermove', (e) => this.onPointerMove(e))
     this.listen(window, 'pointerup', (e) => this.onPointerUp(e))
-    this.listen(canvas, 'wheel', () => this.userInput({ exitEyeLevel: true }))
+    this.listen(canvas, 'wheel', (e) => {
+      this.userInput({ exitEyeLevel: true })
+      // Zooming out backs away along the view, which descends when looking up: keep the
+      // height above ground. Zooming in descends on purpose.
+      if (e.deltaY > 0) this.startFollow()
+    })
     this.listen(canvas, 'mousemove', (e) => {
       this.mouse = { x: e.offsetX, y: e.offsetY }
     })
@@ -166,9 +210,10 @@ export class CameraController {
     if (this.fovRaf !== null) cancelAnimationFrame(this.fovRaf)
   }
 
-  private userInput({ exitEyeLevel = false } = {}): void {
+  private userInput({ exitEyeLevel = false, keepFollow = false } = {}): void {
     this.scene.camera.cancelFlight()
     this.animationToken++
+    if (!keepFollow) this.endFollow()
     if (exitEyeLevel) this.setEyeLevel(false)
     this.callbacks.onUserInput()
   }
@@ -181,9 +226,12 @@ export class CameraController {
     if (down) {
       e.preventDefault()
       if (!this.keys.has(e.code)) {
-        this.userInput({ exitEyeLevel: e.code === 'KeyQ' || e.code === 'KeyE' })
+        // Another key during movement keeps the height being followed (re-recording it on
+        // every press would let it creep down).
+        this.userInput({ exitEyeLevel: e.code === 'KeyQ' || e.code === 'KeyE', keepFollow: true })
       }
       this.keys.add(e.code)
+      if (this.followAgl === null) this.startFollow()
       this.startLoop()
     } else {
       this.keys.delete(e.code)
@@ -194,6 +242,12 @@ export class CameraController {
     const exit = e.button === 2 || (e.button === 0 && e.ctrlKey) || e.button === 1
     this.userInput({ exitEyeLevel: exit })
     this.headingVelocity = 0
+    // Left-drag (pan), Shift+Left and middle-drag (heading orbit) keep the altitude; right and
+    // Ctrl+Left tilt, which changes the height on purpose.
+    if ((e.button === 0 && !e.ctrlKey) || e.button === 1) {
+      this.startFollow()
+      this.followPointer = e.pointerId
+    }
     // Middle-drag or Shift+Left-drag: rotate heading around the point under the cursor.
     if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
       const rect = this.scene.canvas.getBoundingClientRect()
@@ -218,6 +272,7 @@ export class CameraController {
   }
 
   private onPointerUp(e: PointerEvent): void {
+    if (e.pointerId === this.followPointer) this.followPointer = null
     if (!this.headingDrag || e.pointerId !== this.headingDrag.pointerId) return
     this.headingDrag = null
     if (Math.abs(this.headingVelocity) > 1e-4 && this.settings.inertia > 0) this.startLoop()
@@ -239,6 +294,7 @@ export class CameraController {
     const active = document.pointerLockElement === this.scene.canvas
     if (active === this.flyMode) return
     this.flyMode = active
+    this.endFollow()
     this.scene.screenSpaceCameraController.enableInputs = !active
     if (!active) this.keys.clear()
     this.easeFov(active ? focalLengthToFov(FLY_FOCAL_LENGTH) : ORBIT_FOV)
@@ -275,8 +331,14 @@ export class CameraController {
   private startLoop(): void {
     if (this.raf !== null) return
     this.lastTick = performance.now()
+    this.tickGround = undefined
+    this.speed.reset()
+    this.ahead = null
+    this.lastAgl = null
     const step = (now: number) => {
-      const dt = Math.min(0.1, (now - this.lastTick) / 1000)
+      // Real elapsed time, so speed doesn't drop with the frame rate; capped so a stall (a
+      // blocked main thread) doesn't turn into one big jump.
+      const dt = Math.min(MAX_TICK_SECONDS, (now - this.lastTick) / 1000)
       this.lastTick = now
       const active = this.tick(dt)
       this.raf = active ? requestAnimationFrame(step) : null
@@ -296,11 +358,56 @@ export class CameraController {
     this.scene.camera.look(axis, -angle)
   }
 
-  /** Positive delta pitches up; clamped short of straight up/down so heading stays defined. */
+  /**
+   * Positive delta pitches up; clamped short of straight up/down so heading stays defined,
+   * and outside fly mode to MAX_ORBIT_PITCH_UP (a view already above it can only come down).
+   */
   private pitchBy(delta: number): void {
     const cam = this.scene.camera
-    const next = clamp(cam.pitch + delta, -CesiumMath.PI_OVER_TWO + 0.01, CesiumMath.PI_OVER_TWO - 0.01)
+    const up = this.flyMode ? CesiumMath.PI_OVER_TWO - 0.01 : Math.max(MAX_ORBIT_PITCH_UP, cam.pitch)
+    const next = clamp(cam.pitch + delta, -CesiumMath.PI_OVER_TWO + 0.01, up)
     this.turn(Cartesian3.clone(cam.rightWC), next - cam.pitch)
+  }
+
+  // ───────────────────────────── terrain following ─────────────────────────────
+
+  /** Records the height above ground to keep (now if the ground is known, else next frame). */
+  private startFollow(): void {
+    this.followAgl = Number.NaN
+    this.followTerrain()
+  }
+
+  private endFollow(): void {
+    this.followAgl = null
+    this.followPointer = null
+  }
+
+  /** Lifts the camera back to the recorded height above ground where the ground rose. */
+  private followTerrain(): void {
+    if (this.followAgl === null || this.flyMode) return
+    const cam = this.scene.camera
+    // Cesium already samples the surface below the camera every frame (for its own collision).
+    const ground = this.scene.globeHeight
+    if (ground === undefined || !Number.isFinite(ground) || ground < -1000) return
+    if (!Matrix4.equals(cam.transform, Matrix4.IDENTITY)) return
+    const c = Cartographic.fromCartesian(cam.positionWC)
+    if (!c) return
+    const minimum = this.eyeLevel ? EYE_HEIGHT : this.settings.minClearance
+    const rise = ground - this.followGround
+    const moved = Cartesian3.distance(cam.positionWC, this.followPosition)
+    this.followGround = ground
+    Cartesian3.clone(cam.positionWC, this.followPosition)
+    // Recording, or the ground jumped up far more than the camera moved: finer tiles replaced
+    // coarse ones (which sag below the real surface), not ground rising along the path. Keep
+    // the height above the corrected ground instead of lifting the camera by the correction.
+    if (Number.isNaN(this.followAgl) || rise > Math.max(1, 2 * moved)) {
+      this.followAgl = Math.max(c.height - ground, minimum)
+      return
+    }
+    const height = ground + this.followAgl
+    if (c.height >= height - 0.05) return
+    c.height = height
+    Cartographic.toCartesian(c, this.scene.ellipsoid, cam.position)
   }
 
   /** Returns true while there is still something to animate. */
@@ -317,20 +424,15 @@ export class CameraController {
       this.headingVelocity = 0
     }
 
-    if (this.keys.size === 0) return active
+    if (this.keys.size === 0) {
+      this.tickGround = undefined
+      return active
+    }
     active = true
     if (!Matrix4.equals(cam.transform, Matrix4.IDENTITY)) cam.lookAtTransform(Matrix4.IDENTITY)
 
     const k = (code: string) => (this.keys.has(code) ? 1 : 0)
     const carto = Cartographic.fromCartesian(cam.positionWC)
-    const lon = toDeg(carto.longitude)
-    const lat = toDeg(carto.latitude)
-    const ground = surfaceHeight(this.scene, lon, lat) ?? 0
-    const agl = Math.max(carto.height - ground, 1)
-    const boost = this.shift ? 4 : this.alt ? 0.2 : 1
-    const mult = this.settings.speedMultiplier * boost
-    const speed = (this.eyeLevel ? 6 : clamp(agl * 1.1, 4, 4.0e6)) * mult
-
     const up = this.localUp()
     let forward: Cartesian3
     let right: Cartesian3
@@ -347,6 +449,20 @@ export class CameraController {
     const f = k('KeyW') - k('KeyS')
     const r = k('KeyD') - k('KeyA')
     const v = k('KeyE') - k('KeyQ')
+    const travel = Cartesian3.multiplyByScalar(forward, f, new Cartesian3())
+    Cartesian3.add(travel, Cartesian3.multiplyByScalar(right, r, new Cartesian3()), travel)
+    Cartesian3.add(travel, Cartesian3.multiplyByScalar(up, v, new Cartesian3()), travel)
+    const moving = Cartesian3.magnitudeSquared(travel) > 1e-12
+    if (moving) Cartesian3.normalize(travel, travel)
+    const boost = this.shift ? 4 : this.alt ? 0.2 : 1
+    const mult = this.settings.speedMultiplier * boost
+    let speed = 6 * mult
+    if (!this.eyeLevel) {
+      const reference = this.speed.update(this.measureClearance(carto, moving ? travel : null), dt)
+      speed = MovementSpeed.speedFor(reference ?? Math.max(carto.height, 1)) * mult
+    }
+    // Climbing or descending on purpose: follow the ground at the new height.
+    if (v !== 0 && this.followAgl !== null) this.followAgl = Number.NaN
     const move = new Cartesian3()
     Cartesian3.add(move, Cartesian3.multiplyByScalar(forward, f, new Cartesian3()), move)
     Cartesian3.add(move, Cartesian3.multiplyByScalar(right, r, new Cartesian3()), move)
@@ -362,21 +478,51 @@ export class CameraController {
     const pitch = k('ArrowUp') - k('ArrowDown')
     if (pitch) this.pitchBy(pitch * lookRate)
 
-    this.enforceClearance(f !== 0 || r !== 0)
+    this.tickGround = this.enforceClearance(f !== 0 || r !== 0)
     return active
   }
 
-  /** Keeps the camera above the surface; in eye-level mode, follows the ground. */
-  private enforceClearance(movedHorizontally: boolean): void {
+  /**
+   * How much room the camera has (meters, null when unknown): its height above the ground
+   * below, or the distance to the first surface along the direction of travel if that's less.
+   */
+  private measureClearance(carto: Cartographic, travel: Cartesian3 | null): number | null {
+    // Ground below: last tick's clearance sample, else Cesium's own per-frame one. Never a
+    // guess: unknown ground must not read as sea level (that made speed surge).
+    const ground = this.tickGround ?? this.scene.globeHeight
+    if (ground !== undefined && Number.isFinite(ground) && ground > -1000) this.lastAgl = carto.height - ground
+    let clearance = this.lastAgl
+    if (!travel) {
+      this.ahead = null
+    } else {
+      const now = performance.now()
+      if (now - this.aheadAt >= AHEAD_PROBE_MS) {
+        this.aheadAt = now
+        const origin = this.scene.camera.positionWC
+        const hit = raycastSurface(this.scene, new Ray(Cartesian3.clone(origin), Cartesian3.clone(travel)))
+        this.ahead = hit ? Cartesian3.distance(hit, origin) : null
+      }
+    }
+    // The distance ahead only ever lowers it: alone it would be the whole valley's length.
+    if (this.ahead !== null && clearance !== null) clearance = Math.min(clearance, this.ahead)
+    return clearance
+  }
+
+  /**
+   * Keeps the camera above the surface; in eye-level mode, follows the ground. Returns the
+   * ground height below the camera, when known.
+   */
+  private enforceClearance(movedHorizontally: boolean): number | undefined {
     const cam = this.scene.camera
     const c = Cartographic.fromCartesian(cam.positionWC)
     const ground = surfaceHeight(this.scene, toDeg(c.longitude), toDeg(c.latitude))
-    if (ground === undefined) return
+    if (ground === undefined) return undefined
     const minHeight = ground + (this.eyeLevel ? EYE_HEIGHT : this.settings.minClearance)
     if (this.eyeLevel && movedHorizontally) c.height = ground + EYE_HEIGHT
     else if (c.height < minHeight) c.height = minHeight
-    else return
+    else return ground
     Cartographic.toCartesian(c, this.scene.ellipsoid, cam.position)
+    return ground
   }
 
   // ───────────────────────────── orbit helpers ─────────────────────────────
@@ -400,6 +546,7 @@ export class CameraController {
 
   /** Runs `frame(progress)` with easing over `ms`; cancelled by any user input. */
   private animate(ms: number, frame: (eased: number, prevEased: number) => void): Promise<void> {
+    this.endFollow()
     const token = ++this.animationToken
     const start = performance.now()
     let prev = 0
@@ -498,6 +645,7 @@ export class CameraController {
    * and levels the horizon — "what would I see from here".
    */
   async goToEyeLevel(): Promise<void> {
+    this.endFollow()
     const canvas = this.scene.canvas
     const at = this.mouse ?? { x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 }
     const hit = pickSurface(this.scene, at.x, at.y) ?? this.pivot()
@@ -534,6 +682,7 @@ export class CameraController {
   }
 
   flyToView(view: CameraView, duration?: number): Promise<void> {
+    this.endFollow()
     this.setEyeLevel(false)
     const destination = Cartesian3.fromDegrees(view.longitude, view.latitude, view.height)
     return new Promise((resolve) => {
@@ -548,6 +697,7 @@ export class CameraController {
   }
 
   setView(view: CameraView): void {
+    this.endFollow()
     this.scene.camera.setView({
       destination: Cartesian3.fromDegrees(view.longitude, view.latitude, view.height),
       orientation: { heading: toRad(view.heading), pitch: toRad(view.pitch), roll: toRad(view.roll) }
@@ -556,6 +706,7 @@ export class CameraController {
 
   /** Flies to a geographic location with an eased arc (§6.4). */
   flyToLocation(latitude: number, longitude: number, opts: FlyToLocationOptions = {}): Promise<void> {
+    this.endFollow()
     this.setEyeLevel(false)
     const ground = opts.groundHeight ?? 0
     const cam = this.scene.camera
@@ -587,6 +738,7 @@ export class CameraController {
   flyToPoint(windowPosition: Cartesian2): void {
     const hit = pickSurface(this.scene, windowPosition.x, windowPosition.y)
     if (!hit) return
+    this.endFollow()
     this.setEyeLevel(false)
     const cam = this.scene.camera
     const distance = Cartesian3.distance(cam.positionWC, hit)
