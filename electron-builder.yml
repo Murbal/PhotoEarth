@@ -21,6 +21,19 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   shortcutName: PhotoEarth
+mac:
+  target:
+    - target: dmg
+      arch: [arm64]
+  category: public.app-category.photography
+  icon: build/icon.png
+  # No Developer ID yet: sign ad hoc ("-"), which Apple Silicon requires for the app to
+  # launch at all. Ad-hoc signatures can't be notarized, and the hardened runtime would need
+  # a library-validation entitlement, so it stays off until there's a real identity.
+  identity: '-'
+  hardenedRuntime: false
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
 linux:
   target: [AppImage]
   category: Graphics

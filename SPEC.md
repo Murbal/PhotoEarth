@@ -27,7 +27,7 @@ This first spec covers the **foundation only**: the map view, 3D rendering and n
 
 | Concern | Choice | Notes |
 |---|---|---|
-| Shell | **Electron** (latest stable) | **Windows (x64) is the primary target**: packaging, GPU testing, and performance targets are measured there. Linux is best effort, and macOS is out of scope for now. |
+| Shell | **Electron** (latest stable) | **Windows (x64) is the primary target**: packaging, GPU testing, and performance targets are measured there. Linux and macOS (Apple Silicon, ad-hoc signed) are best effort. |
 | Language | **TypeScript** (strict) | Main, preload, and renderer. |
 | Build | **electron-vite** | Vite for the renderer, with separate main and preload bundles. |
 | 3D engine | **CesiumJS** | Native 3D Tiles support, a WGS84 globe, built-in sun lighting and shadow maps, terrain providers, and globe materials for elevation styling. |

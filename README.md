@@ -13,7 +13,7 @@ npm install
 npm run dev        # electron-vite dev server with hot reload
 npm run build      # production bundles in out/
 npm start          # run the production build
-npm run package    # Windows x64 NSIS installer in release/ (package:linux for an AppImage)
+npm run package    # Windows x64 NSIS installer in release/ (package:linux for an AppImage, package:mac for an Apple Silicon DMG)
 ```
 
 The Electron binary is downloaded on the first run.
@@ -121,7 +121,7 @@ Cesium's shadow maps on Google's 3D tiles miss off-screen and distant ridges, lo
 - Visual behavior with live Google and Cesium data, the 60 fps target, and the shadow spike must be checked on Windows with real keys. The automated suite runs without keys.
 - Terrain shadows cover ±80 km around the view. Wider views (camera above ~100 km) get no cast shadows outside that area, where they'd be sub-pixel anyway. They follow Cesium World Terrain, so they're only as accurate as its heights (bare earth in most places, so forest canopy doesn't cast).
 - Google Maps short links (`maps.app.goo.gl`) can't be resolved offline; paste the full URL.
-- macOS isn't a target. Linux is best effort.
+- Linux and macOS are best effort. The macOS build (`npm run package:mac`, Apple Silicon only, must run on a Mac) is signed ad hoc, not with a Developer ID, so it isn't notarized: on first launch Gatekeeper blocks it, and you allow it under **System Settings → Privacy & Security → Open Anyway** (or run `xattr -dr com.apple.quarantine /Applications/PhotoEarth.app`).
 
 ## Attribution & terms
 
