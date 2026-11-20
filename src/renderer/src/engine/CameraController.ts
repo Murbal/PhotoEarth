@@ -6,6 +6,7 @@ import {
   CameraEventType,
   EasingFunction,
   HeadingPitchRange,
+  IntersectionTests,
   KeyboardEventModifier,
   Math as CesiumMath,
   Matrix3,
@@ -17,7 +18,8 @@ import {
 } from 'cesium'
 import type { CameraView, NavigationSettings } from '@shared/types'
 import { MovementSpeed } from './MovementSpeed'
-import { cameraTarget, clamp, pickSurface, raycastSurface, surfaceHeight, toDeg, toRad } from './util'
+import { cameraTarget, clamp, pickSurface, pickSurfaceCpu, raycastSurface, surfaceHeight, toDeg, toRad } from './util'
+import { GESTURE_GAP_MS, WheelClassifier } from './WheelInput'
 
 /** Standing eye height for eye-level mode, meters. */
 export const EYE_HEIGHT = 1.7
@@ -43,6 +45,15 @@ const MAX_TICK_SECONDS = 0.25
 
 /** Outside fly mode, the view can't pitch further up than this (looking straight up breaks zoom and movement). */
 const MAX_ORBIT_PITCH_UP = CesiumMath.toRadians(60)
+
+/** Pinch zoom: log of the zoom factor per unit of ctrl+wheel delta (Chromium sends ~100 × log of the pinch scale). */
+const PINCH_RATE = 0.012
+
+/** Trackpad panning moves the grabbed point at most this fraction of its distance per event (near the horizon a pixel spans kilometers). */
+const MAX_PAN_STEP = 0.25
+
+/** Trackpad orbiting can't tilt the view above this pitch (the camera would sink below the pivot). */
+const MAX_ORBIT_TILT = CesiumMath.toRadians(-1)
 
 const MOVEMENT_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
 
@@ -100,7 +111,7 @@ export class CameraController {
   private lastAgl: number | null = null
   private flyMode = false
   private eyeLevel = false
-  private settings: NavigationSettings = { inertia: 0.8, speedMultiplier: 1, invertFlyY: false, minClearance: 2 }
+  private settings: NavigationSettings = { inertia: 0.8, speedMultiplier: 1, invertFlyY: false, minClearance: 2, scrollGesture: 'auto' }
   private headingDrag: { pivot: Cartesian3; lastX: number; pointerId: number } | null = null
   private headingVelocity = 0
   private headingPivot: Cartesian3 | null = null
@@ -119,6 +130,12 @@ export class CameraController {
   private followGround = 0
   private readonly followPosition = new Cartesian3()
   private mouse: { x: number; y: number } | null = null
+  private readonly wheel = new WheelClassifier()
+  /**
+   * The current two-finger trackpad gesture: the surface point under the cursor when it began
+   * (null over the sky), where the cursor was, and the time of its last event.
+   */
+  private touchpad: { anchor: Cartesian3 | null; x: number; y: number; time: number } | null = null
   private readonly disposers: Array<() => void> = []
 
   constructor(
@@ -167,11 +184,11 @@ export class CameraController {
 
   // ───────────────────────────── input wiring ─────────────────────────────
 
-  private listen<K extends keyof WindowEventMap>(target: Window, type: K, fn: (e: WindowEventMap[K]) => void): void
+  private listen<K extends keyof WindowEventMap>(target: Window, type: K, fn: (e: WindowEventMap[K]) => void, passive?: boolean): void
   private listen<K extends keyof HTMLElementEventMap>(target: HTMLElement, type: K, fn: (e: HTMLElementEventMap[K]) => void): void
   private listen<K extends keyof DocumentEventMap>(target: Document, type: K, fn: (e: DocumentEventMap[K]) => void): void
-  private listen(target: EventTarget, type: string, fn: (e: Event) => void): void {
-    const opts = { capture: true }
+  private listen(target: EventTarget, type: string, fn: (e: Event) => void, passive?: boolean): void {
+    const opts = { capture: true, passive }
     target.addEventListener(type, fn, opts)
     this.disposers.push(() => target.removeEventListener(type, fn, opts))
   }
@@ -184,12 +201,9 @@ export class CameraController {
     this.listen(canvas, 'pointerdown', (e) => this.onPointerDown(e))
     this.listen(window, 'pointermove', (e) => this.onPointerMove(e))
     this.listen(window, 'pointerup', (e) => this.onPointerUp(e))
-    this.listen(canvas, 'wheel', (e) => {
-      this.userInput({ exitEyeLevel: true })
-      // Zooming out backs away along the view, which descends when looking up: keep the
-      // height above ground. Zooming in descends on purpose.
-      if (e.deltaY > 0) this.startFollow()
-    })
+    // On the window in the capture phase, so trackpad gestures can be kept from Cesium's own
+    // wheel zoom on the canvas. Window wheel listeners are passive unless told otherwise.
+    this.listen(window, 'wheel', (e) => this.onWheel(e), false)
     this.listen(canvas, 'mousemove', (e) => {
       this.mouse = { x: e.offsetX, y: e.offsetY }
     })
@@ -277,6 +291,160 @@ export class CameraController {
     this.headingDrag = null
     if (Math.abs(this.headingVelocity) > 1e-4 && this.settings.inertia > 0) this.startLoop()
     else this.headingVelocity = 0
+  }
+
+  // ───────────────────────────── wheel / trackpad ─────────────────────────────
+
+  /**
+   * Mouse wheel: Cesium zooms toward the cursor. Trackpad (§6.1): two-finger scroll pans
+   * (looks around at eye level), pinch zooms toward the cursor and Alt/⌥ + scroll orbits.
+   */
+  private onWheel(e: WheelEvent): void {
+    const canvas = this.scene.canvas
+    if (e.target !== canvas) return
+    if (this.flyMode) return
+    const device = this.wheel.classify(e)
+    const gesture = this.settings.scrollGesture
+    const trackpad = e.ctrlKey ? device === 'trackpad' : gesture === 'pan' || (gesture === 'auto' && device === 'trackpad')
+    if (!trackpad) {
+      this.userInput({ exitEyeLevel: true })
+      // Zooming out backs away along the view, which descends when looking up: keep the
+      // height above ground. Zooming in descends on purpose.
+      if (e.deltaY > 0) this.startFollow()
+      return
+    }
+    e.preventDefault()
+    e.stopPropagation()
+
+    const rect = canvas.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    const scale = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? canvas.clientHeight : 1
+    const dx = e.deltaX * scale
+    const dy = e.deltaY * scale
+    const g = this.touchpad
+    const fresh = !g || e.timeStamp - g.time > GESTURE_GAP_MS || Math.hypot(x - g.x, y - g.y) > 4
+    if (fresh) this.touchpad = { anchor: pickSurfaceCpu(this.scene, x, y) ?? null, x, y, time: e.timeStamp }
+    else g.time = e.timeStamp
+    const anchor = this.touchpad!.anchor
+    const cam = this.scene.camera
+    if (!Matrix4.equals(cam.transform, Matrix4.IDENTITY)) cam.lookAtTransform(Matrix4.IDENTITY)
+
+    if (e.ctrlKey) {
+      this.userInput({ exitEyeLevel: true })
+      this.pinchZoom(x, y, dy, anchor)
+    } else if (this.eyeLevel) {
+      this.userInput()
+      this.lookBy(dx, dy)
+    } else if (e.altKey) {
+      this.userInput()
+      this.orbitBy(dx, dy, anchor ?? cameraTarget(this.scene, true))
+    } else {
+      // Panning keeps the height above ground, like a left-drag.
+      this.userInput({ keepFollow: !fresh })
+      if (fresh || this.followAgl === null) this.startFollow()
+      this.panBy(x, y, dx, dy, anchor)
+    }
+  }
+
+  /**
+   * Moves the view so the ground follows the fingers: the point under the cursor + delta comes
+   * to the cursor. Rotates the camera about the Earth's center, on a sphere through the grabbed
+   * point, so it works from street level to the whole globe.
+   */
+  private panBy(x: number, y: number, dx: number, dy: number, anchor: Cartesian3 | null): void {
+    const cam = this.scene.camera
+    const radius = anchor ? Cartesian3.magnitude(anchor) : 0
+    if (anchor && radius < Cartesian3.magnitude(cam.positionWC) - 0.5) {
+      const sphere = new BoundingSphere(Cartesian3.ZERO, radius)
+      const hit = (px: number, py: number): Cartesian3 | undefined => {
+        const ray = cam.getPickRay(new Cartesian2(px, py))
+        const t = ray && IntersectionTests.raySphere(ray, sphere)
+        return ray && t && t.start > 0 ? Ray.getPoint(ray, t.start) : undefined
+      }
+      const a = hit(x, y)
+      const b = hit(x + dx, y + dy)
+      if (a && b) {
+        const axis = Cartesian3.cross(a, b, new Cartesian3())
+        if (Cartesian3.magnitudeSquared(axis) === 0) return
+        let angle = Cartesian3.angleBetween(a, b)
+        const step = Cartesian3.distance(a, b)
+        const maxStep = MAX_PAN_STEP * Cartesian3.distance(cam.positionWC, a)
+        if (step > maxStep) angle *= maxStep / step
+        this.orbit(Cartesian3.ZERO, Cartesian3.normalize(axis, axis), angle)
+        this.levelRoll()
+        this.enforceClearance(false)
+        return
+      }
+    }
+    // Over the sky: slide along the ground at a rate set by the height above it.
+    const c = Cartographic.fromCartesian(cam.positionWC)
+    const ground = this.scene.globeHeight
+    const agl = Math.max(1, ground !== undefined && Number.isFinite(ground) ? c.height - ground : c.height)
+    const fov = cam.frustum instanceof PerspectiveFrustum ? (cam.frustum.fov ?? ORBIT_FOV) : ORBIT_FOV
+    const canvas = this.scene.canvas
+    const perPixel = (2 * agl * Math.tan(fov / 2)) / Math.max(1, canvas.clientWidth, canvas.clientHeight)
+    const up = this.localUp()
+    const dir = Math.abs(Cartesian3.dot(cam.directionWC, up)) > 0.98 ? cam.upWC : cam.directionWC
+    const forward = Cartesian3.subtract(dir, Cartesian3.multiplyByScalar(up, Cartesian3.dot(dir, up), new Cartesian3()), new Cartesian3())
+    Cartesian3.normalize(forward, forward)
+    const right = Cartesian3.normalize(Cartesian3.cross(forward, up, new Cartesian3()), new Cartesian3())
+    const move = Cartesian3.multiplyByScalar(right, dx * perPixel, new Cartesian3())
+    Cartesian3.add(move, Cartesian3.multiplyByScalar(forward, -dy * perPixel, new Cartesian3()), move)
+    Cartesian3.add(cam.position, move, cam.position)
+    this.enforceClearance(false)
+  }
+
+  /** Pinch: zoom toward the grabbed point (or along the ray to the cursor over the sky). */
+  private pinchZoom(x: number, y: number, delta: number, anchor: Cartesian3 | null): void {
+    const cam = this.scene.camera
+    const factor = Math.exp(clamp(delta * PINCH_RATE, -0.5, 0.5))
+    let target = anchor
+    if (!target) {
+      const ray = cam.getPickRay(new Cartesian2(x, y))
+      if (!ray) return
+      const c = Cartographic.fromCartesian(cam.positionWC)
+      target = Ray.getPoint(ray, Math.max(50, c.height - (this.scene.globeHeight ?? 0)))
+    }
+    const offset = Cartesian3.subtract(cam.positionWC, target, new Cartesian3())
+    const distance = Cartesian3.magnitude(offset)
+    if (distance === 0) return
+    const next = Math.max(distance * factor, Math.min(distance, this.settings.minClearance))
+    const position = Cartesian3.add(target, Cartesian3.multiplyByScalar(offset, next / distance, offset), new Cartesian3())
+    const height = Cartographic.fromCartesian(position)?.height ?? 0
+    if (factor > 1 && height > this.scene.screenSpaceCameraController.maximumZoomDistance) return
+    Cartesian3.clone(position, cam.position)
+    this.enforceClearance(false)
+  }
+
+  /** Alt/⌥ + scroll: sideways turns the heading, up/down tilts, both around the grabbed point. */
+  private orbitBy(dx: number, dy: number, pivot: Cartesian3): void {
+    const cam = this.scene.camera
+    const canvas = this.scene.canvas
+    // Natural scrolling: the fingers move opposite to the deltas. Like a drag, fingers right
+    // turn the view right and fingers up tilt it toward the horizon.
+    const heading = (dx / Math.max(1, canvas.clientWidth)) * Math.PI * 2
+    if (heading !== 0) this.rotateAroundUp(pivot, heading)
+    const pitch = clamp(cam.pitch + (dy / Math.max(1, canvas.clientHeight)) * Math.PI, -CesiumMath.PI_OVER_TWO + 0.001, Math.max(MAX_ORBIT_TILT, cam.pitch))
+    if (pitch !== cam.pitch) this.orbit(pivot, Cartesian3.clone(cam.rightWC), pitch - cam.pitch)
+    this.enforceClearance(false)
+  }
+
+  /** Eye level: scroll drags the view like a panorama. */
+  private lookBy(dx: number, dy: number): void {
+    const frustum = this.scene.camera.frustum
+    const fov = frustum instanceof PerspectiveFrustum ? (frustum.fov ?? ORBIT_FOV) : ORBIT_FOV
+    const perPixel = fov / Math.max(1, this.scene.canvas.clientWidth)
+    this.turn(this.localUp(), -dx * perPixel)
+    this.pitchBy(-dy * perPixel)
+  }
+
+  /** Clears the slight roll that rotating about the Earth's center leaves on an ellipsoid. */
+  private levelRoll(): void {
+    const cam = this.scene.camera
+    const roll = CesiumMath.negativePiToPi(cam.roll)
+    if (Math.abs(roll) < 1e-6 || Math.abs(roll) > 0.02 || Math.abs(cam.pitch) > CesiumMath.toRadians(88)) return
+    cam.setView({ orientation: { heading: cam.heading, pitch: cam.pitch, roll: 0 } })
   }
 
   // ───────────────────────────── fly mode ─────────────────────────────

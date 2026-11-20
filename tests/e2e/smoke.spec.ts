@@ -11,9 +11,12 @@ let page: Page
 let userData: string
 const errors: string[] = []
 
+/** A throwaway profile, and a hidden window that never takes focus from the desktop (see src/main/index.ts). */
+const launchEnv = () => ({ ...process.env, PHOTOEARTH_USER_DATA: userData, PHOTOEARTH_BACKGROUND: '1' })
+
 test.beforeAll(async () => {
   userData = mkdtempSync(join(tmpdir(), 'photoearth-e2e-'))
-  app = await electron.launch({ args: ['.'], env: { ...process.env, PHOTOEARTH_USER_DATA: userData } })
+  app = await electron.launch({ args: ['.'], env: launchEnv() })
   page = await app.firstWindow()
   page.on('pageerror', (e) => errors.push(e.message))
   page.on('console', (m) => {
@@ -499,6 +502,91 @@ test('arrow keys stop pitching up at 60° outside fly mode', () => awayFromView(
   expect(pitch).toBeGreaterThan(55)
 }))
 
+test('trackpad scroll pans with the fingers, pinch and Alt+scroll keep the grabbed point; a mouse wheel goes to Cesium', () => awayFromView(async () => {
+  const result = await page.evaluate(async () => {
+    const w = window as unknown as { Cesium: Record<string, any>; __photoearth: any }
+    const C = w.Cesium
+    const e = w.__photoearth
+    const camera = e.scene.camera
+    const canvas = e.scene.canvas as HTMLCanvasElement
+    const rect = canvas.getBoundingClientRect()
+    const x = Math.round(canvas.clientWidth * 0.4)
+    const y = Math.round(canvas.clientHeight * 0.6)
+    camera.cancelFlight()
+    // Open ocean, so the surface is the ellipsoid whether or not terrain is loaded.
+    camera.setView({ destination: C.Cartesian3.fromDegrees(-30, 40, 20000), orientation: { heading: 0.3, pitch: -1, roll: 0 } })
+    // The pan grabs the rendered surface: wait for the tiles there, as coarse ones sag well
+    // below the ellipsoid these checks measure against.
+    const deadline = performance.now() + 15_000
+    do {
+      e.scene.render()
+      await new Promise((r) => setTimeout(r, 50))
+    } while (!e.scene.globe.tilesLoaded && performance.now() < deadline)
+    const pick = (px: number, py: number) => camera.pickEllipsoid(new C.Cartesian2(px, py))
+    let reachedCesium = 0
+    const count = () => reachedCesium++
+    canvas.addEventListener('wheel', count)
+    // Returns whether the event got past the trackpad handling to Cesium's canvas listener.
+    const wheel = ({ wheelDeltaY, ...init }: WheelEventInit & { wheelDeltaY: number }) => {
+      const ev = new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: rect.left + x, clientY: rect.top + y, ...init })
+      // WheelEventInit can't set the legacy wheelDelta that real devices report.
+      Object.defineProperty(ev, 'wheelDeltaY', { value: wheelDeltaY })
+      const before = reachedCesium
+      canvas.dispatchEvent(ev)
+      return reachedCesium > before
+    }
+    const pause = () => new Promise((r) => setTimeout(r, 300))
+
+    // Two-finger scroll (diagonal, so unmistakably a trackpad): the ground point at
+    // cursor + delta comes to the cursor; the height stays.
+    const target = pick(x + 30, y + 40)
+    const h0 = e.currentView().height
+    const panReached = wheel({ deltaX: 30, deltaY: 40, wheelDeltaY: -120 })
+    const panMiss = C.Cartesian3.distance(pick(x, y), target)
+    const heightChange = Math.abs(e.currentView().height - h0) / h0
+
+    // Pinch: zooms toward the point under the cursor, which stays put.
+    await pause()
+    const grabbed = pick(x, y)
+    const d0 = C.Cartesian3.distance(camera.positionWC, grabbed)
+    const pinchReached = wheel({ deltaY: -10.5, ctrlKey: true, wheelDeltaY: 10 })
+    const pinchRatio = C.Cartesian3.distance(camera.positionWC, grabbed) / d0
+    const pinchMiss = C.Cartesian3.distance(pick(x, y), grabbed)
+
+    // Alt + scroll: orbits around the point under the cursor.
+    await pause()
+    const pivot = pick(x, y)
+    const heading0 = camera.heading
+    const orbitReached = wheel({ deltaX: 40, deltaY: 1, altKey: true, wheelDeltaY: -3 })
+    const headingChange = camera.heading - heading0
+    const orbitMiss = C.Cartesian3.distance(pick(x, y), pivot)
+
+    // A mouse-wheel notch is left to Cesium.
+    await pause()
+    const moved = new Promise<void>((resolve) => {
+      const off = camera.moveEnd.addEventListener(() => (off(), resolve()))
+      setTimeout(() => (off(), resolve()), 5000)
+    })
+    const mouseReached = wheel({ deltaY: 100, wheelDeltaY: -120 })
+    canvas.removeEventListener('wheel', count)
+    // Let Cesium's zoom and its inertia finish, so it doesn't carry on after the view is restored.
+    await moved
+    return { panReached, panMiss, heightChange, pinchReached, pinchRatio, pinchMiss, orbitReached, headingChange, orbitMiss, mouseReached }
+  })
+  const r = JSON.stringify(result)
+  expect(result.panReached, r).toBe(false)
+  expect(result.panMiss, r).toBeLessThan(2)
+  expect(result.heightChange, r).toBeLessThan(0.001)
+  expect(result.pinchReached, r).toBe(false)
+  expect(result.pinchRatio, r).toBeCloseTo(Math.exp(-10.5 * 0.012), 3)
+  expect(result.pinchMiss, r).toBeLessThan(2)
+  expect(result.orbitReached, r).toBe(false)
+  // deltaX > 0 is the fingers moving left (natural scrolling): the view turns left, like a drag.
+  expect(result.headingChange, r).toBeLessThan(-0.05)
+  expect(result.orbitMiss, r).toBeLessThan(2)
+  expect(result.mouseReached, r).toBe(true)
+}))
+
 test('time zone follows the viewed location', async () => {
   await page.keyboard.press('t')
   await expect(page.locator('.time-panel')).toContainText('America/Los_Angeles', { timeout: 10_000 })
@@ -510,7 +598,7 @@ test('bookmarks persist across a restart', async () => {
   const saved = await page.evaluate(() => window.photoearth.bookmarks.list())
   expect(saved).toHaveLength(1)
   await app.close()
-  app = await electron.launch({ args: ['.'], env: { ...process.env, PHOTOEARTH_USER_DATA: userData } })
+  app = await electron.launch({ args: ['.'], env: launchEnv() })
   page = await app.firstWindow()
   await page.waitForFunction(() => !!(window as unknown as { __photoearth?: unknown }).__photoearth, null, { timeout: 30_000 })
   const list = await page.evaluate(() => window.photoearth.bookmarks.list())

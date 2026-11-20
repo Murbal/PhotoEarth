@@ -5,6 +5,7 @@ import type {
   PaletteId,
   QualityOverrides,
   QualityPreset,
+  ScrollGesture,
   Settings
 } from './types'
 
@@ -20,6 +21,7 @@ export const DEFAULT_VIEW: CameraView = {
 
 export const QUALITY_PRESETS: readonly QualityPreset[] = ['low', 'medium', 'high', 'ultra']
 export const PALETTES: readonly PaletteId[] = ['terrain', 'viridis', 'spectral', 'magma', 'grayscale']
+export const SCROLL_GESTURES: readonly ScrollGesture[] = ['auto', 'pan', 'zoom']
 export const IMAGERY_TYPES: readonly ImageryType[] = ['satellite', 'terrain', 'roadmap']
 export const CONTOUR_INTERVALS = [10, 20, 50, 100, 200, 500] as const
 /** Imperial contour intervals in feet (stored as meters). */
@@ -54,7 +56,8 @@ export function defaultSettings(): Settings {
       inertia: 0.8,
       speedMultiplier: 1,
       invertFlyY: false,
-      minClearance: 2
+      minClearance: 2,
+      scrollGesture: 'auto'
     },
     lastCamera: null,
     lastMode: 'photorealistic',
@@ -169,7 +172,8 @@ export function sanitizeSettings(raw: Json): Settings {
       inertia: num(n.inertia, d.navigation.inertia, 0, 0.95),
       speedMultiplier: num(n.speedMultiplier, d.navigation.speedMultiplier, 0.1, 10),
       invertFlyY: bool(n.invertFlyY, d.navigation.invertFlyY),
-      minClearance: num(n.minClearance, d.navigation.minClearance, 0.5, 100)
+      minClearance: num(n.minClearance, d.navigation.minClearance, 0.5, 100),
+      scrollGesture: oneOf(n.scrollGesture, SCROLL_GESTURES, d.navigation.scrollGesture)
     },
     lastCamera: sanitizeCameraView(r.lastCamera),
     lastMode: oneOf(r.lastMode, modes, d.lastMode),

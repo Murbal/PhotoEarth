@@ -48,7 +48,9 @@ They're loaded in the main process only, so they never end up in the renderer bu
 | Left-drag | Pan (grab the ground) |
 | Right-drag / Ctrl+Left-drag | Orbit around the point under the cursor |
 | Middle-drag / Shift+Left-drag | Rotate heading around the point under the cursor |
-| Scroll / pinch | Zoom toward the cursor |
+| Scroll wheel | Zoom toward the cursor |
+| Trackpad: two-finger scroll / pinch | Pan (look around at eye level) / zoom toward the cursor |
+| Trackpad: `Alt`/`⌥` + two-finger scroll | Orbit around the point under the cursor |
 | Double-click | Fly closer to the point |
 | Click | Inspect a point (coordinates and elevation, copyable) |
 | `W A S D`, `Q`/`E`, arrows | Move (ground-relative), descend/ascend, look. Hold `Shift` for faster, `Alt` for precise |

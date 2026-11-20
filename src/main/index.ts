@@ -17,6 +17,16 @@ const devServer = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefine
 // Allow isolated test runs (Playwright) to use a throwaway profile.
 if (process.env.PHOTOEARTH_USER_DATA) app.setPath('userData', process.env.PHOTOEARTH_USER_DATA)
 
+// Test runs (Playwright): never show the window or activate the app, so a run doesn't pop up
+// over or take focus from whatever the user is doing. The page still renders at full rate
+// (no background throttling), and Playwright drives it over CDP, which needs no OS focus.
+const background = process.env.PHOTOEARTH_BACKGROUND === '1'
+if (background) {
+  app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
+  // macOS: no dock icon, and the app never becomes the active one.
+  if (process.platform === 'darwin') app.setActivationPolicy('accessory')
+}
+
 // Under WSL, a packaged build started without GPU support in its environment restarts with it
 // (dev, preview and test launchers set it themselves; see wslGpu.ts). Before the lock below.
 const relaunching = app.isPackaged && relaunchForWslGpu(app)
@@ -50,11 +60,11 @@ function createWindow(): BrowserWindow {
       nodeIntegration: false,
       webSecurity: true,
       spellcheck: false,
-      backgroundThrottling: true
+      backgroundThrottling: !background
     }
   })
   hardenWebContents(win.webContents, devServer)
-  win.once('ready-to-show', () => win.show())
+  if (!background) win.once('ready-to-show', () => win.show())
   if (devServer) {
     void win.loadURL(devServer)
   } else {

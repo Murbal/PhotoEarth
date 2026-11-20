@@ -8,9 +8,18 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
       ['Left-drag', 'Pan (grab the ground)'],
       ['Right-drag / Ctrl+Left-drag', 'Orbit around the point'],
       ['Middle-drag / Shift+Left-drag', 'Rotate heading around the point'],
-      ['Scroll', 'Zoom toward the cursor'],
+      ['Scroll wheel', 'Zoom toward the cursor'],
       ['Double-click', 'Fly closer to the point'],
       ['Click', 'Inspect point (coordinates, elevation)']
+    ]
+  ],
+  [
+    'Trackpad',
+    [
+      ['Two-finger scroll', 'Pan (look around at eye level)'],
+      ['Pinch', 'Zoom toward the cursor'],
+      ['Alt/⌥ + two-finger scroll', 'Orbit around the point'],
+      ['Click-drag', 'Pan (grab the ground)']
     ]
   ],
   [

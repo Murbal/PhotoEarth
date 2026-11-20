@@ -160,7 +160,9 @@ The aim is controls that feel **modern and predictable**, closer to a 3D modelin
 | Middle-drag **or** Shift+Left-drag | Rotate the heading around the point under the cursor. |
 | Scroll | Smooth zoom **toward the cursor**, speed scaled by height above ground. |
 | Double-click | Fly to the clicked point at a closer range. |
-| Trackpad pinch / two-finger | Zoom / pan (where Electron delivers gesture events). |
+| Trackpad two-finger scroll | Pan (grab the ground); at eye level, look around. Detected automatically; a setting can force scroll to pan or zoom. |
+| Trackpad pinch | Smooth zoom toward the cursor. |
+| Alt/⌥ + trackpad two-finger scroll | Orbit around the point under the cursor: sideways turns the heading, up/down tilts. |
 
 All movement has **inertia** with a configurable damping and an "Off" option.
 

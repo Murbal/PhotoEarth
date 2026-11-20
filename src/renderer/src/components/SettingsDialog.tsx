@@ -271,6 +271,21 @@ function SettingsContent() {
                     {nav.speedMultiplier}×
                   </span>
                 </Field>
+                <Field label="Scrolling" hint="Auto: two-finger scroll on a trackpad pans and pinch zooms; a mouse wheel zooms.">
+                  <div className="segmented">
+                    {(
+                      [
+                        ['auto', 'Auto'],
+                        ['pan', 'Pans'],
+                        ['zoom', 'Zooms']
+                      ] as const
+                    ).map(([id, label]) => (
+                      <button key={id} className={nav.scrollGesture === id ? 'active' : ''} onClick={() => patch((d) => void (d.navigation.scrollGesture = id))}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
                 <Field label="Invert Y in fly mode">
                   <input type="checkbox" checked={nav.invertFlyY} onChange={(e) => patch((d) => void (d.navigation.invertFlyY = e.target.checked))} />
                 </Field>

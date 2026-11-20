@@ -46,7 +46,14 @@ export interface NavigationSettings {
   invertFlyY: boolean
   /** Minimum camera clearance above the surface, meters. */
   minClearance: number
+  /**
+   * What scrolling on the map does: 'auto' pans with two fingers on a trackpad (pinch zooms)
+   * and zooms with a mouse wheel; 'pan' and 'zoom' force one behavior for every device.
+   */
+  scrollGesture: ScrollGesture
 }
+
+export type ScrollGesture = 'auto' | 'pan' | 'zoom'
 
 export interface ElevationStyleSettings {
   tint: {

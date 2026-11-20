@@ -15,7 +15,7 @@ describe('settings sanitization', () => {
       units: 'imperial',
       theme: 'purple',
       verticalExaggeration: 9,
-      navigation: { minClearance: -5, inertia: 0.5 },
+      navigation: { minClearance: -5, inertia: 0.5, scrollGesture: 'sideways' },
       quality: { preset: 'ultra', overrides: { shadowCascades: 2, msaaSamples: 4 } },
       lastCamera: { longitude: 7, latitude: 46, height: 1000, heading: 10, pitch: -20, roll: 0 },
       elevation: { contours: { color: 'red', interval: 20 } },
@@ -26,6 +26,7 @@ describe('settings sanitization', () => {
     expect(s.verticalExaggeration).toBe(3)
     expect(s.navigation.minClearance).toBe(0.5)
     expect(s.navigation.inertia).toBe(0.5)
+    expect(s.navigation.scrollGesture).toBe('auto')
     expect(s.quality.preset).toBe('ultra')
     expect(s.quality.overrides.shadowCascades).toBeNull()
     expect(s.quality.overrides.msaaSamples).toBe(4)
