@@ -23,8 +23,9 @@ import { addDays, addMinutes, isValidTimeZone, offsetMinutes, utcToZoned, zoneAb
 import { lookupTimeZone } from '../lib/timezone'
 import { appState, useAppStore, type PlaybackSpeedId, type SunInfo } from '../store/appStore'
 import type { QualityConfig } from './quality'
+import { detailShadowPatchWorking } from './shadows/detailShadowPatch'
 import type { TilesetManager } from './TilesetManager'
-import { smoothstep } from './util'
+import { clamp, smoothstep } from './util'
 
 export const PLAYBACK_SPEEDS: Record<PlaybackSpeedId, { label: string; kind: 'time' | 'days'; rate: number }> = {
   '1m': { label: '1 min/s', kind: 'time', rate: 1 },
@@ -50,6 +51,14 @@ export class SunController {
   private mode: MapMode = 'photorealistic'
   private lighting: LightingMode = 'sun'
   private shadowsWanted = true
+  private detailWanted = true
+  /** Heightmap terrain shadows are shading the view (the shadow map then only adds detail). */
+  private terrainShadows = false
+  private cameraNear = true
+  private cameraAgl: number | null = null
+  private detailDistance = 1200
+  private legacyDistance = 20000
+  private shadowMapSize = 4096
   private altitude = 45
   private azimuth = 180
   private targetPosition: Cartesian3 | null = null
@@ -107,10 +116,26 @@ export class SunController {
     this.updateIndicator()
   }
 
-  configure(mode: MapMode, lighting: LightingMode, shadows: boolean): void {
+  configure(mode: MapMode, lighting: LightingMode, shadows: boolean, detailShadows: boolean): void {
     this.mode = mode
     this.lighting = lighting
     this.shadowsWanted = shadows
+    this.detailWanted = detailShadows
+    this.applyLighting()
+  }
+
+  setTerrainShadows(active: boolean): void {
+    if (active === this.terrainShadows) return
+    this.terrainShadows = active
+    this.applyLighting()
+  }
+
+  /** Camera height above ground: detail shadows are pointless from far above. */
+  setCameraHeight(agl: number | null): void {
+    this.cameraAgl = agl
+    const near = agl === null || agl < this.detailDistance * 1.2
+    if (near === this.cameraNear) return
+    this.cameraNear = near
     this.applyLighting()
   }
 
@@ -136,8 +161,11 @@ export class SunController {
     }
     scene.shadowMap.size = q.shadowMapSize
     scene.shadowMap.softShadows = q.softShadows
-    scene.shadowMap.maximumDistance = q.shadowDistance
-    scene.requestRender()
+    this.detailDistance = q.detailShadowDistance
+    this.legacyDistance = q.shadowDistance
+    this.shadowMapSize = q.shadowMapSize
+    this.cameraNear = this.cameraAgl === null || this.cameraAgl < this.detailDistance * 1.2
+    this.applyLighting()
   }
 
   /** Recomputes the instant, clock, lighting and readouts from the store. */
@@ -189,11 +217,42 @@ export class SunController {
       : DynamicAtmosphereLightingType.NONE
     // Night / twilight dimming for the (unlit) photorealistic mesh.
     this.tiles.setDaylight(simulated ? 0.08 + 0.92 * smoothstep(-7, 2, this.altitude) : 1)
-    const shadows = simulated && this.shadowsWanted && this.altitude > -0.5
-    scene.shadowMap.enabled = shadows
-    globe.shadows = shadows && this.mode === 'elevation' ? ShadowMode.ENABLED : ShadowMode.DISABLED
-    this.tiles.setShadows(shadows)
+    const wanted = simulated && this.shadowsWanted
+    const photo = this.mode === 'photorealistic'
+    let enabled: boolean
+    let distance: number
+    if (this.terrainShadows) {
+      // Terrain shadows come from the heightmap; the shadow map only adds what the terrain
+      // model lacks (buildings, trees, overhangs) close to a low camera.
+      enabled = wanted && photo && this.detailWanted && this.detailDistance > 0 && this.altitude > 0.5 && this.cameraNear
+      distance = this.detailDistance
+    } else {
+      // No terrain heights (no ion token, or still loading): shadow maps do everything.
+      enabled = wanted && this.altitude > -0.5
+      distance = this.legacyDistance
+    }
+    const shadowMap = scene.shadowMap
+    shadowMap.enabled = enabled
+    shadowMap.maximumDistance = distance
+    this.applyBias(distance)
+    globe.shadows = enabled && !photo ? ShadowMode.ENABLED : ShadowMode.DISABLED
+    this.tiles.setShadows(enabled && photo)
     scene.requestRender()
+  }
+
+  /**
+   * Google's tiles have no normals, so Cesium's normal-offset bias only works through the
+   * derived-normal patch. Scale it with the world size of a shadow-map texel.
+   */
+  private applyBias(distance: number): void {
+    if (!detailShadowPatchWorking()) return
+    const bias = (this.widget.scene.shadowMap as unknown as { _primitiveBias?: { normalOffsetScale: number; depthBias: number } })._primitiveBias
+    if (!bias) return
+    // One offset serves every cascade; the nearest is ~20× finer than the last, so aim between.
+    const far = distance / this.shadowMapSize
+    const texel = this.cascades === 4 ? Math.sqrt(far * (far / 20)) : far
+    bias.normalOffsetScale = clamp(texel * 2, 0.05, 3)
+    bias.depthBias = 0.00004
   }
 
   // ───────────────────────────── time controls ─────────────────────────────

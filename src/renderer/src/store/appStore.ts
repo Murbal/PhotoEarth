@@ -134,6 +134,8 @@ export interface AppState {
   autoRange: { min: number; max: number } | null
   terrainReady: boolean
   tilesetReady: boolean
+  /** Heightmap terrain shadows (§8.1.1). */
+  terrainShadows: 'off' | 'loading' | 'ready' | 'unavailable'
   toast: Toast | null
 
   set: (partial: Partial<AppState>) => void
@@ -187,6 +189,7 @@ export const useAppStore = create<AppState>()(
     autoRange: null,
     terrainReady: false,
     tilesetReady: false,
+    terrainShadows: 'off',
     toast: null,
 
     set: (partial) => set(partial),

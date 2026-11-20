@@ -132,7 +132,7 @@ export function KeyFields({
           <Check name="Cesium World Terrain" check={result?.ion} />
         </div>
         {result && result.ion.status !== 'ok' && result.ion.status !== 'missing' && <div className="small muted">{result.ion.message}</div>}
-        <div className="small faint">Powers Elevation mode (contours, tint, slope, hillshade), profiles and the terrain shadow overlay. The free tier has usage limits.</div>
+        <div className="small faint">Powers Elevation mode (contours, tint, slope, hillshade), profiles and long-range terrain shadows. The free tier has usage limits.</div>
       </div>
     </div>
   )

@@ -31,6 +31,8 @@ function sanitize(raw: unknown): SecretsFile {
 export class SecretStore {
   private readonly file: JsonFile<SecretsFile>
   private readonly cache: ApiKeys = { googleApiKey: null, cesiumIonToken: null }
+  /** Keys supplied by the dev environment: used for the session, never written to disk. */
+  private readonly fromEnv = new Set<KeyName>()
   private available = false
 
   private constructor() {
@@ -73,11 +75,25 @@ export class SecretStore {
     return { ...this.cache }
   }
 
+  /**
+   * Overrides stored keys for this session (dev .env). Editing a key in Settings replaces
+   * the override and is stored as usual; a stored key the override shadows is kept.
+   */
+  useSessionKeys(keys: Partial<ApiKeys>): void {
+    for (const name of KEY_NAMES) {
+      const value = keys[name]
+      if (!value) continue
+      this.cache[name] = value
+      this.fromEnv.add(name)
+    }
+  }
+
   async set(patch: Partial<ApiKeys>): Promise<SecretsStatus> {
     for (const name of KEY_NAMES) {
       if (!(name in patch)) continue
       const value = patch[name]
       this.cache[name] = typeof value === 'string' && value.trim() ? value.trim() : null
+      this.fromEnv.delete(name)
     }
     await this.persist()
     return this.status()
@@ -86,7 +102,12 @@ export class SecretStore {
   private async persist(): Promise<void> {
     if (!this.available) return
     const encrypted: SecretsFile['encrypted'] = {}
+    const stored = this.file.get().encrypted
     for (const name of KEY_NAMES) {
+      if (this.fromEnv.has(name)) {
+        if (stored[name]) encrypted[name] = stored[name]
+        continue
+      }
       const value = this.cache[name]
       if (value) encrypted[name] = (await safeStorage.encryptStringAsync(value)).toString('base64')
     }

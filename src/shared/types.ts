@@ -24,6 +24,8 @@ export interface QualityOverrides {
   shadowMapSize: number | null
   shadowCascades: 1 | 4 | null
   softShadows: boolean | null
+  /** Cells per side of the terrain shadow grids. */
+  terrainShadowResolution: number | null
   msaaSamples: number | null
   fxaa: boolean | null
   resolutionScale: number | null
@@ -81,9 +83,9 @@ export interface Settings {
   verticalExaggeration: number
   lighting: LightingMode
   shadows: boolean
+  /** Shadow-map detail (buildings, trees) on top of heightmap terrain shadows. */
+  detailShadows: boolean
   showSunIndicator: boolean
-  /** Heightmap-based terrain shadow overlay (§8.1.1 fallback). */
-  terrainShadowOverlay: boolean
   bookmarkIncludeTime: boolean
   onboardingComplete: boolean
 }

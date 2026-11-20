@@ -135,7 +135,7 @@ Point elevation readouts in Photorealistic mode come from sampling the 3D tilese
 - Target: **60 fps** on a mid-range discrete GPU at 1440p, and ≥30 fps on integrated graphics at reduced quality.
 - Quality presets (Low / Medium / High / Ultra) control:
   - `maximumScreenSpaceError` of the tileset
-  - Shadow map size and cascades
+  - Shadow map size and cascades, detail shadow range, and terrain shadow grid resolution
   - MSAA / FXAA
   - Resolution scale (with an option for device-pixel-ratio-aware rendering)
 - An optional on-screen FPS and tile-load indicator.
@@ -244,8 +244,9 @@ These can be toggled and combined:
 
 - The simulated date/time drives the Cesium clock. Scene lighting uses the **sun's actual position** for that instant and for the camera's location on Earth.
 - **Shadows** are cast by terrain and 3D tiles onto terrain and 3D tiles, with soft shadows where quality settings allow.
-- In Photorealistic mode, the **3D Tiles mesh itself is the shadow caster**. Its geometry already contains Google's elevation, so mountain shadows need no separate height data.
-- In Elevation mode, the **Cesium World Terrain surface casts and receives shadows** under the same sun, layered with the sun-following hillshade (§7.2).
+- **Terrain shadows come from a heightmap** of Cesium World Terrain (resolved by the spike, §8.1.1): ray-marched toward the sun on the GPU, covering ±80 km around the view in both modes, and applied to the 3D tiles and the globe.
+- In Photorealistic mode, a **short-range shadow map** adds shadows of what the terrain model lacks (buildings, trees) near a low camera. It folds into the terrain shadow rather than darkening twice.
+- Without a Cesium ion token, shadow maps on the 3D tiles do all the shadowing, with the limits listed below.
 
 ### 8.1.1 Shadow accuracy risks (verify with an early spike)
 
@@ -255,7 +256,13 @@ The main use case is mountains casting long shadows when the sun is low. Real-ti
 2. **Low detail at distance:** far-away ridges load at coarse detail, which makes their shadow edges imprecise.
 3. **Shadow map range:** shadow maps cover a limited distance. A shadow cast by a ridge 10–30 km away may be cut off or blurry.
 
-**Fallback if the spike shows these are a problem:** a **terrain shadow overlay** computed from a heightmap (the §3.2 terrain source). For each ground point, march toward the sun's azimuth and test whether terrain blocks the sun. This works independently of what the camera has loaded, so it is accurate at any range. It would be drawn as a shading layer on top of the 3D view, and it is coarser (≈30 m) but complete.
+**Outcome:** the spike confirmed these problems, plus shadow acne: Google's tiles carry no normals, so Cesium's normal-offset bias is skipped and slopes under a low sun shadow themselves in stripes. Terrain shadows are therefore computed from the §3.2 heightmap:
+
+- Three nested height grids follow the view (High preset: ±5 km at ~20 m, ±20 km at ~80 m, ±80 km at ~400 m cells), in a local tangent-plane frame.
+- A GPU pass marches each cell toward the sun through all grids. It includes earth curvature, terrestrial refraction (k = 0.13) and the sun setting behind the horizon past the data. Each cell stores the **shadow top**: the height above which its vertical is sunlit, plus the occluder distance.
+- Receivers shade by comparing their height with the shadow top, so buildings, tree tops and cliff faces inside a cell are handled. The penumbra width follows from the sun's angular size and the occluder distance.
+- The pass runs only when the sun or the data changes, one grid level per frame.
+- Shadow maps remain for short-range detail, with derived normals to remove the acne.
 - A **"Now"** button resets to the current real time.
 - Lighting can be switched between **Simulated sun** and **Flat/neutral**. Flat lighting is useful for scouting geometry without harsh shadows.
 

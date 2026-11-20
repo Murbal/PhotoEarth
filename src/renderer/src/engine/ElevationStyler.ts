@@ -1,7 +1,9 @@
-import { Cartesian2, Cartographic, Color, Material, type Scene } from 'cesium'
+import { Cartesian2, Cartographic, Color, Material, Matrix4, type Scene } from 'cesium'
 import type { ElevationStyleSettings, PaletteId } from '@shared/types'
 import { geoidUndulation, toMsl } from '../lib/geoid'
 import { hexToRgb, paletteColor, SLOPE_CLASSES } from '../lib/palettes'
+import { RECEIVER_GLSL } from './shadows/shaders'
+import { RECEIVER_UNIFORMS, type TerrainShadows } from './TerrainShadows'
 import { toDeg } from './util'
 
 const glslVec3 = (hex: string): string => {
@@ -15,11 +17,13 @@ const SLOPE_GLSL = SLOPE_CLASSES.map(({ from, color }, i) =>
 
 /**
  * One globe material that composites, bottom to top: hypsometric tint, slope classes,
- * hillshade (sun-following or fixed NW light) and contours with index lines. The result
- * alpha-blends over the draped imagery. Heights are corrected for vertical exaggeration
- * and shifted from the ellipsoid to approximately mean sea level (geoid at the view target).
+ * hillshade (sun-following or fixed NW light), heightmap terrain shadows and contours with
+ * index lines. The result alpha-blends over the draped imagery. Heights are corrected for
+ * vertical exaggeration and shifted from the ellipsoid to approximately mean sea level
+ * (geoid at the view target).
  */
 export const ELEVATION_SHADER = /* glsl */ `
+${RECEIVER_GLSL}
 void pe_over(inout vec3 color, inout float alpha, vec3 src, float srcAlpha) {
   float outAlpha = srcAlpha + alpha * (1.0 - srcAlpha);
   if (outAlpha > 0.0) {
@@ -80,6 +84,13 @@ czm_material czm_getMaterial(czm_materialInput materialInput) {
     pe_over(color, alpha, vec3(0.0), (1.0 - shade) * hillshadeOpacity);
   }
 
+  if (shadowOpacity > 0.0) {
+    float vis = pe_terrainVisibility(-materialInput.positionToEyeEC);
+    // Faces turned away from the sun are already dark from globe lighting.
+    float facing = smoothstep(0.0, 0.12, dot(normalize(materialInput.normalEC), normalize(czm_lightDirectionEC)));
+    pe_over(color, alpha, vec3(0.02, 0.03, 0.08), (1.0 - vis) * facing * shadowOpacity);
+  }
+
   if (contourOpacity > 0.0) {
     float minor = pe_line(h, contourInterval, contourWidth);
     float major = pe_line(h, contourInterval * 5.0, contourWidth * 2.0);
@@ -91,6 +102,26 @@ czm_material czm_getMaterial(czm_materialInput materialInput) {
   return material;
 }
 `
+
+/** How dark terrain shadows are on the Elevation mode globe (0–1 black overlay). */
+const SHADOW_OPACITY = 0.55
+
+/** Initial values for the receiver uniforms; TerrainShadows keeps them current. */
+function receiverUniforms(shadows: TerrainShadows): Record<string, unknown> {
+  const b = shadows.binding
+  const placeholder = document.createElement('canvas')
+  placeholder.width = 1
+  placeholder.height = 1
+  const out: Record<string, unknown> = {
+    // A plain array declares a mat4 (a Matrix4 instance isn't recognized as one).
+    [RECEIVER_UNIFORMS.eyeToLocal]: Matrix4.toArray(Matrix4.IDENTITY),
+    [RECEIVER_UNIFORMS.params]: b.params,
+    [RECEIVER_UNIFORMS.exaggeration]: b.exaggeration
+  }
+  RECEIVER_UNIFORMS.masks.forEach((name) => (out[name] = placeholder))
+  RECEIVER_UNIFORMS.rects.forEach((name, k) => (out[name] = b.rects[k]))
+  return out
+}
 
 export function paletteCanvas(id: PaletteId): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
@@ -112,7 +143,10 @@ export class ElevationStyler {
   private active = false
   private range: { min: number; max: number } | null = null
 
-  constructor(private readonly scene: Scene) {}
+  constructor(
+    private readonly scene: Scene,
+    private readonly shadows: TerrainShadows
+  ) {}
 
   private ensureMaterial(): Material {
     if (this.material) return this.material
@@ -134,18 +168,24 @@ export class ElevationStyler {
           contourOpacity: 0,
           heightOffset: 0,
           exaggeration: 1,
-          exaggerationRelativeHeight: 0
+          exaggerationRelativeHeight: 0,
+          shadowOpacity: 0,
+          ...receiverUniforms(this.shadows)
         },
         source: ELEVATION_SHADER
       }
     })
+    this.shadows.bindMaterial(this.material)
     return this.material
   }
 
-  /** Applies the style; `enabled` is false outside Elevation mode. */
-  apply(style: ElevationStyleSettings, enabled: boolean, autoRange: { min: number; max: number } | null): void {
+  /**
+   * Applies the style; `enabled` is false outside Elevation mode. `terrainShadows` turns on
+   * the heightmap shadow layer, which needs the material even with no style layer on.
+   */
+  apply(style: ElevationStyleSettings, enabled: boolean, autoRange: { min: number; max: number } | null, terrainShadows = false): void {
     const anyLayer = style.tint.enabled || style.contours.enabled || style.slope.enabled || style.hillshade.enabled
-    this.active = enabled && anyLayer
+    this.active = enabled && (anyLayer || terrainShadows)
     const globe = this.scene.globe
     if (!this.active) {
       if (globe.material) globe.material = undefined as unknown as Material
@@ -170,6 +210,7 @@ export class ElevationStyler {
     u.contourWidth = style.contours.width
     u.contourColor = Color.fromCssColorString(style.contours.color)
     u.contourOpacity = style.contours.enabled ? style.contours.opacity : 0
+    u.shadowOpacity = terrainShadows ? SHADOW_OPACITY : 0
     u.exaggeration = this.scene.verticalExaggeration
     u.exaggerationRelativeHeight = this.scene.verticalExaggerationRelativeHeight
     if (globe.material !== m) globe.material = m

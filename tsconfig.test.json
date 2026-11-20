@@ -10,6 +10,7 @@
   "include": [
     "src/renderer/src/**/*",
     "src/shared/**/*",
+    "src/main/devEnv.ts",
     "tests/unit/**/*"
   ]
 }

@@ -72,7 +72,7 @@ function OverrideNumber({
   options
 }: {
   label: string
-  field: 'maximumScreenSpaceError' | 'shadowMapSize' | 'msaaSamples' | 'resolutionScale'
+  field: 'maximumScreenSpaceError' | 'shadowMapSize' | 'msaaSamples' | 'resolutionScale' | 'terrainShadowResolution'
   options: number[]
 }) {
   const settings = useAppStore((s) => s.settings)
@@ -235,6 +235,7 @@ function SettingsContent() {
                   </select>
                 </Field>
                 <OverrideBool label="Soft shadows" field="softShadows" />
+                <OverrideNumber label="Terrain shadow resolution" field="terrainShadowResolution" options={[256, 384, 512, 768, 1024]} />
                 <OverrideNumber label="MSAA samples" field="msaaSamples" options={[1, 2, 4, 8]} />
                 <OverrideBool label="FXAA" field="fxaa" />
                 <OverrideNumber label="Resolution scale" field="resolutionScale" options={[0.5, 0.75, 1, 1.25, 1.5]} />

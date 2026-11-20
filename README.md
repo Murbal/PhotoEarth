@@ -25,9 +25,18 @@ On first launch PhotoEarth asks for two keys, validates them with a test request
 | Key | Used for | Where |
 |---|---|---|
 | Google Maps Platform API key | Photorealistic 3D Tiles, 2D satellite/terrain imagery (Map Tiles API), place search (Places API (New)) | [Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials). Enable **Map Tiles API** and **Places API (New)**. |
-| Cesium ion access token | Cesium World Terrain: Elevation mode, profiles, terrain shadow overlay | [ion.cesium.com/tokens](https://ion.cesium.com/tokens) |
+| Cesium ion access token | Cesium World Terrain: Elevation mode, profiles, long-range terrain shadows | [ion.cesium.com/tokens](https://ion.cesium.com/tokens) |
 
 Both work on their free tiers. Either can be skipped and added later in **Settings → API keys**.
+
+For development, `npm run dev` also reads keys from a `.env` file in the project root (gitignored). Variables already set in the environment win:
+
+```sh
+GOOGLE_CLOUD_API_TOKEN=AIza...
+CESIUM_ION_API_TOKEN=eyJ...
+```
+
+They're loaded in the main process only, so they never end up in the renderer bundle, and they're used for the session without being written to the encrypted key store. Keys entered in Settings replace them as usual. Packaged and test builds ignore `.env`.
 
 - Keys are encrypted with Electron `safeStorage` (DPAPI on Windows) and never written in plaintext. If the OS has no keyring (for example Linux without libsecret), keys are kept for the session only.
 - Tile requests necessarily carry the Google key, so **restrict the key by API** (Map Tiles + Places). If you restrict it by HTTP referrer instead, allow `https://photoearth.local/*`: the app sends that fixed `Referer` on all Google requests.
@@ -93,21 +102,24 @@ Notable decisions:
 - **One custom globe material** composites hypsometric tint, slope classes, hillshade and contours (every 5th an index line). Hillshade follows the simulated sun (fading to flat shading at night) or uses the classic NW 45° light. It corrects for vertical exaggeration.
 - **Local time follows the camera target.** The time slider is wall-clock time in the target's IANA zone, resolved offline. Crossing into another zone keeps the local time, so "07:30" means 07:30 wherever you look.
 - **Google 2D Tiles** use the session-token flow, with renewal before expiry and on repeated 4xx tile failures. Attribution comes from the viewport endpoint for what's on screen. The 3D tileset shows its copyright data on screen.
-- **Quality presets** set tileset/terrain screen-space error, shadow map size and cascades, soft shadows, shadow distance, MSAA/FXAA and resolution scale. Each value can be overridden in Settings. The scene uses request-render mode, so idle views cost nothing.
+- **Tiles load ahead of a moving camera.** Cesium skips requesting tiles that are on screen only briefly while the camera moves, so a fast flight used to load little until it slowed down. `TilePreloader` drives Cesium's preload-flight pass with the camera's pose predicted 1.5 s ahead (smoothed velocity and turn rate, widened culling for turns) whenever it moves faster than 2 m/s, so tiles arrive before the view does. This covers fly mode, fast pans and inertia glides, in Photorealistic mode; Cesium's own `flyTo` animations keep preloading their destination.
+- **Quality presets** set tileset/terrain screen-space error, shadow map size and cascades, soft shadows, shadow distance, terrain shadow resolution, MSAA/FXAA and resolution scale. Each value can be overridden in Settings. The scene uses request-render mode, so idle views cost nothing.
 
-## M4 shadow spike (§8.1.1)
+## Shadows (§8.1.1)
 
-Real-time shadow maps can miss off-screen or distant casters. Both approaches ship so the spike can compare them directly:
+Cesium's shadow maps on Google's 3D tiles miss off-screen and distant ridges, lose detail with range, and (because the tiles have no normals) show acne stripes at low sun. So terrain shadows come from a heightmap instead, and shadow maps only add near detail:
 
-1. Pick a valley with a reference photo of known date, time and place. Bookmark the view with **Include simulated date & time** on.
-2. Photorealistic mode: compare Cesium shadow maps on the 3D tiles with the photo at low sun angles. Try the Ultra preset (8192 px, 30 km shadow distance) and rotate so the casting ridge is behind the camera.
-3. Enable **Terrain shadow overlay** in the time panel (needs the ion token). It ray-marches Cesium World Terrain toward the sun on a fine grid around the view (~40–80 m cells) plus a coarse grid reaching 25 km further out, including earth curvature and refraction. It doesn't depend on what the camera has loaded.
-4. Record which one matches the photo. If shadow maps are good enough, the overlay can stay an opt-in.
+- **Terrain shadows** (needs the ion token): three nested grids of Cesium World Terrain heights follow the view. With the High preset they are ±5 km at ~20 m, ±20 km at ~80 m and ±80 km at ~400 m. Tiles are fetched directly from the provider, independent of what the globe has loaded, and rasterized into a local tangent-plane frame (`engine/shadows/HeightField.ts`).
+- **GPU ray-march** (`engine/shadows/ShadowCompute.ts`, `shaders.ts`): a pass inside Cesium's compute stage marches each cell toward the sun through all three grids. It accounts for earth curvature, terrestrial refraction and the sun setting behind the horizon beyond the data. Each cell stores a *shadow top*, the height above which its vertical is sunlit, plus the occluder distance. Receivers compare their own height with it, so roofs, tree tops and cliff faces inside a coarse cell still shade correctly. The penumbra widens with occluder distance from the sun's 0.53° disc. The pass reruns only when the sun or the data changes, one level per frame, so playback stays smooth and a still sun costs nothing.
+- **Receivers**: the 3D tiles' custom shader and the Elevation-mode globe material share one GLSL receiver (`RECEIVER_GLSL`). It uses true heights under vertical exaggeration and cross-fades between levels.
+- **Detail shadows** (*Buildings & trees*, Photorealistic mode): a short-range Cesium shadow map near a low camera (600 m–2.5 km by preset; off on Low). A patch to Cesium's receive shader (`detailShadowPatch.ts`) derives normals for the normal-less tiles to remove acne, and folds the result into the terrain shadow instead of darkening twice.
+- Without an ion token, shadow maps do everything (previous behavior, with the acne fix).
+- The CPU reference in `lib/terrainShadow.ts` mirrors the GPU pass. Unit tests cover its geometry. The end-to-end suite checks that the GPU output matches it to the encoding step (0.25 m), and that a rendered surface darkens exactly where the reference predicts shadow.
 
 ## Known limitations
 
 - Visual behavior with live Google and Cesium data, the 60 fps target, and the shadow spike must be checked on Windows with real keys. The automated suite runs without keys.
-- The terrain shadow overlay computes on the main thread, so scrubbing time while it's on can stutter.
+- Terrain shadows cover ±80 km around the view. Wider views (camera above ~100 km) get no cast shadows outside that area, where they'd be sub-pixel anyway. They follow Cesium World Terrain, so they're only as accurate as its heights (bare earth in most places, so forest canopy doesn't cast).
 - Google Maps short links (`maps.app.goo.gl`) can't be resolved offline; paste the full URL.
 - macOS isn't a target. Linux is best effort.
 

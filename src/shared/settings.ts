@@ -32,6 +32,7 @@ export const EMPTY_OVERRIDES: QualityOverrides = {
   shadowMapSize: null,
   shadowCascades: null,
   softShadows: null,
+  terrainShadowResolution: null,
   msaaSamples: null,
   fxaa: null,
   resolutionScale: null
@@ -67,8 +68,8 @@ export function defaultSettings(): Settings {
     verticalExaggeration: 1,
     lighting: 'sun',
     shadows: true,
+    detailShadows: true,
     showSunIndicator: false,
-    terrainShadowOverlay: false,
     bookmarkIncludeTime: true,
     onboardingComplete: false
   }
@@ -156,6 +157,7 @@ export function sanitizeSettings(raw: Json): Settings {
         shadowMapSize: nullableNum(o.shadowMapSize, 512, 8192),
         shadowCascades: cascades,
         softShadows: nullableBool(o.softShadows),
+        terrainShadowResolution: nullableNum(o.terrainShadowResolution, 128, 1024),
         msaaSamples: nullableNum(o.msaaSamples, 1, 8),
         fxaa: nullableBool(o.fxaa),
         resolutionScale: nullableNum(o.resolutionScale, 0.25, 2)
@@ -201,8 +203,8 @@ export function sanitizeSettings(raw: Json): Settings {
     verticalExaggeration: num(r.verticalExaggeration, d.verticalExaggeration, MIN_EXAGGERATION, MAX_EXAGGERATION),
     lighting: oneOf(r.lighting, ['sun', 'flat'], d.lighting),
     shadows: bool(r.shadows, d.shadows),
+    detailShadows: bool(r.detailShadows, d.detailShadows),
     showSunIndicator: bool(r.showSunIndicator, d.showSunIndicator),
-    terrainShadowOverlay: bool(r.terrainShadowOverlay, d.terrainShadowOverlay),
     bookmarkIncludeTime: bool(r.bookmarkIncludeTime, d.bookmarkIncludeTime),
     onboardingComplete: bool(r.onboardingComplete, d.onboardingComplete)
   }

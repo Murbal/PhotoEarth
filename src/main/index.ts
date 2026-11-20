@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow, session, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { sanitizeSettings } from '@shared/settings'
 import { BookmarkStore } from './bookmarks'
+import { DEV_ENV_KEYS, loadDevEnvKeys } from './devEnv'
 import { registerIpc } from './ipc'
 import { JsonFile } from './jsonStore'
 import { buildMenu } from './menu'
@@ -56,6 +57,12 @@ function createWindow(): BrowserWindow {
 void app.whenReady().then(async () => {
   const settings = new JsonFile(join(app.getPath('userData'), 'settings.json'), sanitizeSettings, 500)
   const secrets = await SecretStore.create()
+  if (devServer) {
+    const keys = loadDevEnvKeys(app.getAppPath())
+    secrets.useSessionKeys(keys)
+    const loaded = Object.entries(DEV_ENV_KEYS).filter(([, key]) => keys[key]).map(([variable]) => variable)
+    if (loaded.length) console.log(`[photoearth] dev: using ${loaded.join(', ')} from .env`)
+  }
   const bookmarks = new BookmarkStore()
 
   hardenSession(session.defaultSession, devServer)

@@ -49,11 +49,11 @@ export function getCommands(): Command[] {
     },
     { id: 'toggle-sun-indicator', title: 'Toggle sun direction indicator', group: 'Time & sun', run: toggleSetting((d) => void (d.showSunIndicator = !d.showSunIndicator)) },
     {
-      id: 'toggle-terrain-shadow-overlay',
-      title: 'Toggle terrain shadow overlay (heightmap)',
+      id: 'toggle-detail-shadows',
+      title: 'Toggle building & tree shadows',
       group: 'Time & sun',
-      keywords: 'distant ridges shadow fallback',
-      run: toggleSetting((d) => void (d.terrainShadowOverlay = !d.terrainShadowOverlay))
+      keywords: 'detail shadow map near',
+      run: toggleSetting((d) => void (d.detailShadows = !d.detailShadows))
     },
     { id: 'toggle-time-panel', title: 'Show / hide time & sun panel', group: 'Time & sun', keys: 'T', run: () => appState().togglePanel('time') },
     { id: 'play-pause', title: 'Play / pause sun animation', group: 'Time & sun', keys: 'Space', run: () => engine()?.sun.togglePlay() },

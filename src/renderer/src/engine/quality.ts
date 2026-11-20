@@ -8,8 +8,12 @@ export interface QualityConfig {
   shadowMapSize: number
   shadowCascades: 1 | 4
   softShadows: boolean
-  /** Distance covered by cascaded shadow maps, meters. */
+  /** Distance covered by shadow maps when they do all the shadowing (no terrain heights), meters. */
   shadowDistance: number
+  /** Range of building/tree detail shadows on top of heightmap terrain shadows, meters (0 = off). */
+  detailShadowDistance: number
+  /** Cells per side of the terrain shadow grids. */
+  terrainShadowResolution: number
   msaaSamples: number
   fxaa: boolean
   resolutionScale: number
@@ -23,6 +27,8 @@ export const PRESETS: Record<QualityPreset, QualityConfig> = {
     shadowCascades: 1,
     softShadows: false,
     shadowDistance: 5000,
+    detailShadowDistance: 0,
+    terrainShadowResolution: 256,
     msaaSamples: 1,
     fxaa: true,
     resolutionScale: 0.75
@@ -34,6 +40,8 @@ export const PRESETS: Record<QualityPreset, QualityConfig> = {
     shadowCascades: 4,
     softShadows: false,
     shadowDistance: 10000,
+    detailShadowDistance: 600,
+    terrainShadowResolution: 384,
     msaaSamples: 2,
     fxaa: false,
     resolutionScale: 1
@@ -45,6 +53,8 @@ export const PRESETS: Record<QualityPreset, QualityConfig> = {
     shadowCascades: 4,
     softShadows: true,
     shadowDistance: 20000,
+    detailShadowDistance: 1200,
+    terrainShadowResolution: 512,
     msaaSamples: 4,
     fxaa: false,
     resolutionScale: 1
@@ -56,6 +66,8 @@ export const PRESETS: Record<QualityPreset, QualityConfig> = {
     shadowCascades: 4,
     softShadows: true,
     shadowDistance: 30000,
+    detailShadowDistance: 2500,
+    terrainShadowResolution: 768,
     msaaSamples: 8,
     fxaa: false,
     resolutionScale: 1
@@ -82,6 +94,7 @@ export function resolveQuality(
     shadowMapSize: Math.min(pick('shadowMapSize'), limits.maxTextureSize),
     shadowCascades: pick('shadowCascades'),
     softShadows: pick('softShadows'),
+    terrainShadowResolution: pick('terrainShadowResolution'),
     msaaSamples: Math.max(1, Math.min(pick('msaaSamples'), limits.maxSamples)),
     fxaa: pick('fxaa'),
     resolutionScale: pick('resolutionScale')

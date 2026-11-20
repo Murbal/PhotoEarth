@@ -24,9 +24,11 @@ import { PointInspector } from './PointInspector'
 import { ProfileTool } from './ProfileTool'
 import { resolveQuality } from './quality'
 import { Readouts } from './Readouts'
+import { installDetailShadowPatch } from './shadows/detailShadowPatch'
 import { SunController } from './SunController'
 import { TerrainManager } from './TerrainManager'
-import { TerrainShadowOverlay } from './TerrainShadowOverlay'
+import { TerrainShadows } from './TerrainShadows'
+import { TilePreloader } from './TilePreloader'
 import { TilesetManager } from './TilesetManager'
 import { cartographicDeg, currentView, pickSurface, surfaceHeight } from './util'
 
@@ -56,7 +58,8 @@ export class Engine {
   readonly profile: ProfileTool
   readonly inspector: PointInspector
   readonly readouts: Readouts
-  readonly shadowOverlay: TerrainShadowOverlay
+  readonly terrainShadows: TerrainShadows
+  readonly preloader: TilePreloader
   private readonly handler: ScreenSpaceEventHandler
   private readonly subs: Array<() => void> = []
   private clickTimer: number | null = null
@@ -115,6 +118,16 @@ export class Engine {
     const terrain = status('terrain', 'Cesium World Terrain unavailable')
     const imagery = status('imagery', 'Google 2D imagery unavailable')
 
+    installDetailShadowPatch()
+    this.terrainShadows = new TerrainShadows(
+      scene,
+      () => this.terrain?.provider ?? null,
+      (state) => {
+        appState().set({ terrainShadows: state })
+        this.sun?.setTerrainShadows(state === 'ready')
+        this.applyStyle()
+      }
+    )
     this.tiles = new TilesetManager(scene, {
       onError: tiles.error,
       onReady: () => {
@@ -125,7 +138,7 @@ export class Engine {
         appState().set({ pendingTiles: pending })
         if (pending === 0) this.scheduleRefresh()
       }
-    })
+    }, this.terrainShadows.binding)
     this.terrain = new TerrainManager(terrain.error, () => {
       terrain.ready()
       appState().set({ terrainReady: true })
@@ -142,18 +155,14 @@ export class Engine {
       sampleGround: (lon, lat) => this.preciseGround(lon, lat)
     })
     this.sun = new SunController(this.widget, this.tiles)
-    this.styler = new ElevationStyler(scene)
+    this.styler = new ElevationStyler(scene, this.terrainShadows)
     this.profile = new ProfileTool(this.widget, (points) => this.sampleProfile(points))
     this.inspector = new PointInspector(this.widget, (lon, lat) => this.preciseGround(lon, lat))
     this.readouts = new Readouts(scene, (target) => this.onTarget(target))
-    this.shadowOverlay = new TerrainShadowOverlay(
-      this.widget,
-      () => this.terrain.provider,
-      (message) => {
-        if (message) appState().postBanner({ id: 'overlay', level: 'info', title: 'Terrain shadow overlay', message })
-        else appState().dismissBanner('overlay')
-      }
-    )
+    this.preloader = new TilePreloader(scene, () => {
+      const cam = appState().camera
+      return cam && cam.heightAgl !== null ? cam.height - cam.heightAgl : null
+    })
 
     this.handler = new ScreenSpaceEventHandler(scene.canvas)
     this.wireMouse()
@@ -199,6 +208,8 @@ export class Engine {
     this.sun.destroy()
     this.readouts.destroy()
     this.imagery.destroy()
+    this.terrainShadows.destroy()
+    this.preloader.destroy()
     this.widget.destroy()
   }
 
@@ -293,7 +304,7 @@ export class Engine {
       )
     )
     s.push(subscribeJson((st) => [st.settings.elevation, st.autoRange], () => this.applyStyle()))
-    s.push(subscribeJson((st) => [st.settings.lighting, st.settings.shadows], () => this.applyLighting()))
+    s.push(subscribeJson((st) => [st.settings.lighting, st.settings.shadows, st.settings.detailShadows], () => this.applyLighting()))
     s.push(subscribeJson((st) => st.settings.showSunIndicator, () => this.sun.update()))
     s.push(
       subscribeJson(
@@ -303,18 +314,12 @@ export class Engine {
     )
     s.push(
       subscribeJson(
-        (st) => [st.settings.terrainShadowOverlay, st.settings.lighting, st.terrainReady],
-        () => this.applyOverlay()
+        (st) => [st.settings.shadows, st.settings.lighting, st.terrainReady],
+        () => this.applyTerrainShadows()
       )
     )
-    s.push(
-      useAppStore.subscribe(
-        (st) => st.sun,
-        (sun) => {
-          if (sun) this.shadowOverlay.setSun(sun.azimuth, sun.altitude)
-        }
-      )
-    )
+    s.push(useAppStore.subscribe((st) => st.sun, () => this.updateTerrainSun()))
+    s.push(useAppStore.subscribe((st) => st.camera?.heightAgl ?? null, (agl) => this.sun.setCameraHeight(agl)))
     s.push(useAppStore.subscribe((st) => st.profile.hoverIndex, () => this.requestRender()))
   }
 
@@ -344,21 +349,23 @@ export class Engine {
     } else {
       appState().dismissBanner('elevation-terrain')
     }
-    this.sun.configure(mode, settings.lighting, settings.shadows)
+    this.sun.configure(mode, settings.lighting, settings.shadows, settings.detailShadows)
     this.applyStyle()
-    this.applyOverlay()
+    this.applyTerrainShadows()
     this.scheduleAutoRange()
     this.requestRender()
   }
 
   private applyStyle(): void {
+    // Called from the terrain-shadow status callback, which can fire during construction.
+    if (!this.styler || !this.terrain) return
     const { mode, settings, autoRange } = appState()
-    this.styler.apply(settings.elevation, mode === 'elevation' && this.terrain.available, autoRange)
+    this.styler.apply(settings.elevation, mode === 'elevation' && this.terrain.available, autoRange, this.terrainShadows.ready)
   }
 
   private applyLighting(): void {
     const { mode, settings } = appState()
-    this.sun.configure(mode, settings.lighting, settings.shadows)
+    this.sun.configure(mode, settings.lighting, settings.shadows, settings.detailShadows)
     this.sun.update()
   }
 
@@ -366,6 +373,7 @@ export class Engine {
     const { quality } = appState().settings
     const q = resolveQuality(quality.preset, quality.overrides, { maxTextureSize: 8192, maxSamples: 8 })
     this.tiles.setScreenSpaceError(q.maximumScreenSpaceError)
+    this.terrainShadows.setResolution(q.terrainShadowResolution)
     this.scene.globe.maximumScreenSpaceError = q.terrainScreenSpaceError
     this.sun.applyQuality(q)
     if (this.scene.msaaSupported) this.scene.msaaSamples = q.msaaSamples
@@ -375,22 +383,15 @@ export class Engine {
     this.requestRender()
   }
 
-  private applyOverlay(): void {
+  private applyTerrainShadows(): void {
     const { settings, terrainReady } = appState()
-    const enabled = settings.terrainShadowOverlay && settings.lighting === 'sun' && terrainReady
-    this.shadowOverlay.setEnabled(enabled)
-    if (enabled) this.updateOverlayArea()
+    this.terrainShadows.setEnabled(settings.shadows && settings.lighting === 'sun' && terrainReady && this.terrain.available)
+    this.updateTerrainSun()
   }
 
-  private updateOverlayArea(): void {
-    const t = appState().target
-    if (!t) return
-    const target = Cartesian3.fromDegrees(t.longitude, t.latitude)
-    const distance = Cartesian3.distance(this.scene.camera.positionWC, target)
-    void this.shadowOverlay.updateArea(t.longitude, t.latitude, distance).then(() => {
-      const sun = appState().sun
-      if (sun) this.shadowOverlay.setSun(sun.azimuth, sun.altitude)
-    })
+  private updateTerrainSun(): void {
+    const { sun, target } = appState()
+    if (sun && target) this.terrainShadows.setSun(sun.azimuth, sun.altitude, target.longitude, target.latitude)
   }
 
   // ───────────────────────────── mouse ─────────────────────────────
@@ -456,6 +457,7 @@ export class Engine {
 
   private onTarget(target: Cartesian3): void {
     this.sun.setTargetPosition(target)
+    this.terrainShadows.setView(this.scene.camera.positionWC, target, appState().camera?.heightAgl ?? null)
     const t = cartographicDeg(target)
     if (t) this.styler.setGeoidOffset(t.latitude, t.longitude)
   }
@@ -464,7 +466,6 @@ export class Engine {
     this.readouts.refresh()
     this.imagery.updateAttribution()
     this.scheduleAutoRange()
-    if (appState().settings.terrainShadowOverlay) this.updateOverlayArea()
     if (this.saveTimer !== null) window.clearTimeout(this.saveTimer)
     this.saveTimer = window.setTimeout(() => {
       const view = currentView(this.scene)

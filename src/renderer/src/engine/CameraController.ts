@@ -10,6 +10,7 @@ import {
   Math as CesiumMath,
   Matrix3,
   Matrix4,
+  PerspectiveFrustum,
   Quaternion,
   type Scene
 } from 'cesium'
@@ -18,6 +19,19 @@ import { cameraTarget, clamp, pickSurface, surfaceHeight, toDeg, toRad } from '.
 
 /** Standing eye height for eye-level mode, meters. */
 export const EYE_HEIGHT = 1.7
+
+/**
+ * Field of view across the long side of the view (how Cesium applies `fov`) for a
+ * 35 mm-equivalent focal length: a full-frame sensor is 36 mm wide.
+ */
+export function focalLengthToFov(mm: number): number {
+  return 2 * Math.atan(18 / mm)
+}
+
+/** Fly mode uses a wide 20 mm lens for a first-person feel; orbit keeps Cesium's 60°. */
+export const FLY_FOCAL_LENGTH = 20
+const ORBIT_FOV = CesiumMath.toRadians(60)
+const FOV_EASE_MS = 300
 
 const MOVEMENT_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
 
@@ -72,6 +86,7 @@ export class CameraController {
   private headingVelocity = 0
   private headingPivot: Cartesian3 | null = null
   private animationToken = 0
+  private fovRaf: number | null = null
   private mouse: { x: number; y: number } | null = null
   private readonly disposers: Array<() => void> = []
 
@@ -148,6 +163,7 @@ export class CameraController {
   destroy(): void {
     this.disposers.forEach((d) => d())
     if (this.raf !== null) cancelAnimationFrame(this.raf)
+    if (this.fovRaf !== null) cancelAnimationFrame(this.fovRaf)
   }
 
   private userInput({ exitEyeLevel = false } = {}): void {
@@ -225,7 +241,24 @@ export class CameraController {
     this.flyMode = active
     this.scene.screenSpaceCameraController.enableInputs = !active
     if (!active) this.keys.clear()
+    this.easeFov(active ? focalLengthToFov(FLY_FOCAL_LENGTH) : ORBIT_FOV)
     this.callbacks.onFlyModeChange(active)
+  }
+
+  /** Eases the field of view to `target` (radians) instead of snapping. */
+  private easeFov(target: number): void {
+    const frustum = this.scene.camera.frustum
+    if (!(frustum instanceof PerspectiveFrustum)) return
+    if (this.fovRaf !== null) cancelAnimationFrame(this.fovRaf)
+    const from = frustum.fov ?? ORBIT_FOV
+    const start = performance.now()
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / FOV_EASE_MS)
+      frustum.fov = from + (target - from) * EasingFunction.QUADRATIC_IN_OUT(t)
+      this.scene.requestRender()
+      this.fovRaf = t < 1 ? requestAnimationFrame(step) : null
+    }
+    this.fovRaf = requestAnimationFrame(step)
   }
 
   private onFlyLook(e: MouseEvent): void {

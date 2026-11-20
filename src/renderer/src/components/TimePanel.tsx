@@ -47,7 +47,8 @@ export function TimePanel() {
   const patchSim = useAppStore((s) => s.patchSim)
   const patchSettings = useAppStore((s) => s.patchSettings)
   const togglePanel = useAppStore((s) => s.togglePanel)
-  const terrainReady = useAppStore((s) => s.terrainReady)
+  const terrainShadows = useAppStore((s) => s.terrainShadows)
+  const mode = useAppStore((s) => s.mode)
 
   const { year } = parseDate(sim.date)
   const yearDays = daysInYear(year)
@@ -226,19 +227,48 @@ export function TimePanel() {
           />
           Sun direction
         </label>
-        <label className="switch" title={terrainReady ? 'Heightmap ray-marched shadows: complete at any range, ~30–50 m resolution' : 'Needs a Cesium ion token (terrain)'}>
+        <label
+          className="switch"
+          title="Shadow-map detail close to the camera (buildings, trees) on top of the terrain shadows. Photorealistic mode only."
+        >
           <input
             type="checkbox"
-            checked={settings.terrainShadowOverlay}
-            disabled={!simulated || !terrainReady}
-            onChange={(e) => patchSettings((d) => void (d.terrainShadowOverlay = e.target.checked))}
+            checked={settings.detailShadows}
+            disabled={!simulated || !settings.shadows || mode !== 'photorealistic'}
+            onChange={(e) => patchSettings((d) => void (d.detailShadows = e.target.checked))}
           />
-          Terrain shadow overlay
+          Buildings &amp; trees
         </label>
+        {simulated && settings.shadows && <ShadowSourceNote status={terrainShadows} />}
         <span className="small faint" style={{ marginLeft: 'auto' }}>
           <span className="kbd">[</span> <span className="kbd">]</span> ±15 min · <span className="kbd">Shift</span>+<span className="kbd">[ ]</span> ±1 day
         </span>
       </div>
     </div>
+  )
+}
+
+const SHADOW_NOTES: Record<'off' | 'loading' | 'ready' | 'unavailable', { text: string; title: string }> = {
+  ready: {
+    text: 'Terrain shadows: heightmap',
+    title: 'Mountain and valley shadows are ray-traced from Cesium World Terrain out to ~80 km, including off-screen ridges, earth curvature and refraction.'
+  },
+  loading: { text: 'Terrain shadows: loading…', title: 'Loading terrain heights around the view.' },
+  unavailable: {
+    text: 'Terrain shadows: shadow maps',
+    title: 'Terrain heights could not be loaded, so shadow maps are used. Distant and off-screen ridges may not cast.'
+  },
+  off: {
+    text: 'Terrain shadows: shadow maps',
+    title: 'Add a Cesium ion token for accurate long-range terrain shadows. Shadow maps miss distant and off-screen ridges.'
+  }
+}
+
+function ShadowSourceNote({ status }: { status: 'off' | 'loading' | 'ready' | 'unavailable' }) {
+  const note = SHADOW_NOTES[status]
+  return (
+    <span className="small muted" title={note.title}>
+      {note.text}
+    </span>
   )
 }
