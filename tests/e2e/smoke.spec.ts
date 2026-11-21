@@ -139,8 +139,8 @@ test('the custom elevation material compiles', async () => {
       slope: { enabled: true, opacity: 0.5 },
       hillshade: { enabled: true, opacity: 0.5, followSun: true }
     }
-    // With the terrain shadow layer, so the shared receiver code compiles in the globe material too.
-    e.styler.apply(style, true, null, true)
+    // With terrain shadows and viewshed enabled, so both shared receivers compile in the globe material.
+    e.styler.apply(style, true, null, true, false, true)
     const errors: string[] = []
     e.scene.renderError.addEventListener((_s: unknown, err: Error) => errors.push(String(err?.message ?? err)))
     const primitive = new C.Primitive({
@@ -1302,6 +1302,189 @@ test('saved locations persist across a restart', async () => {
   // The last camera position was restored too.
   const lon = await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.currentView().longitude)
   expect(lon).toBeLessThan(-119)
+})
+
+test('viewshed analysis: missing token notice, GPU pass matches CPU reference, and inspect readout', async () => {
+  // Without a Cesium ion token, Shift+V opens the panel with a clear notice and Settings button.
+  await page.keyboard.press('Shift+V')
+  const panel = page.locator('.viewshed-panel')
+  await expect(panel).toBeVisible()
+  await expect(panel.locator('.notice')).toContainText('Cesium ion access token')
+  await panel.getByRole('button', { name: 'Clear viewshed' }).click()
+  await expect(panel).toHaveCount(0)
+
+  // Synthetic terrain with a blocking east ridge: verify GPU compute matches CPU viewshedTop().
+  const report = await page.evaluate(() => {
+    const w = window as unknown as { Cesium: Record<string, any>; __photoearth: any }
+    const T = w.Cesium.terrainShadow
+    const V = w.Cesium.viewshed
+    const e = w.__photoearth
+    const peaks = [
+      [2500, 0, 1200, 600],
+      [-4000, 3000, 900, 900],
+      [7500, -5000, 1500, 1400]
+    ]
+    const height = (x: number, y: number) => {
+      let h = 600 + 0.005 * y
+      for (const [px, py, ph, sigma] of peaks) h += ph * Math.exp(-((x - px) ** 2 + (y - py) ** 2) / (2 * sigma * sigma))
+      return h
+    }
+    const makeLevel = (half: number, n: number) => {
+      const heights = new Float32Array(n * n)
+      const cell = (2 * half) / n
+      for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) heights[j * n + i] = height(-half + (i + 0.5) * cell, -half + (j + 0.5) * cell)
+      const r = T.heightRange(heights)
+      return { cx: 0, cy: 0, half, n, heights, minHeight: r.min, maxHeight: r.max }
+    }
+    const radius = 15000
+    const halves = V.viewshedLevelHalves(radius)
+    const levels = halves.map((h: number) => makeLevel(h, 128))
+    const frame = e.viewshed.debugOpen(8, 46, levels, { radius, targetOffset: 1.7, viewerOffset: 1.7 })
+    for (let i = 0; i < 6; i++) {
+      e.scene.requestRender()
+      e.scene.render()
+    }
+    const maxHeight = Math.max(...levels.map((l: any) => l.maxHeight))
+    const targetH = T.heightAt(levels, 0, 0).height + 1.7
+    let seed = 13
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+    const out: Array<{ level: number; zWithin2m: number; visAgree: number; visible: number; hidden: number }> = []
+    for (let k = 0; k < 3; k++) {
+      const m = e.viewshed.debugReadMask(k)
+      const l = levels[k]
+      const cell = T.levelCell(l)
+      let within = 0
+      let agree = 0
+      let visible = 0
+      let hidden = 0
+      const samples = 200
+      for (let s = 0; s < samples; s++) {
+        const i = Math.floor(rand() * l.n)
+        const j = Math.floor(rand() * l.n)
+        const x = l.cx - l.half + (i + 0.5) * cell
+        const y = l.cy - l.half + (j + 0.5) * cell
+        if (Math.hypot(x, y) > radius) continue
+        const o = (j * l.n + i) * 4
+        const gpu = V.decodeViewshed(m.data[o], m.data[o + 1], m.data[o + 2], m.data[o + 3], m.base)
+        const ground = l.heights[j * l.n + i]
+        const cpu = V.viewshedTop(levels, x, y, targetH, cell, { radius: frame.radius, maxRadius: radius, maxHeight })
+        const cpuZ = Math.min(m.base + 65535 * 0.25, Math.max(m.base, cpu.zMin))
+        if (Math.abs(gpu.zMin - cpuZ) <= 2) within++
+        const vg = V.viewshedReceiverVisibility(gpu, ground + 1.7, cell)
+        const vc = V.viewshedReceiverVisibility({ zMin: cpuZ, occluderDistance: cpu.occluderDistance }, ground + 1.7, cell)
+        if (Math.abs(vg - vc) < 0.1) agree++
+        if (vc >= 0.5) visible++
+        else hidden++
+      }
+      const total = visible + hidden
+      out.push({ level: k, zWithin2m: within / total, visAgree: agree / total, visible, hidden })
+    }
+    return out
+  })
+  for (const r of report) {
+    expect(r.zWithin2m, JSON.stringify(r)).toBeGreaterThanOrEqual(0.95)
+    expect(r.visAgree, JSON.stringify(r)).toBeGreaterThanOrEqual(0.97)
+  }
+  expect(report[2].visible, JSON.stringify(report)).toBeGreaterThan(10)
+  expect(report[2].hidden, JSON.stringify(report)).toBeGreaterThan(10)
+
+  // Panel shows coverage percentage and area; inspecting a hidden point behind the east ridge reports it hidden,
+  // and inspecting a visible point on the west plain reports it visible.
+  await expect(panel).toBeVisible()
+  await expect(panel.locator('.badge.ok')).toContainText('%')
+  const inspectResult = await page.evaluate(() => {
+    const w = window as unknown as { Cesium: Record<string, any>; __photoearth: any }
+    const e = w.__photoearth
+    const hiddenC = e.viewshed.frame.toCartographic(6000, 0)
+    const hiddenCheck = e.viewshed.checkPoint(w.Cesium.Cartesian3.fromRadians(hiddenC.longitude, hiddenC.latitude, 600))
+    const visibleC = e.viewshed.frame.toCartographic(-2000, 0)
+    const visibleCheck = e.viewshed.checkPoint(w.Cesium.Cartesian3.fromRadians(visibleC.longitude, visibleC.latitude, 600))
+    return { hidden: hiddenCheck?.visible, visible: visibleCheck?.visible, bearing: visibleCheck?.bearingToTarget }
+  })
+  expect(inspectResult.hidden).toBe(false)
+  expect(inspectResult.visible).toBe(true)
+  expect(inspectResult.bearing).toBeCloseTo(90, 0)
+
+  // Rendered pixel check on 3D Tiles custom shader: visible spot gets tinted green/cyan, hidden spot stays gray.
+  const pixelCheck = await page.evaluate(async () => {
+    const w = window as unknown as { Cesium: Record<string, any>; __photoearth: any }
+    const C = w.Cesium
+    const e = w.__photoearth
+    const pos = new Float32Array([-200, 0, -200, 200, 0, -200, 200, 0, 200, -200, 0, 200])
+    const idx = new Uint16Array([0, 1, 2, 0, 2, 3])
+    const bytes = new Uint8Array(pos.byteLength + idx.byteLength)
+    bytes.set(new Uint8Array(pos.buffer), 0)
+    bytes.set(new Uint8Array(idx.buffer), pos.byteLength)
+    let bin = ''
+    bytes.forEach((b) => (bin += String.fromCharCode(b)))
+    const gltf = {
+      asset: { version: '2.0' },
+      scene: 0,
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 }, indices: 1, material: 0 }] }],
+      materials: [{ doubleSided: true, pbrMetallicRoughness: { baseColorFactor: [0.6, 0.6, 0.6, 1] } }],
+      buffers: [{ byteLength: bytes.byteLength, uri: `data:application/octet-stream;base64,${btoa(bin)}` }],
+      bufferViews: [
+        { buffer: 0, byteOffset: 0, byteLength: pos.byteLength, target: 34962 },
+        { buffer: 0, byteOffset: pos.byteLength, byteLength: idx.byteLength, target: 34963 }
+      ],
+      accessors: [
+        { bufferView: 0, componentType: 5126, count: 4, type: 'VEC3', min: [-200, 0, -200], max: [200, 0, 200] },
+        { bufferView: 1, componentType: 5123, count: 6, type: 'SCALAR' }
+      ]
+    }
+    const model = await C.Model.fromGltfAsync({
+      gltf,
+      modelMatrix: C.Transforms.eastNorthUpToFixedFrame(C.Cartesian3.fromDegrees(8, 46, 600)),
+      customShader: e.tiles.customShader,
+      shadows: C.ShadowMode.DISABLED
+    })
+    e.scene.primitives.add(model)
+    e.terrainShadows.compute.binding.params.y = 0
+    e.tiles.setDaylight(1)
+    for (let i = 0; i < 100 && !model.ready; i++) {
+      e.scene.requestRender()
+      e.scene.render()
+      await new Promise((r) => setTimeout(r, 15))
+    }
+    const measure = (x: number, y: number, ground: number) => {
+      const c = e.viewshed.frame.toCartographic(x, y)
+      model.modelMatrix = C.Transforms.eastNorthUpToFixedFrame(C.Cartesian3.fromRadians(c.longitude, c.latitude, ground))
+      e.scene.camera.setView({
+        destination: C.Cartesian3.fromRadians(c.longitude, c.latitude, ground + 250),
+        orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 }
+      })
+      const canvas = e.scene.canvas
+      const px = { x: Math.floor(canvas.width / 2), y: Math.floor(canvas.height / 2), width: 1, height: 1 }
+      const read = (enabled: number) => {
+        e.viewshed.compute.binding.params.y = enabled
+        e.scene.requestRender()
+        e.scene.render()
+        e.scene.render()
+        return Array.from(e.scene.context.readPixels(px)) as number[]
+      }
+      const on = read(1)
+      const off = read(0)
+      e.viewshed.compute.binding.params.y = 1
+      return { on, off }
+    }
+    const vis = measure(-2000, 0, 600)
+    const hid = measure(6000, 0, 600)
+    e.scene.primitives.remove(model)
+    return { vis, hid }
+  })
+  // Visible spot shifts noticeably toward green/cyan (G > R by a wide margin); hidden spot stays unchanged.
+  expect(pixelCheck.vis.on[1] - pixelCheck.vis.on[0], JSON.stringify(pixelCheck)).toBeGreaterThan(25)
+  expect(Math.abs(pixelCheck.hid.on[1] - pixelCheck.hid.off[1]), JSON.stringify(pixelCheck)).toBeLessThanOrEqual(3)
+
+  // Clean up so subsequent tests start with a clear map.
+  await page.evaluate(() => {
+    const e = (window as unknown as { __photoearth: any }).__photoearth
+    e.inspector.clear()
+    e.viewshed.clear()
+  })
+  await expect(panel).toHaveCount(0)
 })
 
 test('no runtime errors', () => {

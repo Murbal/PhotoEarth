@@ -158,6 +158,7 @@ export function RightRail() {
   const set = useAppStore((s) => s.set)
   const profileOn = useAppStore((s) => s.profile.active || s.profile.samples.length > 0)
   const horizonOpen = useAppStore((s) => s.horizon.open)
+  const viewshedOpen = useAppStore((s) => s.viewshed.open)
   const eyeLevel = useAppStore((s) => s.eyeLevel)
   const flyMode = useAppStore((s) => s.flyMode)
   // Where Eye level stands (Engine.eyeLevelSpot): the inspect marker, then the search pin.
@@ -201,6 +202,14 @@ export function RightRail() {
           active={horizonOpen}
           pressed={horizonOpen}
           onClick={() => getEngine()?.toggleHorizon()}
+        />
+        <RailButton
+          icon="viewshed"
+          label={viewshedOpen ? 'Viewshed analysis: clear overlay' : 'Viewshed analysis: line-of-sight overlay'}
+          keys={shortcutLabel('Shift+V')}
+          active={viewshedOpen}
+          pressed={viewshedOpen}
+          onClick={() => getEngine()?.toggleViewshed()}
         />
         <RailButton
           icon="viewfinder"

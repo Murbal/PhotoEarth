@@ -35,9 +35,11 @@ export function useShortcuts(): void {
         else if (s.shortcutsOpen) s.set({ shortcutsOpen: false })
         else if (s.settingsOpen) s.set({ settingsOpen: false })
         else if (s.profile.active) getEngine()?.profile.cancelOrFinish()
+        else if (s.viewshed.picking) getEngine()?.viewshed.setPicking(false)
         else if (s.horizon.open) getEngine()?.horizon.close()
         else if (s.inspect) getEngine()?.inspector.clear()
         else if (s.destination) getEngine()?.searchMarker.clear()
+        else if (s.viewshed.open) getEngine()?.viewshed.clear()
         return
       }
       if (modal || isTyping(e.target)) return
@@ -78,6 +80,11 @@ export function useShortcuts(): void {
         return
       }
       if (e.repeat) return
+      if (e.shiftKey && key === 'v' && !s.flyMode) {
+        e.preventDefault()
+        runCommand('viewshed-toggle')
+        return
+      }
       const map: Record<string, string> = {
         '1': 'mode-photorealistic',
         '2': 'mode-elevation',
