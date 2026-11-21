@@ -32,8 +32,13 @@ import { appState, useAppStore } from '../store/appStore'
 
 /** A press that moves less than this is a click. */
 const CLICK_SLOP = 4
-/** Tiles of other zooms stay underneath the current ones at most this long. */
-const STALE_MS = 1500
+/**
+ * Tiles of other zooms stay underneath until the current zoom's tiles cover the view, or this
+ * long after it became current (tiles that never arrive mustn't keep them forever).
+ */
+const STALE_MS = 2500
+/** At most this many other zooms are kept underneath (the nearest to the current one). */
+const MAX_STALE_LAYERS = 3
 /** The view is saved and its attribution fetched once it stands still this long. */
 const SETTLE_MS = 250
 /** One mouse-wheel notch (100 px) zooms one level. */
@@ -57,7 +62,8 @@ const PAN_KEYS: Record<string, Point> = {
 
 interface TileImage {
   img: HTMLImageElement
-  loaded: boolean
+  /** Downloaded and decoded: it paints in the next frame. */
+  ready: boolean
 }
 
 /** All tiles of one whole zoom, in one element that is moved and scaled as a whole. */
@@ -68,7 +74,8 @@ interface Layer {
   originX: number
   originY: number
   tiles: Map<string, TileImage>
-  createdAt: number
+  /** When this zoom last became the drawn one. */
+  currentSince: number
 }
 
 interface Animation {
@@ -104,6 +111,8 @@ class MapRenderer implements MapControl {
   private height = 1
   private readonly layers = new Map<number, Layer>()
   private template: string | null = null
+  /** The whole zoom whose tiles are drawn on top. */
+  private tileZoom: number | null = null
   private raf: number | null = null
   private lastFrame = 0
   private animation: Animation | null = null
@@ -303,18 +312,22 @@ class MapRenderer implements MapControl {
     if (session?.template !== this.template) {
       for (const zoom of [...this.layers.keys()]) this.removeLayer(zoom)
       this.template = session?.template ?? null
+      this.tileZoom = null
     }
     if (!this.template) return
-    const tz = tileZoomFor(view.zoom)
+    const tz = tileZoomFor(view.zoom, this.tileZoom)
     const range = tileRange(view, tz, this.width, this.height)
     let layer = this.layers.get(tz)
     if (!layer) {
       const el = document.createElement('div')
       el.className = 'map-layer'
       this.tilesEl.appendChild(el)
-      layer = { zoom: tz, el, originX: range.x0 * TILE, originY: range.y0 * TILE, tiles: new Map(), createdAt: performance.now() }
+      layer = { zoom: tz, el, originX: range.x0 * TILE, originY: range.y0 * TILE, tiles: new Map(), currentSince: performance.now() }
       this.layers.set(tz, layer)
+    } else if (tz !== this.tileZoom) {
+      layer.currentSince = performance.now()
     }
+    this.tileZoom = tz
     const current = layer
     for (let y = range.y0; y <= range.y1; y++) {
       for (let x = range.x0; x <= range.x1; x++) {
@@ -328,14 +341,20 @@ class MapRenderer implements MapControl {
         img.width = TILE
         img.height = TILE
         img.style.transform = `translate(${x * TILE - current.originX}px, ${y * TILE - current.originY}px)`
-        const tile: TileImage = { img, loaded: false }
-        img.onload = () => {
-          tile.loaded = true
-          img.classList.add('loaded')
-          this.invalidate()
-        }
+        const tile: TileImage = { img, ready: false }
         img.onerror = () => this.onTileError(img.src)
         img.src = tileUrl(this.template, tz, wrapColumn(x, tz), y)
+        // Shown, and counted as covering, only once decoded: an image that has loaded but not
+        // decoded paints nothing, and dropping the tiles underneath then would flash.
+        img
+          .decode()
+          .then(() => {
+            if (!img.isConnected) return
+            tile.ready = true
+            img.classList.add('ready')
+            this.invalidate()
+          })
+          .catch(() => undefined)
         current.tiles.set(key, tile)
         current.el.appendChild(img)
       }
@@ -344,27 +363,28 @@ class MapRenderer implements MapControl {
     for (const [key, tile] of current.tiles) {
       const [x, y] = key.split('/').map(Number)
       if (x < range.x0 - 1 || x > range.x1 + 1 || y < range.y0 - 1 || y > range.y1 + 1) {
-        tile.img.onload = tile.img.onerror = null
+        tile.img.onerror = null
         tile.img.remove()
         current.tiles.delete(key)
       }
     }
-    // Other zooms stay underneath until the current one covers the view, then go.
+    // Other zooms stay underneath, scaled, until the current one covers the view, then go.
     let covered = true
     for (let y = range.y0; y <= range.y1 && covered; y++) {
       for (let x = range.x0; x <= range.x1; x++) {
-        if (!current.tiles.get(`${x}/${y}`)?.loaded) {
+        if (!current.tiles.get(`${x}/${y}`)?.ready) {
           covered = false
           break
         }
       }
     }
-    const now = performance.now()
-    for (const other of [...this.layers.values()]) {
-      if (other.zoom === tz) continue
-      if (covered || Math.abs(other.zoom - tz) > 2 || now - current.createdAt > STALE_MS) this.removeLayer(other.zoom)
-    }
-    if (!covered) this.invalidate()
+    const others = [...this.layers.values()].filter((l) => l.zoom !== tz).sort((a, b) => Math.abs(a.zoom - tz) - Math.abs(b.zoom - tz))
+    const expired = performance.now() - current.currentSince > STALE_MS
+    others.forEach((other, i) => {
+      if (covered || expired || i >= MAX_STALE_LAYERS) this.removeLayer(other.zoom)
+    })
+    // Waiting for tiles: look again next frame (decodes also invalidate).
+    if (!covered && !expired) this.invalidate()
   }
 
   private positionLayer(layer: Layer, view: MapView): void {
@@ -376,13 +396,14 @@ class MapRenderer implements MapControl {
     const tx = this.width / 2 + (layer.originX - cx) * scale
     const ty = this.height / 2 + (layer.originY - c.y) * scale
     layer.el.style.transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) scale(${scale.toFixed(5)})`
-    layer.el.style.zIndex = String(layer.zoom === tileZoomFor(view.zoom) ? 10 : 5 - Math.abs(layer.zoom - view.zoom))
+    // The current zoom on top, then the nearest others (z-index must be a whole number).
+    layer.el.style.zIndex = String(layer.zoom === this.tileZoom ? 100 : 50 - Math.abs(layer.zoom - (this.tileZoom ?? layer.zoom)))
   }
 
   private removeLayer(zoom: number): void {
     const layer = this.layers.get(zoom)
     if (!layer) return
-    for (const tile of layer.tiles.values()) tile.img.onload = tile.img.onerror = null
+    for (const tile of layer.tiles.values()) tile.img.onerror = null
     layer.el.remove()
     this.layers.delete(zoom)
   }

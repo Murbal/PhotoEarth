@@ -121,6 +121,12 @@ describe('map view: screen, pan and zoom', () => {
   it('covers the screen with tiles of the nearest whole zoom', () => {
     expect(tileZoomFor(13.4)).toBe(13)
     expect(tileZoomFor(13.6)).toBe(14)
+    // The drawn tile zoom holds until the view is 0.65 past it (no flip-flop at half steps).
+    expect(tileZoomFor(13.6, 13)).toBe(13)
+    expect(tileZoomFor(12.4, 13)).toBe(13)
+    expect(tileZoomFor(13.7, 13)).toBe(14)
+    expect(tileZoomFor(12.3, 13)).toBe(12)
+    expect(tileZoomFor(16.2, 13)).toBe(16)
     const r = tileRange(view, 13, W, H)
     const scale = 2 ** (view.zoom - 13)
     const c = project(view, 13)

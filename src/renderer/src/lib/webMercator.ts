@@ -160,9 +160,15 @@ export function tileRange(view: MapView, tileZoom: number, width: number, height
   }
 }
 
-/** The tile zoom drawn for a fractional view zoom (tiles are shown at 71–141 % size). */
-export function tileZoomFor(zoom: number): number {
-  return Math.round(clampZoom(zoom))
+/**
+ * The tile zoom drawn for a fractional view zoom: the nearest whole zoom, but the current one
+ * is kept until the view is 0.65 zooms past it (tiles shown at 64–157 %), so an eased zoom
+ * near a half step doesn't flip between two tile sets.
+ */
+export function tileZoomFor(zoom: number, current: number | null = null): number {
+  const z = clampZoom(zoom)
+  if (current !== null && Math.abs(z - current) <= 0.65) return current
+  return Math.round(z)
 }
 
 /** Wraps an unwrapped tile column into the server's range. */

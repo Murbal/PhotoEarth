@@ -1129,7 +1129,7 @@ test('Map mode: a full-window Google map over the paused 3D view; drag, wheel, k
       e.keys.googleApiKey = 'test-key'
       await e.mapTiles.configure('test-key', 'roadmap')
     })
-    await expect.poll(() => page.locator('.map-tile.loaded').count()).toBeGreaterThan(4)
+    await expect.poll(() => page.locator('.map-tile.ready').count()).toBeGreaterThan(4)
     expect(mock.sessions.at(-1)).toMatchObject({ mapType: 'roadmap' })
     for (const src of await page.locator('.map-tile').evaluateAll((els) => els.map((el) => (el as HTMLImageElement).src))) {
       expect(src).toMatch(/^https:\/\/tile\.googleapis\.com\/v1\/2dtiles\/\d+\/\d+\/\d+\?session=s\d+&key=test-key$/)
@@ -1170,6 +1170,43 @@ test('Map mode: a full-window Google map over the paused 3D view; drag, wheel, k
     await page.waitForTimeout(300)
     await page.keyboard.up('ArrowRight')
     expect((await settledMap()).longitude).toBeGreaterThan(zoomed.longitude)
+
+    // No flashing while zooming across tile levels: the middle of the map stays covered by
+    // visible tiles the whole time (the previous level stays until the new one has decoded).
+    const sampling = page.evaluate(async () => {
+      const root = document.querySelector('.map-mode') as HTMLElement
+      const W = root.clientWidth
+      const H = root.clientHeight
+      const points: Array<[number, number]> = []
+      for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) points.push([W * (0.3 + 0.1 * i), H * (0.3 + 0.1 * j)])
+      const visible = () =>
+        [...document.querySelectorAll<HTMLImageElement>('.map-tile')]
+          .filter((img) => {
+            const cs = getComputedStyle(img)
+            return img.complete && cs.visibility === 'visible' && Number(cs.opacity) === 1
+          })
+          .map((img) => img.getBoundingClientRect())
+      let worst = 0
+      let samples = 0
+      const start = performance.now()
+      while (performance.now() - start < 3200) {
+        const rects = visible()
+        const missing = points.filter(([x, y]) => !rects.some((r) => x >= r.left && x < r.right && y >= r.top && y < r.bottom)).length
+        worst = Math.max(worst, missing)
+        samples++
+        await new Promise((r) => setTimeout(r, 8))
+      }
+      return { worst, samples }
+    })
+    await page.mouse.move(720, 450)
+    for (const dy of [-100, -100, 100, 100]) {
+      await page.mouse.wheel(0, dy)
+      await page.waitForTimeout(700)
+    }
+    const coverage = await sampling
+    expect(coverage.samples).toBeGreaterThan(50)
+    expect(coverage.worst).toBe(0)
+    await settledMap()
 
     expect(await page.evaluate(() => (window as unknown as { __renders: number }).__renders)).toBe(0)
     await page.evaluate(() => (window as unknown as { __stopCounting: () => void }).__stopCounting())

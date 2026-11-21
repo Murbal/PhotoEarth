@@ -2317,13 +2317,14 @@ input[type='color'] {
   top: 0;
   width: 256px;
   height: 256px;
-  opacity: 0;
-  transition: opacity 0.15s;
+  /* Shown at once when decoded, over the previous zoom's tiles (no fade through to the
+     background). */
+  visibility: hidden;
   pointer-events: none;
 }
 
-.map-tile.loaded {
-  opacity: 1;
+.map-tile.ready {
+  visibility: visible;
 }
 
 .map-camera {
