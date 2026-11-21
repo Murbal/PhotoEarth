@@ -8,7 +8,16 @@ import type { BookmarkStore } from './bookmarks'
 import type { JsonFile } from './jsonStore'
 import { PhotoPicker } from './photoPicker'
 import type { PhotoInput } from './photos'
-import { GOOGLE_REFERER, placeDetails, placesAutocomplete, placesCities, placesNearby, validateKeys, weatherForecast } from './network'
+import {
+  GOOGLE_REFERER,
+  mapsShortLink,
+  placeDetails,
+  placesAutocomplete,
+  placesCities,
+  placesNearby,
+  validateKeys,
+  weatherForecast
+} from './network'
 import type { SecretStore } from './secrets'
 import { openExternalSafely } from './security'
 
@@ -162,4 +171,6 @@ export function registerIpc({ settings, secrets, bookmarks, isTrustedSender, onK
       }))
     })
   })
+  // Validated again in shortLinks.ts: only exact short-link hosts are requested.
+  handle(IPC.mapsResolveShortLink, (url: unknown) => mapsShortLink(str(url, 500)))
 }

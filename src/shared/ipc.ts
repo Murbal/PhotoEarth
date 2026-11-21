@@ -26,5 +26,6 @@ export const IPC = {
   placesDetails: 'places:details',
   placesNearby: 'places:nearby',
   placesCities: 'places:cities',
-  weatherForecast: 'weather:forecast'
+  weatherForecast: 'weather:forecast',
+  mapsResolveShortLink: 'maps:resolve-short-link'
 } as const

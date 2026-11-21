@@ -1,7 +1,5 @@
-// Coordinate parsing (decimal, DMS/DDM, Google Maps URLs) and formatting.
-
-import type { Units } from '@shared/types'
-import { formatElevation } from './units'
+// Coordinate parsing (decimal, DMS/DDM, Google Maps URLs) and formatting. Shared: the main
+// process parses the URLs that Google Maps short links resolve to (main/shortLinks.ts).
 
 export interface ParsedLocation {
   latitude: number
@@ -264,22 +262,6 @@ export function formatLatLon(lat: number, lon: number, format: 'decimal' | 'dms'
 /** Plain, machine-friendly form for the clipboard ("46.557700, 7.958600"). */
 export function formatLatLonPlain(lat: number, lon: number): string {
   return `${lat.toFixed(6)}, ${lon.toFixed(6)}`
-}
-
-/**
- * The inspect card's clipboard line: plain decimal coordinates, then the elevation in the
- * chosen units and any extra readouts, e.g. "46.557700, 7.958600, 13016 ft, 21.10 mag/arcsec² (…)".
- */
-export function formatPointForClipboard(
-  lat: number,
-  lon: number,
-  elevation: number | null,
-  units: Units,
-  extras: readonly string[] = []
-): string {
-  const parts = [formatLatLonPlain(lat, lon)]
-  if (elevation !== null && Number.isFinite(elevation)) parts.push(formatElevation(elevation, units, { grouping: false }))
-  return [...parts, ...extras].join(', ')
 }
 
 export function normalizeLongitude(lon: number): number {

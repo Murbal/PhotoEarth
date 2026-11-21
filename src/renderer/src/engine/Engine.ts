@@ -15,7 +15,7 @@ import {
 import { estimateTarget, matchesFilter } from '@shared/locations'
 import { DEFAULT_VIEW } from '@shared/settings'
 import type { ApiCheck, ApiKeys, Bookmark, CameraView, GeoPosition, MapMode, NewBookmark, PlaceDetails, SavedProfile } from '@shared/types'
-import { formatLatLon, type ParsedLocation } from '../lib/coords'
+import { formatLatLon, type ParsedLocation } from '@shared/coords'
 import { loadGeoid } from '../lib/geoid'
 import type { GeoPoint } from '../lib/profile'
 import { haversine } from '../lib/profile'

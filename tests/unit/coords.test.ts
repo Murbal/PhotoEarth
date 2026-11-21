@@ -2,12 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   coordinateProblem,
   formatLatLon,
-  formatPointForClipboard,
   isShortMapsLink,
   parseCoordinatePair,
   parseGoogleMapsUrl,
   parseLocationInput
-} from '@renderer/lib/coords'
+} from '@shared/coords'
 
 const close = (a: number | undefined, b: number, eps = 1e-4) => expect(Math.abs((a ?? NaN) - b)).toBeLessThan(eps)
 
@@ -87,7 +86,7 @@ describe('Google Maps URLs', () => {
     close(parseGoogleMapsUrl('geo:46.5577,7.9586')?.latitude, 46.5577)
   })
 
-  it('recognises short links it cannot resolve offline', () => {
+  it('recognises short links, which carry no coordinates themselves', () => {
     expect(isShortMapsLink('https://maps.app.goo.gl/abc123')).toBe(true)
     expect(parseLocationInput('https://maps.app.goo.gl/abc123')).toBeNull()
   })
@@ -129,19 +128,5 @@ describe('coordinate problems', () => {
     expect(coordinateProblem('Vienna')).toBeNull()
     expect(coordinateProblem('Paris 75001')).toBeNull()
     expect(coordinateProblem('')).toBeNull()
-  })
-})
-
-describe('formatPointForClipboard', () => {
-  it('keeps plain decimal coordinates and uses the chosen units for elevation', () => {
-    expect(formatPointForClipboard(46.5577, 7.9586, 3967.4, 'metric')).toBe('46.557700, 7.958600, 3967 m')
-    expect(formatPointForClipboard(46.5577, 7.9586, 3967.4, 'imperial')).toBe('46.557700, 7.958600, 13016 ft')
-  })
-
-  it('leaves out an unknown elevation and appends extra readouts', () => {
-    expect(formatPointForClipboard(-33.9, 18.4, null, 'imperial')).toBe('-33.900000, 18.400000')
-    expect(formatPointForClipboard(46.5577, 7.9586, 1234, 'metric', ['21.10 mag/arcsec² (Bortle ≈ 4, estimate)'])).toBe(
-      '46.557700, 7.958600, 1234 m, 21.10 mag/arcsec² (Bortle ≈ 4, estimate)'
-    )
   })
 })

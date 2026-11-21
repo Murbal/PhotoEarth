@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { MAX_BEST_TIME, MAX_NOTES, matchesFilter, normalizeTag, photoUrl, tagCounts, thumbFile } from '@shared/locations'
 import type { Bookmark, LocationStatus, SavedProfile } from '@shared/types'
 import { useDialogFocus } from '../hooks/useDialogFocus'
-import { formatLatLon } from '../lib/coords'
+import { formatLatLon } from '@shared/coords'
 import {
   addPhotoFiles,
   deleteLocation,

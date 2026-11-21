@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { getEngine } from '../engine/instance'
-import { formatLatLon } from '../lib/coords'
+import { formatLatLon } from '@shared/coords'
 import {
   aboveSkyline,
   azDelta,

@@ -76,6 +76,8 @@ Point elevation readouts in Photorealistic mode come from sampling the 3D tilese
   - Request only the fields needed (name, formatted address, location, viewport), to stay on the cheaper Essentials and Pro billing tiers.
   - Debounce input (≈250 ms) and require at least 3 characters before querying.
 - Direct coordinate entry is always available, even without a geocoding API. Accepted formats: decimal degrees, DMS, and Google Maps URLs.
+  - Full `google.com/maps` URLs and `geo:` links are parsed offline.
+  - Google Maps short links (`maps.app.goo.gl/…`, `goo.gl/maps/…`) carry no coordinates, so they are **resolved online**. The main process follows their redirects to the full `google.com/maps` URL and parses that (no API key needed). Offline, or for a link that doesn't lead to coordinates, the palette explains why and suggests pasting the full URL.
 
 ## 4. Application Architecture
 
@@ -109,6 +111,11 @@ Point elevation readouts in Photorealistic mode come from sampling the 3D tilese
 - A strict Content Security Policy that allows only the required Google / Cesium / terrain origins, plus the light pollution tile hosts (§7.5).
 - API keys are never written in plaintext. They are encrypted with `safeStorage` in the main process and sent to the renderer only when needed. Tile requests necessarily include the key, so the user should **restrict the key by API** (Map Tiles API, Places, etc.) in Google Cloud Console.
 - Reference photos of saved locations (§11.5) reach the renderer only through a read-only `photo://` scheme that serves the photo store's own file names; the CSP allows `img-src photo:` and nothing else from it.
+- Short-link resolution (§3.3) runs in the main process, so the renderer CSP is unchanged.
+  - Only exact short-link hosts are accepted as input (`maps.app.goo.gl/<id>`, `goo.gl/maps/<id>`).
+  - Redirects are taken one at a time and allowed only to those hosts or to Google Maps (`[www.|maps.]google.<tld>` over https). Resolution stops at the first URL with coordinates, which is never requested itself.
+  - At most 5 redirects and a 10 s timeout for the whole chain. Response bodies are never read (each request is aborted once its headers arrive).
+  - Requests run in an in-memory session with no cookies and no headers of ours. No API key is ever sent.
 - Google API keys restricted by HTTP referrer don't work from `file://`. Either document using API restrictions instead, or set a fixed `Referer` header with `session.webRequest.onBeforeSendHeaders` for Google origins and document the referrer to allow.
 
 ### 4.2 Persistence (userData)
@@ -204,7 +211,7 @@ All movement has **inertia** with a configurable damping and an "Off" option.
 
 - A command palette (`Ctrl/Cmd+K`) that combines:
   - Place search (geocoding, §3.3) with autocomplete
-  - Coordinate entry
+  - Coordinate entry, including Google Maps links (short links show a resolving state, then the location or the reason they couldn't be resolved)
   - Saved locations (by name, tags, best time or notes) and saved profiles
   - App commands (switch mode, toggle shadows, open settings, etc.)
 - Choosing a result **flies** the camera there with a smooth eased arc. The duration scales with distance and can be interrupted by any user input.
