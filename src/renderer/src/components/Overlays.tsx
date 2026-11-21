@@ -15,6 +15,7 @@ export function StatusChips() {
   const profilePoints = useAppStore((s) => s.profile.points.length)
   const patchSettings = useAppStore((s) => s.patchSettings)
   const horizonOpen = useAppStore((s) => s.horizon.open)
+  const alignPick = useAppStore((s) => (s.alignment.open ? s.alignment.pickMode : null))
   // The light pollution layer drapes on the globe, which Photorealistic mode hides (§7.5).
   const lpHidden = useAppStore((s) => s.settings.lightPollution.enabled && s.mode === 'photorealistic' && s.tilesetReady)
   return (
@@ -39,7 +40,12 @@ export function StatusChips() {
               : 'Click to add points · Enter or double-click to finish · Backspace undo'}
         </span>
       )}
-      {horizonOpen && !profileDrawing && (
+      {alignPick && !profileDrawing && (
+        <span className="panel chip" role="status">
+          <Icon name="alignment" size={14} /> Shot alignment: click the map to place the {alignPick === 'camera' ? 'Camera' : 'Subject'} pin · Esc cancel
+        </span>
+      )}
+      {horizonOpen && !profileDrawing && !alignPick && (
         <span className="panel chip" role="status">
           Horizon: click the map to move the observer · H or Esc closes
         </span>
@@ -141,6 +147,19 @@ export function InspectCard() {
         </div>
         <button className="icon-btn small" title="Horizon panorama from here (H)" aria-label="Horizon panorama from here" onClick={() => void getEngine()?.openHorizon()}>
           <Icon name="panorama" size={14} />
+        </button>
+        <button
+          className="icon-btn small"
+          title="Use this point in Shot Alignment (Camera or Subject)"
+          aria-label="Use this point in shot alignment"
+          onClick={() => {
+            const e = getEngine()
+            if (!e) return
+            const role = appState().alignment.camera && !appState().alignment.subject ? 'subject' : 'camera'
+            e.useActivePinForAlignment(role)
+          }}
+        >
+          <Icon name="alignment" size={14} />
         </button>
         <button className="icon-btn small" title={sky ? 'Copy coordinates, elevation and sky brightness' : 'Copy coordinates and elevation'} onClick={copy}>
           <Icon name="copy" size={14} />

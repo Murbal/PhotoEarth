@@ -20,6 +20,7 @@ import { loadGeoid } from '../lib/geoid'
 import type { GeoPoint } from '../lib/profile'
 import { haversine } from '../lib/profile'
 import { appState, useAppStore, type AppState } from '../store/appStore'
+import { AlignmentTool } from './AlignmentTool'
 import { CameraController } from './CameraController'
 import { ElevationStyler } from './ElevationStyler'
 import { GoogleImagery } from './GoogleImagery'
@@ -78,6 +79,7 @@ export class Engine {
   readonly styler: ElevationStyler
   readonly profile: ProfileTool
   readonly horizon: HorizonTool
+  readonly alignment: AlignmentTool
   readonly inspector: PointInspector
   readonly spotSun: SpotSun
   readonly searchMarker: SearchMarker
@@ -200,6 +202,10 @@ export class Engine {
       knownPeaks: () => this.labels.knownPeaks(),
       canNamePeaks: () => !!this.keys.googleApiKey
     })
+    this.alignment = new AlignmentTool(this.widget, {
+      sampleGround: (lon, lat) => this.preciseGround(lon, lat),
+      samplePath: (points) => this.sampleProfile(points)
+    })
     this.inspector = new PointInspector(this.widget, (lon, lat) => this.preciseGround(lon, lat))
     this.spotSun = new SpotSun(() => this.terrain?.provider ?? null)
     this.searchMarker = new SearchMarker(this.widget, (lon, lat) => this.preciseGround(lon, lat))
@@ -264,6 +270,7 @@ export class Engine {
     this.terrainShadows.destroy()
     this.preloader.destroy()
     this.markers.destroy()
+    this.alignment.destroy()
     this.widget.destroy()
   }
 
@@ -545,6 +552,13 @@ export class Engine {
     if (this.profile.drawing) {
       const hit = pickSurface(this.scene, position.x, position.y)
       if (hit) this.profile.addPoint(hit)
+      return
+    }
+    if (this.alignment.isOpen && this.alignment.pickMode !== null) {
+      const hit = pickSurface(this.scene, position.x, position.y)
+      if (!hit) return
+      if (this.alignment.pickMode === 'camera') void this.alignment.setCamera(hit)
+      else void this.alignment.setSubject(hit)
       return
     }
     // Wait to see whether this is the first half of a double-click.
@@ -856,6 +870,66 @@ export class Engine {
     const spot = this.horizon.spot
     if (!spot) return Promise.resolve()
     return this.camera.goToEyeLevel(spot, { heading: azimuth, pitch: altitude })
+  }
+
+  /** X: opens or closes the Camera → Subject shot alignment planner. */
+  toggleAlignment(): void {
+    if (this.alignment.isOpen) this.alignment.close()
+    else this.alignment.open()
+  }
+
+  /** Stands at the alignment Camera pin (at its configured eye height), facing the Subject or manual direction. */
+  lookAlongAlignment(opts?: { enableViewfinder?: boolean }): Promise<void> {
+    const { camera, geometry, eyeHeight, manualDirection } = appState().alignment
+    if (!camera) return Promise.resolve()
+    const spot = this.alignment.cameraSpot ?? Cartesian3.fromDegrees(camera.longitude, camera.latitude, camera.groundHeight)
+    const heading = geometry ? geometry.bearing : manualDirection?.azimuth
+    const pitch = geometry ? geometry.geometricAngle : manualDirection?.altitude
+    if (heading === undefined || pitch === undefined) return this.camera.goToEyeLevel(spot, { heading: toDeg(this.scene.camera.heading), pitch: 0, eyeHeight })
+    if (opts?.enableViewfinder) appState().set({ viewfinder: true })
+    return this.camera.goToEyeLevel(spot, { heading, pitch: Math.max(-85, Math.min(85, pitch)), eyeHeight })
+  }
+
+  /** Frames both Camera and Subject alignment pins from an overview vantage. */
+  frameAlignment(): Promise<void> {
+    const a = this.alignment.cameraSpot
+    const b = this.alignment.subjectSpot
+    if (!a && !b) return Promise.resolve()
+    if (a && !b) {
+      const c = cartographicDeg(a)
+      return c ? this.camera.flyToLocation(c.latitude, c.longitude, { range: 2000, groundHeight: c.height }) : Promise.resolve()
+    }
+    if (!a && b) {
+      const c = cartographicDeg(b)
+      return c ? this.camera.flyToLocation(c.latitude, c.longitude, { range: 2000, groundHeight: c.height }) : Promise.resolve()
+    }
+    const sphere = BoundingSphere.fromPoints([a!, b!])
+    const c = cartographicDeg(sphere.center)
+    if (!c) return Promise.resolve()
+    const { camera, subject } = appState().alignment
+    const ground = ((camera?.groundHeight ?? 0) + (subject?.groundHeight ?? 0)) / 2
+    return this.camera.flyToLocation(c.latitude, c.longitude, { range: Math.max(sphere.radius * 2.6, 1200), groundHeight: ground, pitch: -42 })
+  }
+
+  /** Uses the current inspect marker or search pin as the alignment Camera or Subject pin. */
+  useActivePinForAlignment(role: 'camera' | 'subject'): void {
+    const s = appState()
+    const spot = this.inspector.point ?? this.searchMarker.point
+    if (!spot) {
+      s.showToast('No inspected point or search pin on the map.')
+      return
+    }
+    const label = this.inspector.point ? undefined : s.destination?.name
+    if (role === 'camera') void this.alignment.setCamera(spot, label)
+    else void this.alignment.setSubject(spot, label)
+  }
+
+  /** Uses the camera's current ground footprint as the alignment Camera pin. */
+  useCurrentCameraForAlignment(): void {
+    const cam = this.scene.camera
+    const c = Cartographic.fromCartesian(cam.positionWC)
+    if (!c) return
+    void this.alignment.setCameraFromCoords(toDeg(c.longitude), toDeg(c.latitude), surfaceHeight(this.scene, toDeg(c.longitude), toDeg(c.latitude)) ?? c.height)
   }
 
   startProfile(): void {

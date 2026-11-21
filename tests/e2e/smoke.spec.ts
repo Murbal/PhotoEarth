@@ -1304,6 +1304,74 @@ test('saved locations persist across a restart', async () => {
   expect(lon).toBeLessThan(-119)
 })
 
+test('shot alignment planner computes geometry, line of sight, and reverse Sun/Moon dates', async () => {
+  // X opens the Shot Alignment panel; Esc closes pick mode first, then the panel.
+  await page.keyboard.press('x')
+  const panel = page.locator('.alignment-panel')
+  await expect(panel).toBeVisible()
+  await expect(page.locator('.chip-row')).toContainText('place the Camera pin')
+
+  // Populate a Camera → Subject shot facing ~255° WSW at +3.5° elevation in Zurich, with an obstructing ridge.
+  await page.evaluate(() => {
+    const e = (window as unknown as { __photoearth: any }).__photoearth
+    const cam = { latitude: 47.3769, longitude: 8.5417, groundHeight: 450, msl: 400, label: 'Overlook' }
+    const sub = { latitude: 47.3536, longitude: 8.4136, groundHeight: 1068, msl: 1018, label: 'Ridge peak' }
+    const samples = Array.from({ length: 101 }, (_, i) => {
+      const t = i / 100
+      const dist = t * 10_000
+      // Ridge sticks up 60 m above the straight line around 4 km.
+      const ridge = 140 * Math.exp(-(((dist - 4000) / 350) ** 2))
+      return {
+        latitude: cam.latitude + (sub.latitude - cam.latitude) * t,
+        longitude: cam.longitude + (sub.longitude - cam.longitude) * t,
+        distance: dist,
+        height: 450 + 618 * t - 80 + ridge
+      }
+    })
+    e.alignment.debugSetPins(cam, sub, samples)
+  })
+
+  await expect(panel).toContainText('Overlook')
+  await expect(panel).toContainText('Ridge peak')
+  await expect(panel.locator('.align-los')).toContainText('Obstructed')
+  await expect(panel).toContainText('Sun / Moon disc at subject')
+
+  // Clear LOS updates the badge and removes obstruction.
+  await page.evaluate(() => {
+    const e = (window as unknown as { __photoearth: any }).__photoearth
+    const cam = { latitude: 47.3769, longitude: 8.5417, groundHeight: 450, msl: 400, label: 'Overlook' }
+    const sub = { latitude: 47.3536, longitude: 8.4136, groundHeight: 1068, msl: 1018, label: 'Ridge peak' }
+    const samples = Array.from({ length: 101 }, (_, i) => {
+      const t = i / 100
+      return {
+        latitude: cam.latitude + (sub.latitude - cam.latitude) * t,
+        longitude: cam.longitude + (sub.longitude - cam.longitude) * t,
+        distance: t * 10_000,
+        height: 400
+      }
+    })
+    e.alignment.debugSetPins(cam, sub, samples)
+  })
+  await expect(panel.locator('.align-los')).toContainText('Clear')
+
+  // Reverse search produces Sun and Moon matches; clicking one sets the simulation clock.
+  const results = panel.locator('.align-result')
+  await expect.poll(() => results.count()).toBeGreaterThan(2)
+
+  // Switch body filter to Sun only and click the first result.
+  await panel.getByRole('group', { name: 'Celestial body' }).getByRole('button', { name: 'Sun' }).click()
+  await expect.poll(() => results.count()).toBeGreaterThan(0)
+  const beforeUtc = await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.sun.utc)
+  await results.first().locator('.align-result-main').click()
+  await expect(results.first()).toHaveClass(/active/)
+  const afterUtc = await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.sun.utc)
+  expect(afterUtc).not.toBe(beforeUtc)
+
+  // Close with X.
+  await page.keyboard.press('x')
+  await expect(panel).toBeHidden()
+})
+
 test('no runtime errors', () => {
   expect(errors).toEqual([])
 })

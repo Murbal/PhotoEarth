@@ -158,6 +158,7 @@ export function RightRail() {
   const set = useAppStore((s) => s.set)
   const profileOn = useAppStore((s) => s.profile.active || s.profile.samples.length > 0)
   const horizonOpen = useAppStore((s) => s.horizon.open)
+  const alignmentOpen = useAppStore((s) => s.alignment.open)
   const eyeLevel = useAppStore((s) => s.eyeLevel)
   const flyMode = useAppStore((s) => s.flyMode)
   // Where Eye level stands (Engine.eyeLevelSpot): the inspect marker, then the search pin.
@@ -201,6 +202,14 @@ export function RightRail() {
           active={horizonOpen}
           pressed={horizonOpen}
           onClick={() => getEngine()?.toggleHorizon()}
+        />
+        <RailButton
+          icon="alignment"
+          label={alignmentOpen ? 'Shot alignment: close' : 'Shot alignment: camera → subject & sun/moon date finder'}
+          keys="X"
+          active={alignmentOpen}
+          pressed={alignmentOpen}
+          onClick={() => getEngine()?.toggleAlignment()}
         />
         <RailButton
           icon="viewfinder"

@@ -881,7 +881,7 @@ export class CameraController {
    * here". Stands at `spot` when given (a dropped pin), else at the point under the cursor
    * (or screen center). `look` (degrees) faces a given direction instead of keeping the heading.
    */
-  async goToEyeLevel(spot?: Cartesian3, look?: { heading: number; pitch: number }): Promise<void> {
+  async goToEyeLevel(spot?: Cartesian3, look?: { heading: number; pitch: number; eyeHeight?: number }): Promise<void> {
     this.endFollow()
     let hit = spot
     if (!hit) {
@@ -910,19 +910,20 @@ export class CameraController {
         spot: Cartesian3.fromRadians(c.longitude, c.latitude, ground)
       }
     }
+    const heightOffset = look?.eyeHeight !== undefined && Number.isFinite(look.eyeHeight) ? Math.max(0.2, look.eyeHeight) : EYE_HEIGHT
     const controller = this.scene.screenSpaceCameraController
-    controller.minimumZoomDistance = EYE_HEIGHT * 0.8
+    controller.minimumZoomDistance = Math.min(EYE_HEIGHT, heightOffset) * 0.8
     // Keep the heading so the view looks across the point, in the direction you were facing.
     const arrived = await new Promise<boolean>((resolve) => {
       cam.flyTo({
-        destination: Cartesian3.fromRadians(c.longitude, c.latitude, ground + EYE_HEIGHT),
+        destination: Cartesian3.fromRadians(c.longitude, c.latitude, ground + heightOffset),
         orientation: look ? { heading: toRad(look.heading), pitch: toRad(look.pitch), roll: 0 } : { heading: cam.heading, pitch: 0, roll: 0 },
         duration: 1.6,
         complete: () => resolve(true),
         cancel: () => resolve(false)
       })
     })
-    if (arrived) this.setEyeLevel(true)
+    if (arrived && heightOffset <= EYE_LEVEL_MAX_AGL) this.setEyeLevel(true)
     else controller.minimumZoomDistance = this.settings.minClearance
   }
 

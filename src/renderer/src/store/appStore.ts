@@ -4,12 +4,21 @@ import { NO_FILTER, type LocationFilter } from '@shared/locations'
 import { defaultSettings } from '@shared/settings'
 import type { ApiKeys, Bookmark, MapMode, SavedProfile, SecretsStatus, Settings } from '@shared/types'
 import type { BodyDay } from '../lib/celestial'
+import {
+  DEFAULT_EYE_HEIGHT,
+  type AlignmentBodyFilter,
+  type AlignmentGeometry,
+  type AlignmentPin,
+  type LineOfSightResult,
+  type MoonSkyFilter
+} from '../lib/alignment'
 import type { SkyEstimate } from '../lib/skyBrightness'
 import type { SunlitSpan } from '../lib/horizon'
 import type { MoonState } from '../lib/moon'
 import type { Horizon, SkylinePeak } from '../lib/panorama'
 import type { ProfileSample, ProfileStats, GeoPoint } from '../lib/profile'
 import type { BandSegment } from '../lib/sun'
+import { addDays } from '../lib/time'
 import type { Forecast } from '../lib/weather'
 
 export type BannerLevel = 'error' | 'warning' | 'info'
@@ -129,6 +138,42 @@ export interface HorizonState {
   error: string | null
 }
 
+export type AlignmentPickMode = 'camera' | 'subject' | null
+export type AlignmentRangePreset = '30d' | '90d' | '1y' | '2y' | 'custom'
+
+export interface AlignmentFilters {
+  bodies: AlignmentBodyFilter
+  rangePreset: AlignmentRangePreset
+  /** Inclusive local start date (YYYY-MM-DD). */
+  startDate: string
+  /** Inclusive local end date (YYYY-MM-DD, used directly in custom mode). */
+  endDate: string
+  azimuthTolerance: number
+  altitudeTolerance: number
+  /** Minimum Moon illumination percentage (0–100). */
+  minMoonIllumination: number
+  moonSkyFilter: MoonSkyFilter
+}
+
+export interface AlignmentState {
+  open: boolean
+  pickMode: AlignmentPickMode
+  camera: AlignmentPin | null
+  subject: AlignmentPin | null
+  /** Camera eye / tripod height above ground, meters. */
+  eyeHeight: number
+  /** Optional direct target direction (e.g. from Horizon Panorama without a subject pin). */
+  manualDirection: { azimuth: number; altitude: number } | null
+  geometry: AlignmentGeometry | null
+  los: LineOfSightResult | null
+  losLoading: boolean
+  losSource: 'terrain' | 'tiles' | null
+  filters: AlignmentFilters
+  selectedMatchId: string | null
+  /** Whether clicking an alignment result also frames the shot from the Camera pin. */
+  frameOnSelect: boolean
+}
+
 export interface InspectInfo {
   longitude: number
   latitude: number
@@ -212,6 +257,37 @@ const emptyProfile: ProfileState = {
   savedId: null
 }
 
+function defaultAlignmentFilters(startDate: string): AlignmentFilters {
+  return {
+    bodies: 'both',
+    rangePreset: '1y',
+    startDate,
+    endDate: addDays(startDate, 365),
+    azimuthTolerance: 1.0,
+    altitudeTolerance: 1.0,
+    minMoonIllumination: 0,
+    moonSkyFilter: 'any'
+  }
+}
+
+function emptyAlignment(startDate: string): AlignmentState {
+  return {
+    open: false,
+    pickMode: null,
+    camera: null,
+    subject: null,
+    eyeHeight: DEFAULT_EYE_HEIGHT,
+    manualDirection: null,
+    geometry: null,
+    los: null,
+    losLoading: false,
+    losSource: null,
+    filters: defaultAlignmentFilters(startDate),
+    selectedMatchId: null,
+    frameOnSelect: false
+  }
+}
+
 export interface AppState {
   booted: boolean
   settings: Settings
@@ -233,6 +309,7 @@ export interface AppState {
   onboardingOpen: boolean
   profile: ProfileState
   horizon: HorizonState
+  alignment: AlignmentState
   inspect: InspectInfo | null
   spotSun: SpotSunInfo | null
   weather: WeatherState
@@ -271,6 +348,9 @@ export interface AppState {
   resetProfile: () => void
   patchHorizon: (patch: Partial<HorizonState>) => void
   resetHorizon: () => void
+  patchAlignment: (patch: Partial<AlignmentState>) => void
+  patchAlignmentFilters: (patch: Partial<AlignmentFilters>) => void
+  resetAlignment: () => void
   showToast: (message: string) => void
 }
 
@@ -307,6 +387,7 @@ export const useAppStore = create<AppState>()(
     onboardingOpen: false,
     profile: emptyProfile,
     horizon: emptyHorizon,
+    alignment: emptyAlignment(todayIn().date),
     inspect: null,
     spotSun: null,
     weather: { status: 'idle', forecast: null, error: null },
@@ -344,6 +425,18 @@ export const useAppStore = create<AppState>()(
     resetProfile: () => set({ profile: emptyProfile }),
     patchHorizon: (patch) => set((s) => ({ horizon: { ...s.horizon, ...patch } })),
     resetHorizon: () => set({ horizon: emptyHorizon }),
+    patchAlignment: (patch) => set((s) => ({ alignment: { ...s.alignment, ...patch } })),
+    patchAlignmentFilters: (patch) =>
+      set((s) => ({ alignment: { ...s.alignment, filters: { ...s.alignment.filters, ...patch } } })),
+    resetAlignment: () =>
+      set((s) => ({
+        alignment: {
+          ...emptyAlignment(s.sim.date),
+          filters: { ...s.alignment.filters },
+          eyeHeight: s.alignment.eyeHeight,
+          frameOnSelect: s.alignment.frameOnSelect
+        }
+      })),
     showToast: (message) => {
       const id = ++toastId
       set({ toast: { id, message } })

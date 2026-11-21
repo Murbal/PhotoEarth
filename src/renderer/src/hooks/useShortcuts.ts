@@ -35,7 +35,9 @@ export function useShortcuts(): void {
         else if (s.shortcutsOpen) s.set({ shortcutsOpen: false })
         else if (s.settingsOpen) s.set({ settingsOpen: false })
         else if (s.profile.active) getEngine()?.profile.cancelOrFinish()
+        else if (s.alignment.open && s.alignment.pickMode !== null) getEngine()?.alignment.setPickMode(null)
         else if (s.horizon.open) getEngine()?.horizon.close()
+        else if (s.alignment.open) getEngine()?.alignment.close()
         else if (s.inspect) getEngine()?.inspector.clear()
         else if (s.destination) getEngine()?.searchMarker.clear()
         return
@@ -88,6 +90,7 @@ export function useShortcuts(): void {
         g: 'eye-level',
         p: 'profile-start',
         h: 'horizon-panorama',
+        x: 'toggle-alignment',
         t: 'toggle-time-panel',
         l: 'toggle-elevation-panel',
         m: 'toggle-place-labels',
