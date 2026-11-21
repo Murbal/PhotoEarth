@@ -116,6 +116,17 @@ export interface LightPollutionSettings {
   source: LightPollutionSourceId
 }
 
+/** Map mode (§5.5): a full-window 2D map, shown instead of the 3D view while `open`. */
+export interface MapModeSettings {
+  open: boolean
+  /** Center and fractional Web Mercator zoom of the map. */
+  longitude: number
+  latitude: number
+  zoom: number
+  /** satellite is drawn with roads and labels (hybrid). */
+  type: ImageryType
+}
+
 /** Horizon panorama: what the strip chart draws over the skyline. */
 export interface HorizonSettings {
   /** The moon's path for the same date. */
@@ -160,7 +171,9 @@ export interface Settings {
   quality: QualitySettings
   navigation: NavigationSettings
   lastCamera: CameraView | null
+  /** The last 3D mode; Map mode opens over it and returns to it (§5.5). */
   lastMode: MapMode
+  map: MapModeSettings
   imagery: ImageryType
   /** Google place names on the map (a labels-only Map Tiles layer). */
   placeLabels: boolean
@@ -465,6 +478,7 @@ export type MenuCommand =
   | 'open-shortcuts'
   | 'mode-photorealistic'
   | 'mode-elevation'
+  | 'mode-map'
   | 'toggle-fps'
   | 'save-bookmark'
   | 'toggle-bookmarks'

@@ -51,6 +51,8 @@ export const COMPOSITION_GUIDES: readonly CompositionGuide[] = ['none', 'thirds'
 export const FOCAL_RANGE = { min: 8, max: 800 } as const
 /** Custom sensor dimension range, mm. */
 export const SENSOR_SIZE_RANGE = { min: 1, max: 120 } as const
+/** Map mode's zoom range (Web Mercator, fractional). */
+export const MAP_ZOOM_RANGE = { min: 2, max: 20 } as const
 export const VIEWSHED_COLOR_MODES: readonly ViewshedColorMode[] = ['distance', 'solid']
 /** Viewshed analysis radius range, meters (1 km – 100 km). */
 export const VIEWSHED_RADIUS_RANGE = { min: 1000, max: 100000 } as const
@@ -107,6 +109,7 @@ export function defaultSettings(): Settings {
     },
     lastCamera: null,
     lastMode: 'photorealistic',
+    map: { open: false, longitude: DEFAULT_VIEW.longitude, latitude: DEFAULT_VIEW.latitude, zoom: 12, type: 'roadmap' },
     imagery: 'satellite',
     placeLabels: true,
     elevation: {
@@ -217,6 +220,7 @@ export function sanitizeSettings(raw: Json): Settings {
   const astro = isObject(r.astro) ? r.astro : {}
   const vs = isObject(r.viewshed) ? r.viewshed : {}
   const lp = isObject(r.lightPollution) ? r.lightPollution : {}
+  const map = isObject(r.map) ? r.map : {}
   const modes: readonly MapMode[] = ['photorealistic', 'elevation']
   const cascades = o.shadowCascades === 1 || o.shadowCascades === 4 ? o.shadowCascades : null
 
@@ -253,6 +257,13 @@ export function sanitizeSettings(raw: Json): Settings {
     },
     lastCamera: sanitizeCameraView(r.lastCamera),
     lastMode: oneOf(r.lastMode, modes, d.lastMode),
+    map: {
+      open: bool(map.open, d.map.open),
+      longitude: num(map.longitude, d.map.longitude, -180, 180),
+      latitude: num(map.latitude, d.map.latitude, -85, 85),
+      zoom: num(map.zoom, d.map.zoom, MAP_ZOOM_RANGE.min, MAP_ZOOM_RANGE.max),
+      type: oneOf(map.type, IMAGERY_TYPES, d.map.type)
+    },
     imagery: oneOf(r.imagery, IMAGERY_TYPES, d.imagery),
     placeLabels: bool(r.placeLabels, d.placeLabels),
     elevation: {

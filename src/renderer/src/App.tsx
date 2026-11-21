@@ -5,6 +5,7 @@ import { CommandPalette } from './components/CommandPalette'
 import { ElevationPanel } from './components/ElevationPanel'
 import { HorizonPanel } from './components/HorizonPanel'
 import { LocationsPanel, PhotoViewer } from './components/LocationsPanel'
+import { MapMode } from './components/MapMode'
 import { MapView } from './components/MapView'
 import { Onboarding } from './components/Onboarding'
 import { Crosshair, FpsIndicator, InspectCard, LoadingBar, StatusChips, Toast } from './components/Overlays'
@@ -85,6 +86,8 @@ function useMenuCommands(): void {
             return runCommand('mode-photorealistic')
           case 'mode-elevation':
             return runCommand('mode-elevation')
+          case 'mode-map':
+            return runCommand('mode-map')
           case 'toggle-fps':
             return runCommand('toggle-fps')
           case 'save-bookmark':
@@ -157,6 +160,7 @@ export function App() {
   const booted = useAppStore((s) => s.booted)
   const theme = useAppStore((s) => s.settings.theme)
   const modalOpen = useAppStore((s) => s.paletteOpen || s.settingsOpen || s.shortcutsOpen || s.onboardingOpen || !!s.photoViewer)
+  const mapOpen = useAppStore((s) => s.settings.map.open)
   const overlayRef = useRef<HTMLDivElement>(null)
   const stackRef = useRef<HTMLDivElement>(null)
   const [creditEl, setCreditEl] = useState<HTMLDivElement | null>(null)
@@ -187,9 +191,11 @@ export function App() {
 
   return (
     <>
-      {booted && <MapView creditContainer={creditEl} inert={modalOpen} />}
-      {/* While a dialog is open, everything behind it is inert: no focus, no clicks. */}
-      <div ref={overlayRef} className="overlay-root" inert={modalOpen}>
+      {booted && <MapView creditContainer={creditEl} inert={modalOpen || mapOpen} />}
+      {booted && <MapMode />}
+      {/* While a dialog is open, everything behind it is inert: no focus, no clicks. 3D-only
+          overlays are hidden in Map mode (styles: .overlay-root[data-map]). */}
+      <div ref={overlayRef} className="overlay-root" inert={modalOpen} data-map={mapOpen ? '' : undefined}>
         <ViewfinderFrame />
         <LoadingBar />
         <TopBar />

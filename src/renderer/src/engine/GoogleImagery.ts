@@ -9,24 +9,8 @@ import {
 } from 'cesium'
 import { classifyGoogleError } from '@shared/apiErrors'
 import type { ApiCheck, ImageryType } from '@shared/types'
+import { createTileSession, renewalDelay, tileTemplate, viewportCopyright, viewportKey, type TileSession } from './googleTiles'
 import { httpStatusOf } from './util'
-
-const ENDPOINT = 'https://tile.googleapis.com'
-
-interface Session {
-  token: string
-  /** Epoch ms. */
-  expiry: number
-  tileWidth: number
-  tileHeight: number
-}
-
-function sessionBody(mapType: ImageryType): Record<string, unknown> {
-  const body: Record<string, unknown> = { mapType, language: 'en-US', region: 'US' }
-  // The terrain map type requires the roadmap layer.
-  if (mapType === 'terrain') body.layerTypes = ['layerRoadmap']
-  return body
-}
 
 /**
  * Google 2D Tiles draped on the terrain globe, using the session-token flow.
@@ -35,7 +19,7 @@ function sessionBody(mapType: ImageryType): Record<string, unknown> {
  */
 export class GoogleImagery {
   layer: ImageryLayer | null = null
-  private session: Session | null = null
+  private session: TileSession | null = null
   private key: string | null = null
   private mapType: ImageryType = 'satellite'
   private renewTimer: number | null = null
@@ -59,34 +43,16 @@ export class GoogleImagery {
     await this.rebuild()
   }
 
-  private async createSession(): Promise<Session> {
-    const res = await fetch(`${ENDPOINT}/v1/createSession?key=${encodeURIComponent(this.key ?? '')}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(sessionBody(this.mapType))
-    }).catch(() => null)
-    if (!res) throw { statusCode: 0, response: '' }
-    const text = await res.text()
-    if (!res.ok) throw { statusCode: res.status, response: text }
-    const json = JSON.parse(text) as { session: string; expiry: string; tileWidth: number; tileHeight: number }
-    return {
-      token: json.session,
-      expiry: Number(json.expiry) * 1000,
-      tileWidth: json.tileWidth || 256,
-      tileHeight: json.tileHeight || 256
-    }
-  }
-
   private async rebuild(): Promise<void> {
     const generation = ++this.generation
     this.removeLayer()
     if (!this.key) return
     try {
-      const session = await this.createSession()
+      const session = await createTileSession(this.key, this.mapType)
       if (generation !== this.generation) return
       this.session = session
       const provider = new UrlTemplateImageryProvider({
-        url: `${ENDPOINT}/v1/2dtiles/{z}/{x}/{y}?session=${encodeURIComponent(session.token)}&key=${encodeURIComponent(this.key)}`,
+        url: tileTemplate(session, this.key),
         tileWidth: session.tileWidth,
         tileHeight: session.tileHeight,
         maximumLevel: 22,
@@ -115,9 +81,7 @@ export class GoogleImagery {
   private scheduleRenewal(): void {
     if (this.renewTimer !== null) window.clearTimeout(this.renewTimer)
     if (!this.session) return
-    // Renew an hour early; setTimeout can't take more than ~24.8 days.
-    const delay = Math.min(Math.max(this.session.expiry - Date.now() - 3600_000, 60_000), 2_000_000_000)
-    this.renewTimer = window.setTimeout(() => void this.renew(), delay)
+    this.renewTimer = window.setTimeout(() => void this.renew(), renewalDelay(this.session))
   }
 
   private async renew(): Promise<void> {
@@ -147,32 +111,15 @@ export class GoogleImagery {
     const rect = this.scene.camera.computeViewRectangle(this.scene.ellipsoid)
     if (!rect) return
     const deg = CesiumMath.toDegrees
-    const north = Math.min(85, deg(rect.north))
-    const south = Math.max(-85, deg(rect.south))
-    const west = deg(rect.west)
-    const east = deg(rect.east)
-    const span = Math.max(1e-6, (east - west + 360) % 360 || 360)
-    const zoom = Math.max(0, Math.min(22, Math.round(Math.log2((360 * this.scene.canvas.clientWidth) / 256 / span))))
-    const q = [north, south, east, west].map((v) => v.toFixed(4)).join(',') + `@${zoom}`
+    const bounds = { north: deg(rect.north), south: deg(rect.south), west: deg(rect.west), east: deg(rect.east) }
+    const span = Math.max(1e-6, (bounds.east - bounds.west + 360) % 360 || 360)
+    const zoom = Math.round(Math.log2((360 * this.scene.canvas.clientWidth) / 256 / span))
+    const q = viewportKey(bounds, zoom)
     if (q === this.lastAttributionQuery) return
     this.lastAttributionQuery = q
-    const params = new URLSearchParams({
-      session: this.session.token,
-      key: this.key,
-      zoom: String(zoom),
-      north: north.toFixed(6),
-      south: south.toFixed(6),
-      east: east.toFixed(6),
-      west: west.toFixed(6)
-    })
-    try {
-      const res = await fetch(`${ENDPOINT}/tile/v1/viewport?${params.toString()}`)
-      if (!res.ok) return
-      const json = (await res.json()) as { copyright?: string }
-      this.setCredit(json.copyright ? json.copyright : null)
-    } catch {
-      /* attribution refresh is best effort; the Google logo credit stays on screen */
-    }
+    const copyright = await viewportCopyright(this.session, this.key, bounds, zoom)
+    // undefined: the request failed (best effort); the Google logo credit stays on screen.
+    if (copyright !== undefined) this.setCredit(copyright)
   }
 
   private setCredit(text: string | null): void {

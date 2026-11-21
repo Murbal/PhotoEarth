@@ -1100,6 +1100,363 @@ test('weather forecast: cloud bands, sunrise and sunset outlook, jumping to a su
   await panel.getByRole('button', { name: 'Now' }).click()
 })
 
+/** Answers Map Tiles API requests (session, tiles, viewport copyright) so Map mode runs without a key. */
+async function mockMapTiles(): Promise<{ sessions: Array<Record<string, unknown>>; tiles: string[]; unroute: () => Promise<void> }> {
+  const png = await testPng(256, 256)
+  const sessions: Array<Record<string, unknown>> = []
+  const tiles: string[] = []
+  const pattern = /^https:\/\/(tile\.googleapis\.com|assets\.ion\.cesium\.com\/google-credit\.png)/
+  await page.route(pattern, (route) => {
+    const url = route.request().url()
+    if (url.includes('/v1/createSession')) {
+      sessions.push(JSON.parse(route.request().postData() ?? '{}'))
+      const expiry = String(Math.floor(Date.now() / 1000) + 14 * 86_400)
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ session: `s${sessions.length}`, expiry, tileWidth: 256, tileHeight: 256 }) })
+    }
+    if (url.includes('/tile/v1/viewport')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ copyright: 'Map data ©2026 Test', maxZoomRects: [] }) })
+    }
+    if (url.includes('/v1/2dtiles/')) tiles.push(url)
+    return route.fulfill({ status: 200, contentType: 'image/png', body: png })
+  })
+  return { sessions, tiles, unroute: () => page.unroute(pattern) }
+}
+
+const mapView = () => page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.mapView() as { longitude: number; latitude: number; zoom: number })
+const view3d = () => page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.currentView())
+const set3dView = (v: { longitude: number; latitude: number; height: number; heading: number; pitch: number }) =>
+  page.evaluate((v) => {
+    const e = (window as unknown as { __photoearth: any }).__photoearth
+    e.camera.setView({ ...v, roll: 0 })
+    e.scene.render()
+    e.readouts.refresh()
+  }, v)
+/** Waits until the map has stood still and saved its view. */
+const settledMap = async () => {
+  await expect.poll(async () => {
+    const a = await mapView()
+    await page.waitForTimeout(350)
+    const b = await mapView()
+    const saved = (await page.evaluate(() => window.photoearth.settings.get())).map
+    return Math.abs(a.longitude - b.longitude) + Math.abs(a.latitude - b.latitude) + Math.abs(a.zoom - b.zoom) + Math.abs(saved.zoom - b.zoom)
+  }).toBeLessThan(1e-9)
+  return mapView()
+}
+
+test('Map mode: a full-window Google map over the paused 3D view; drag, wheel, keys and search move it; 3D opens at its center', () => awayFromView(async () => {
+  const mock = await mockMapTiles()
+  try {
+    // No search pin left from earlier tests. 3D: 4 km up over flat ground (no terrain
+    // token), looking east 30° down.
+    await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.searchMarker.clear())
+    await set3dView({ longitude: 7.75, latitude: 46, height: 4000, heading: 90, pitch: -30 })
+    await page.getByRole('tab', { name: 'Map' }).click()
+    const map = page.getByTestId('map-mode')
+    await expect(map).toBeVisible()
+    await expect(page.getByRole('tab', { name: 'Map' })).toHaveAttribute('aria-selected', 'true')
+    await expect.poll(async () => (await page.evaluate(() => window.photoearth.settings.get())).map.open).toBe(true)
+    // Cesium's render loop stops under the map.
+    expect(await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.widget.useDefaultRenderLoop)).toBe(false)
+
+    // Opens on the 3D view center, 4000 / tan 30° = 6.9 km east of the camera, not on the
+    // camera. (The center is picked on the globe, whose still-coarse tiles sag below the
+    // ellipsoid here and push the hit up to ~1.5 km further.)
+    const opened = await mapView()
+    const metersEast = (opened.longitude - 7.75) * 111_320 * Math.cos((46 * Math.PI) / 180)
+    expect(metersEast).toBeGreaterThan(6928 - 300)
+    expect(metersEast).toBeLessThan(6928 + 2000)
+    expect(Math.abs(opened.latitude - 46) * 111_320).toBeLessThan(300)
+
+    // Tiles from Map mode's own session (no key in the test: hand the engine one).
+    await page.evaluate(async () => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      e.keys.googleApiKey = 'test-key'
+      await e.mapTiles.configure('test-key', 'roadmap')
+    })
+    const tileState = () =>
+      page.evaluate(() => (window as unknown as { __photoearthMap: any }).__photoearthMap.tileState() as { layers: number; tiles: number; ready: number; urls: string[] })
+    await expect.poll(async () => (await tileState()).ready).toBeGreaterThan(4)
+    expect(mock.sessions.at(-1)).toMatchObject({ mapType: 'roadmap' })
+    for (const src of (await tileState()).urls) {
+      expect(src).toMatch(/^https:\/\/tile\.googleapis\.com\/v1\/2dtiles\/\d+\/\d+\/\d+\?session=s\d+&key=test-key$/)
+    }
+    const attribution = page.getByTestId('map-attribution')
+    await expect(attribution.locator('img[alt="Google"]')).toBeVisible()
+    await expect(attribution).toContainText('Map data ©2026 Test')
+    // The 3D camera is marked, facing its heading.
+    await expect(page.locator('.map-marker')).toHaveAttribute('transform', /rotate\(90\.0\)$/)
+
+    // Nothing renders in 3D while the map moves.
+    await page.evaluate(() => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      const g = window as unknown as { __renders: number; __stopCounting: () => void }
+      g.__renders = 0
+      g.__stopCounting = e.scene.postRender.addEventListener(() => g.__renders++)
+    })
+
+    // Drag: the ground follows the pointer (a pause before release: no throw).
+    const start = await settledMap()
+    await page.mouse.move(700, 450)
+    await page.mouse.down()
+    for (let i = 1; i <= 10; i++) await page.mouse.move(700 + i * 20, 450)
+    await page.waitForTimeout(120)
+    await page.mouse.up()
+    const dragged = await settledMap()
+    expect(dragged.longitude - start.longitude).toBeCloseTo((-200 / (256 * 2 ** start.zoom)) * 360, 6)
+    expect(dragged.latitude).toBeCloseTo(start.latitude, 9)
+
+    // Wheel: one notch in is one zoom level, about the cursor.
+    await page.mouse.move(400, 300)
+    await page.mouse.wheel(0, -100)
+    const zoomed = await settledMap()
+    expect(zoomed.zoom).toBeCloseTo(dragged.zoom + 1, 3)
+
+    // Arrow keys pan (right: the view moves east).
+    await page.keyboard.down('ArrowRight')
+    await page.waitForTimeout(300)
+    await page.keyboard.up('ArrowRight')
+    expect((await settledMap()).longitude).toBeGreaterThan(zoomed.longitude)
+
+    // No flashing while zooming across tile levels, even a quick zoom out by two: the whole map
+    // stays covered by visible tiles the whole time (previous levels and the coarse backdrop
+    // stay underneath until the new level covers the view).
+    // What each frame drew into the canvas, as screen rectangles.
+    await page.evaluate(() => (window as unknown as { __photoearthMap: any }).__photoearthMap.drawnTiles())
+    await page.waitForTimeout(300)
+    const sampling = page.evaluate(async () => {
+      const map = (window as unknown as { __photoearthMap: any }).__photoearthMap
+      const root = document.querySelector('.map-mode') as HTMLElement
+      const W = root.clientWidth
+      const H = root.clientHeight
+      const points: Array<[number, number]> = []
+      for (let i = 0; i < 9; i++) for (let j = 0; j < 9; j++) points.push([W * (0.05 + 0.1125 * i), H * (0.05 + 0.1125 * j)])
+      const visible = () => map.drawnTiles() as Array<{ left: number; top: number; right: number; bottom: number }>
+      let worst = 0
+      let samples = 0
+      const start = performance.now()
+      while (performance.now() - start < 4200) {
+        const rects = visible()
+        const missing = points.filter(([x, y]) => !rects.some((r) => x >= r.left && x < r.right && y >= r.top && y < r.bottom)).length
+        worst = Math.max(worst, missing)
+        samples++
+        await new Promise((r) => setTimeout(r, 8))
+      }
+      return { worst, samples }
+    })
+    await page.mouse.move(720, 450)
+    for (const dy of [-100, -100, 100, 100, 200]) {
+      await page.mouse.wheel(0, dy)
+      await page.waitForTimeout(700)
+    }
+    const coverage = await sampling
+    expect(coverage.samples).toBeGreaterThan(50)
+    expect(coverage.worst).toBe(0)
+    await settledMap()
+
+    expect(await page.evaluate(() => (window as unknown as { __renders: number }).__renders)).toBe(0)
+    await page.evaluate(() => (window as unknown as { __stopCounting: () => void }).__stopCounting())
+
+    // Search moves the map (with a pin), not the 3D camera.
+    const before3d = await view3d()
+    await page.keyboard.press('ControlOrMeta+k')
+    await page.keyboard.type('46.5, 8.0')
+    await page.keyboard.press('Enter')
+    await expect(page.locator('.map-pin.destination')).toHaveCount(1)
+    // (The map eases there; in this hidden test window frames are throttled.)
+    await expect.poll(async () => Math.abs((await mapView()).latitude - 46.5), { timeout: 10_000 }).toBeLessThan(1e-4)
+    const searched = await settledMap()
+    expect(searched.latitude).toBeCloseTo(46.5, 4)
+    expect(searched.longitude).toBeCloseTo(8.0, 4)
+    expect((await view3d()).longitude).toBeCloseTo(before3d.longitude, 9)
+    // The pin sits on the place: at the map's center.
+    const pinCenter = async () => {
+      const r = await page.locator('.map-pin.destination .dot').boundingBox()
+      return r ? Math.hypot(r.x + r.width / 2 - 720, r.y + r.height / 2 - 450) : Infinity
+    }
+    await expect.poll(pinCenter).toBeLessThan(3)
+
+    // Back to 3D: looking at the map's center with the same heading and pitch, from the
+    // distance at which the scales match.
+    await page.getByRole('tab', { name: 'Photorealistic' }).click()
+    await expect(map).toHaveCount(0)
+    expect(await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.widget.useDefaultRenderLoop)).toBe(true)
+    const back = await view3d()
+    expect(back.heading).toBeCloseTo(90, 3)
+    expect(back.pitch).toBeCloseTo(-30, 3)
+    expect(back.latitude).toBeCloseTo(46.5, 2)
+    // Standing west of the center (looking east), at range · cos 30° on flat ground.
+    const { width, fov } = await page.evaluate(() => {
+      const scene = (window as unknown as { __photoearth: any }).__photoearth.scene
+      return { width: scene.canvas.clientWidth as number, fov: scene.camera.frustum.fov as number }
+    })
+    const range = ((156543.03392 * Math.cos((46.5 * Math.PI) / 180)) / 2 ** searched.zoom) * width / (2 * Math.tan(fov / 2))
+    const west = (8.0 - back.longitude) * 111_320 * Math.cos((46.5 * Math.PI) / 180)
+    expect(west / (range * Math.cos(Math.PI / 6))).toBeCloseTo(1, 1)
+    // Above the ground at the center as the engine knows it (no terrain token here: the globe).
+    const ground = await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.groundHeight(8.0, 46.5) as Promise<number>)
+    expect((back.height - ground) / (range * Math.sin(Math.PI / 6))).toBeCloseTo(1, 1)
+
+    // Opening the map and closing it without moving it keeps the 3D view exactly.
+    await set3dView({ longitude: 7.75, latitude: 46, height: 4000, heading: 200, pitch: -50 })
+    const exact = await view3d()
+    await page.keyboard.press('3')
+    await expect(map).toBeVisible()
+    await page.keyboard.press('1')
+    await expect(map).toHaveCount(0)
+    const restored = await view3d()
+    for (const k of ['longitude', 'latitude', 'height', 'heading', 'pitch'] as const) expect(restored[k]).toBeCloseTo(exact[k], 6)
+  } finally {
+    await page.evaluate(async () => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      if (window.photoearth && (await window.photoearth.settings.get()).map.open) await e.setMode('photorealistic')
+      e.searchMarker.clear()
+      e.mapTiles.destroy()
+      e.keys.googleApiKey = null
+    })
+    await mock.unroute()
+  }
+}))
+
+test('Map mode: only map controls, saved locations as pins, and 3D tools take you back to 3D', async () => {
+  const mock = await mockMapTiles()
+  try {
+    await page.keyboard.press('3')
+    const map = page.getByTestId('map-mode')
+    await expect(map).toBeVisible()
+    // Without a key it says what's missing.
+    await expect(map).toContainText('Add a Google Maps Platform key')
+    // The rail keeps saved locations, settings and help; the status bar drops the 3D camera.
+    const rail = page.getByRole('toolbar', { name: 'Tools' })
+    await expect(rail.getByRole('button')).toHaveCount(3)
+    await expect(page.getByRole('button', { name: 'Saved locations', exact: true })).toBeVisible()
+    await expect(page.locator('.statusbar')).not.toContainText('Cam')
+    // The map type is switchable here, and the session follows it.
+    await page.evaluate(async () => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      e.keys.googleApiKey = 'test-key'
+      await e.mapTiles.configure('test-key', 'roadmap')
+    })
+    await page.getByRole('radio', { name: 'Satellite' }).click()
+    await expect.poll(() => mock.sessions.at(-1)).toMatchObject({ mapType: 'satellite', layerTypes: ['layerRoadmap'] })
+
+    // Saved locations are pins; clicking one opens it in the panel.
+    const [location] = await page.evaluate(() => window.photoearth.bookmarks.list())
+    await page.keyboard.press('ControlOrMeta+k')
+    await page.keyboard.type(`${location.position.latitude}, ${location.position.longitude}`)
+    await page.keyboard.press('Enter')
+    const pin = page.getByRole('button', { name: `Saved location: ${location.name}` })
+    await expect(pin).toBeVisible()
+    await pin.click()
+    await expect(page.locator('.side-panel.left')).toBeVisible()
+    await expect(map).toBeVisible()
+    await page.getByRole('button', { name: 'Saved locations', exact: true }).click()
+
+    // A 3D tool from the palette leaves the map first.
+    await page.keyboard.press('ControlOrMeta+k')
+    await page.keyboard.type('Top-down view')
+    await page.keyboard.press('Enter')
+    await expect(map).toHaveCount(0)
+    await expect(page.getByRole('tab', { name: 'Photorealistic' })).toHaveAttribute('aria-selected', 'true')
+    await expect.poll(async () => (await view3d()).pitch, { timeout: 10_000 }).toBeLessThan(-85)
+  } finally {
+    await page.evaluate(async () => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      if ((await window.photoearth.settings.get()).map.open) await e.setMode('photorealistic')
+      e.searchMarker.clear()
+      e.mapTiles.destroy()
+      e.keys.googleApiKey = null
+    })
+    await mock.unroute()
+  }
+})
+
+test('Map mode: no seams between tiles at fractional zooms', async () => {
+  // Solid tiles: any pixel of another color inside the map is a gap between tiles.
+  const tileColor = [0x3a, 0x7b, 0xd5]
+  const solid = Buffer.from(
+    await page.evaluate(async () => {
+      const canvas = new OffscreenCanvas(256, 256)
+      const ctx = canvas.getContext('2d')!
+      ctx.fillStyle = '#3a7bd5'
+      ctx.fillRect(0, 0, 256, 256)
+      const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer())
+      let s = ''
+      for (const b of bytes) s += String.fromCharCode(b)
+      return btoa(s)
+    }),
+    'base64'
+  )
+  const pattern = /^https:\/\/(tile\.googleapis\.com|assets\.ion\.cesium\.com\/google-credit\.png)/
+  await page.route(pattern, (route) => {
+    const url = route.request().url()
+    if (url.includes('/v1/createSession')) {
+      const expiry = String(Math.floor(Date.now() / 1000) + 14 * 86_400)
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ session: 'seams', expiry, tileWidth: 256, tileHeight: 256 }) })
+    }
+    if (url.includes('/tile/v1/viewport')) return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+    return route.fulfill({ status: 200, contentType: 'image/png', body: solid })
+  })
+  // The camera marker, pins, crosshair, attribution and banners are drawn over the map: hide them.
+  const style = await page.addStyleTag({ content: '.map-camera, .map-pins, .map-center, .map-attribution, .map-empty, .top-center { display: none !important }' })
+  try {
+    await page.keyboard.press('3')
+    await expect(page.getByTestId('map-mode')).toBeVisible()
+    await page.evaluate(async () => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      e.keys.googleApiKey = 'test-key'
+      await e.mapTiles.configure('test-key', 'roadmap')
+    })
+    await page.mouse.move(700, 450)
+    // Ctrl+wheel to fractional zooms (100 px a zoom): tiles drawn at ~123 %, ~84 % and ~146 %,
+    // and the whole world (narrower than the window: drawn twice side by side).
+    const base = Math.floor((await mapView()).zoom)
+    for (const target of [base + 0.3, base + 0.75, base + 1.45, 2.3]) {
+      const dy = Math.round(((await mapView()).zoom - target) * 100)
+      await page.keyboard.down('Control')
+      await page.mouse.wheel(0, dy)
+      await page.keyboard.up('Control')
+      // Stood still, no previous zoom left underneath (the backdrop stays), every tile decoded.
+      await settledMap()
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const t = (window as unknown as { __photoearthMap: any }).__photoearthMap.tileState()
+            return t.layers <= 2 && t.ready === t.tiles
+          })
+        )
+        .toBe(true)
+      const zoom = await mapView().then((v) => v.zoom)
+      expect(Math.abs(zoom - Math.round(zoom))).toBeGreaterThan(0.05)
+      // The map between the top bar (and its shadow), the tool rail and the status bar.
+      const shot = await page.screenshot({ clip: { x: 20, y: 100, width: 1320, height: 740 } })
+      const off = await page.evaluate(
+        async ([png, [r, g, b]]) => {
+          const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0))
+          const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }))
+          const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+          const ctx = canvas.getContext('2d')!
+          ctx.drawImage(bitmap, 0, 0)
+          const d = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data
+          let n = 0
+          for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - r) > 8 || Math.abs(d[i + 1] - g) > 8 || Math.abs(d[i + 2] - b) > 8) n++
+          return n
+        },
+        [shot.toString('base64'), tileColor] as const
+      )
+      expect(off, `zoom ${zoom.toFixed(3)}: pixels not covered by tiles`).toBe(0)
+    }
+  } finally {
+    await style.evaluate((el) => (el as HTMLElement).remove())
+    await page.evaluate(async () => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      if ((await window.photoearth.settings.get()).map.open) await e.setMode('photorealistic')
+      e.mapTiles.destroy()
+      e.keys.googleApiKey = null
+    })
+    await page.unroute(pattern)
+  }
+})
+
 test('light pollution: overlay layer, legend, and a sky brightness estimate at the inspected point', async () => {
   // Offline and deterministic: color tiles are a 1×1 PNG, the data tiles a uniform field of
   // 1.29× natural brightness (the 2025 atlas's value for Zermatt), gzipped as served.

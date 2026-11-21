@@ -2371,6 +2371,213 @@ input[type='color'] {
   background: color-mix(in srgb, var(--cloud) 70%, transparent);
 }
 
+/* ───────────── Map mode (§5.5) ───────────── */
+
+/* Over the (paused) 3D canvas, under the overlay UI. */
+.map-mode {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  /* Close to the map's own colors, whatever the UI theme: anything not yet covered by tiles
+     mustn't flash dark against a light map (or light against satellite). */
+  background: #eceff1;
+  cursor: grab;
+  touch-action: none;
+  contain: strict;
+}
+
+.map-mode[data-type='terrain'] {
+  background: #e7ebdf;
+}
+
+.map-mode[data-type='satellite'] {
+  background: #1f2620;
+}
+
+.map-mode:active {
+  cursor: grabbing;
+}
+
+.map-tiles,
+.map-pins {
+  position: absolute;
+  inset: 0;
+}
+
+.map-pins {
+  z-index: 1;
+}
+
+.map-tiles {
+  width: 100%;
+  height: 100%;
+}
+
+.map-camera {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.map-wedge {
+  fill: rgba(47, 156, 240, 0.16);
+  stroke: rgba(47, 156, 240, 0.85);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.map-marker circle {
+  fill: #2f9cf0;
+  stroke: #fff;
+  stroke-width: 2.5;
+}
+
+.map-marker path {
+  fill: #fff;
+  stroke: rgba(0, 0, 0, 0.45);
+  stroke-width: 0.8;
+}
+
+.map-pin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  /* The dot's center sits on the position. */
+  margin: -7px 0 0 -7px;
+  color: #10161d;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.map-pin .dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #2f9cf0;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  flex: none;
+}
+
+.map-pin.visited .dot {
+  background: #22a55b;
+}
+
+.map-pin.active .dot {
+  width: 18px;
+  height: 18px;
+  margin: -2px;
+}
+
+/* The search pin has no action: clicks reach a saved location under it. */
+.map-pin.destination {
+  z-index: -1;
+  pointer-events: none;
+}
+
+.map-pin.destination .dot {
+  background: #ff5d5d;
+}
+
+.map-pin .name {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.map-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.map-center::before,
+.map-center::after {
+  content: '';
+  position: absolute;
+  background: #10161d;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
+}
+
+.map-center::before {
+  left: 10px;
+  top: 0;
+  width: 2px;
+  height: 22px;
+}
+
+.map-center::after {
+  left: 0;
+  top: 10px;
+  width: 22px;
+  height: 2px;
+}
+
+.map-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+/* Google's logo and the copyright of what the map shows stay on screen (§3.1, §9). */
+.map-attribution {
+  position: absolute;
+  left: 12px;
+  right: 80px;
+  bottom: 34px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  font-size: 11px;
+  color: #10161d;
+  text-shadow: 0 0 2px rgba(255, 255, 255, 0.9), 0 0 1px rgba(255, 255, 255, 0.9);
+  pointer-events: none;
+}
+
+.map-attribution img {
+  height: 16px;
+  flex: none;
+}
+
+.map-attribution span {
+  margin-left: auto;
+  text-align: right;
+}
+
+/* 3D-only overlays are hidden (not unmounted, so they come back as they were). */
+.overlay-root[data-map] .bottom-stack,
+.overlay-root[data-map] .side-panel.right,
+.overlay-root[data-map] .inspect-card,
+.overlay-root[data-map] .crosshair,
+.overlay-root[data-map] .sun-target,
+.overlay-root[data-map] .viewfinder,
+.overlay-root[data-map] .loading-bar,
+.overlay-root[data-map] .statusbar .credits {
+  display: none;
+}
+
 /* ───────────── shot alignment planner ───────────── */
 
 .alignment-panel {

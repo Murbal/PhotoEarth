@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { NO_FILTER, type LocationFilter } from '@shared/locations'
 import { defaultSettings } from '@shared/settings'
 import type { ApiKeys, Bookmark, MapMode, SavedProfile, SecretsStatus, Settings } from '@shared/types'
+import type { MapSession } from '../engine/MapTiles'
 import type { BodyDay } from '../lib/celestial'
 import {
   DEFAULT_EYE_HEIGHT,
@@ -49,6 +50,8 @@ export interface CameraInfo {
   heightAgl: number | null
   heading: number
   pitch: number
+  /** Horizontal angle of view, degrees (Map mode's camera wedge). */
+  fov: number
 }
 
 export interface CursorInfo {
@@ -380,6 +383,8 @@ export interface AppState {
   autoRange: { min: number; max: number } | null
   terrainReady: boolean
   tilesetReady: boolean
+  /** Map mode's Google 2D Tiles session (§5.5). */
+  mapSession: MapSession | null
   /** Heightmap terrain shadows (§8.1.1). */
   terrainShadows: 'off' | 'loading' | 'ready' | 'unavailable'
   toast: Toast | null
@@ -457,6 +462,7 @@ export const useAppStore = create<AppState>()(
     autoRange: null,
     terrainReady: false,
     tilesetReady: false,
+    mapSession: null,
     terrainShadows: 'off',
     toast: null,
 

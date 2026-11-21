@@ -9,6 +9,8 @@ export function StatusBar({ creditRef }: { creditRef: (el: HTMLDivElement | null
   const units = useAppStore((s) => s.settings.units)
   const format = useAppStore((s) => s.settings.coordFormat)
   const patchSettings = useAppStore((s) => s.patchSettings)
+  // Map mode (§5.5): no 3D camera on screen, and no elevation under the cursor.
+  const mapOpen = useAppStore((s) => s.settings.map.open)
   const toggleFormat = () => patchSettings((d) => void (d.coordFormat = d.coordFormat === 'decimal' ? 'dms' : 'decimal'))
   const toggleUnits = () => patchSettings((d) => void (d.units = d.units === 'metric' ? 'imperial' : 'metric'))
 
@@ -17,10 +19,11 @@ export function StatusBar({ creditRef }: { creditRef: (el: HTMLDivElement | null
       <span className="item clickable mono" title="Cursor position — click to switch decimal / DMS" onClick={toggleFormat} style={{ minWidth: 230 }}>
         {cursor ? `${formatLatitude(cursor.latitude, format)}  ${formatLongitude(cursor.longitude, format)}` : <span className="faint">—</span>}
       </span>
-      <span className="item clickable" title="Elevation under the cursor (above sea level) — click to switch units" onClick={toggleUnits}>
+      {!mapOpen && <span className="item clickable" title="Elevation under the cursor (above sea level) — click to switch units" onClick={toggleUnits}>
         <span className="k">Elev</span>
         <span className="mono">{formatElevation(cursor?.elevation, units)}</span>
-      </span>
+      </span>}
+      {!mapOpen && <>
       <span className="item" title="Camera altitude above sea level / above ground">
         <span className="k">Cam</span>
         <span className="mono">{formatAltitude(camera?.heightMsl, units)}</span>
@@ -33,8 +36,9 @@ export function StatusBar({ creditRef }: { creditRef: (el: HTMLDivElement | null
         <span className="k">Pitch</span>
         <span className="mono">{camera ? `${Math.round(camera.pitch)}°` : '—'}</span>
       </span>
+      </>}
       {scale && (
-        <span className="scalebar" title="Scale at the bottom of the view">
+        <span className="scalebar" title={mapOpen ? 'Scale at the map’s center' : 'Scale at the bottom of the view'}>
           <span>{scale.label}</span>
           <span className="bar" style={{ width: Math.round(scale.pixels) }} />
         </span>

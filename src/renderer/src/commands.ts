@@ -1,5 +1,6 @@
 import type { ImageryType, QualityPreset } from '@shared/types'
 import { getEngine } from './engine/instance'
+import { getMapControl } from './engine/mapControl'
 import { saveCurrentView } from './lib/locations'
 import { GUIDES, nudgeFocal, stepFocal } from './lib/lens'
 import { astroNight, LOW_MOON_ILLUMINATION } from './lib/milkyWay'
@@ -47,10 +48,113 @@ function viewfinder(fn: (d: ReturnType<typeof appState>['settings']['viewfinder'
   }
 }
 
+function setMapType(type: ImageryType): () => void {
+  return () => {
+    appState().patchSettings((d) => {
+      d.map.type = type
+    })
+    void engine()?.setMode('map')
+  }
+}
+
+/** Zooms the map in Map mode, else the 3D camera. */
+function zoom(steps: number): () => void {
+  return () => {
+    const map = appState().settings.map.open ? getMapControl() : null
+    if (map) map.zoomBy(steps)
+    else void engine()?.camera.zoomBy(steps > 0 ? 0.5 : 2)
+  }
+}
+
+/**
+ * Commands that act on the 3D view. In Map mode they first leave the map (the 3D view opens
+ * at the map's center, §5.5), then run.
+ */
+const NEEDS_3D = new Set([
+  'toggle-place-labels',
+  'toggle-light-pollution',
+  'light-pollution-atlas',
+  'light-pollution-black-marble',
+  'toggle-viewfinder',
+  'focal-longer',
+  'focal-shorter',
+  'focal-nudge-up',
+  'focal-nudge-down',
+  'viewfinder-orientation',
+  'viewfinder-guide',
+  'toggle-shadows',
+  'toggle-lighting',
+  'toggle-sun-indicator',
+  'toggle-moon-indicator',
+  'toggle-detail-shadows',
+  'toggle-time-panel',
+  'play-pause',
+  'reset-north',
+  'reset-tilt',
+  'level-horizon',
+  'eye-level',
+  'fly-mode',
+  'profile-start',
+  'profile-clear',
+  'horizon-panorama',
+  'clear-marker',
+  'toggle-elevation-panel',
+  'toggle-tint',
+  'toggle-contours',
+  'toggle-slope',
+  'toggle-hillshade',
+  'toggle-hillshade-sun',
+  'exaggeration-reset',
+  'imagery-satellite',
+  'imagery-terrain',
+  'imagery-roadmap',
+  'toggle-forecast',
+  'toggle-horizon-moon',
+  'toggle-horizon-peaks',
+  'toggle-tint-auto-range',
+  'viewshed-toggle',
+  'viewshed-pick',
+  'viewshed-clear',
+  'viewshed-rings',
+  'viewshed-color-mode',
+  'toggle-alignment',
+  'alignment-pick-camera',
+  'alignment-pick-subject',
+  'alignment-look',
+  'alignment-clear'
+])
+
+function leavingMap(command: Command): Command {
+  if (!NEEDS_3D.has(command.id)) return command
+  return {
+    ...command,
+    run: () => {
+      const e = engine()
+      if (!e || !appState().settings.map.open) return command.run()
+      void e.setMode(appState().mode).then(() => command.run())
+    }
+  }
+}
+
 export function getCommands(): Command[] {
+  return commandList().map(leavingMap)
+}
+
+function commandList(): Command[] {
   return [
-    { id: 'mode-photorealistic', title: 'Photorealistic mode', group: 'View', keys: '1', keywords: '3d tiles google', run: () => engine()?.setMode('photorealistic') },
-    { id: 'mode-elevation', title: 'Elevation mode', group: 'View', keys: '2', keywords: 'terrain contours', run: () => engine()?.setMode('elevation') },
+    { id: 'mode-photorealistic', title: 'Photorealistic mode', group: 'View', keys: '1', keywords: '3d tiles google', run: () => void engine()?.setMode('photorealistic') },
+    { id: 'mode-elevation', title: 'Elevation mode', group: 'View', keys: '2', keywords: 'terrain contours', run: () => void engine()?.setMode('elevation') },
+    {
+      id: 'mode-map',
+      title: 'Map mode (2D map for getting around)',
+      group: 'View',
+      keys: '3',
+      keywords: '2d flat google maps road satellite navigate overview minimap',
+      run: () => void engine()?.setMode('map')
+    },
+    { id: 'map-roadmap', title: 'Map mode: road map', group: 'View', keywords: '2d streets', run: setMapType('roadmap') },
+    { id: 'map-satellite', title: 'Map mode: satellite with labels', group: 'View', keywords: '2d hybrid aerial', run: setMapType('satellite') },
+    { id: 'map-terrain', title: 'Map mode: terrain', group: 'View', keywords: '2d relief topographic', run: setMapType('terrain') },
     {
       id: 'toggle-place-labels',
       title: 'Show / hide place names',
@@ -214,8 +318,8 @@ export function getCommands(): Command[] {
       run: () => void engine()?.toggleEyeLevel()
     },
     { id: 'fly-mode', title: 'Toggle first-person fly mode', group: 'Navigation', keys: 'F', run: () => engine()?.camera.toggleFlyMode() },
-    { id: 'zoom-in', title: 'Zoom in', group: 'Navigation', keys: '+', run: () => void engine()?.camera.zoomBy(0.5) },
-    { id: 'zoom-out', title: 'Zoom out', group: 'Navigation', keys: '−', run: () => void engine()?.camera.zoomBy(2) },
+    { id: 'zoom-in', title: 'Zoom in', group: 'Navigation', keys: '+', run: zoom(1) },
+    { id: 'zoom-out', title: 'Zoom out', group: 'Navigation', keys: '−', run: zoom(-1) },
     {
       id: 'save-bookmark',
       title: 'Save location (current view)',

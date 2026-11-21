@@ -170,6 +170,27 @@ export function RightRail() {
   const lightPollution = useAppStore((s) => s.settings.lightPollution.enabled)
   const viewfinder = useAppStore((s) => s.viewfinder)
   const patchSettings = useAppStore((s) => s.patchSettings)
+  const mapOpen = useAppStore((s) => s.settings.map.open)
+
+  // Map mode (§5.5): the 3D tools and camera widgets would act on the hidden 3D view.
+  if (mapOpen) {
+    return (
+      <div className="right-rail">
+        <div className="panel toolbar" role="toolbar" aria-label="Tools" aria-orientation="vertical">
+          <RailButton icon="bookmark" label="Saved locations" active={panels.bookmarks} pressed={panels.bookmarks} onClick={() => togglePanel('bookmarks')} />
+          <div className="divider" />
+          <RailButton icon="settings" label="Settings" keys={shortcutLabel('Mod+,')} onClick={() => set({ settingsOpen: true })} />
+          <RailButton icon="help" label="Controls & shortcuts" keys="?" onClick={() => set({ shortcutsOpen: true })} />
+        </div>
+        <div className="nav-widgets" role="toolbar" aria-label="Map" aria-orientation="vertical">
+          <div className="panel zoom-widget">
+            <RailButton small icon="plus" label="Zoom in" keys="+" onClick={() => runCommand('zoom-in')} />
+            <RailButton small icon="minus" label="Zoom out" keys="−" onClick={() => runCommand('zoom-out')} />
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="right-rail">
