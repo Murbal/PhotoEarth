@@ -1,6 +1,6 @@
 import { Cartesian2, Cartesian3, Cartographic, Ellipsoid, IntersectionTests, PerspectiveFrustum, Ray, type Scene } from 'cesium'
 import { toMsl } from '../lib/geoid'
-import { horizontalFov } from '../lib/overviewMap'
+import { horizontalFov } from '../lib/webMercator'
 import { niceScale } from '../lib/units'
 import { appState } from '../store/appStore'
 import { cameraTarget, pickSurface, surfaceHeight, toDeg } from './util'

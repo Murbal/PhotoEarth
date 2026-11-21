@@ -16,6 +16,7 @@ import { estimateTarget, matchesFilter } from '@shared/locations'
 import { DEFAULT_VIEW } from '@shared/settings'
 import type { ApiCheck, ApiKeys, Bookmark, CameraView, GeoPosition, MapMode, NewBookmark, PlaceDetails, SavedProfile } from '@shared/types'
 import { formatLatLon, type ParsedLocation } from '../lib/coords'
+import { cameraForView, LOOKING_DOWN, sameView, viewFromCamera, zoomForMetersPerPixel, clampZoom, type MapView } from '../lib/webMercator'
 import { loadGeoid } from '../lib/geoid'
 import type { GeoPoint } from '../lib/profile'
 import { haversine } from '../lib/profile'
@@ -26,6 +27,8 @@ import { GoogleImagery } from './GoogleImagery'
 import { HorizonTool } from './HorizonTool'
 import { LightPollution } from './LightPollution'
 import { LocationMarkers } from './LocationMarkers'
+import { getMapControl } from './mapControl'
+import { MapTiles } from './MapTiles'
 import { PlaceLabels } from './PlaceLabels'
 import { PointInspector } from './PointInspector'
 import { ProfileTool } from './ProfileTool'
@@ -42,9 +45,9 @@ import { TilePreloader } from './TilePreloader'
 import { TilesetManager } from './TilesetManager'
 import { setUploadBudgets } from './uploadBudget'
 import { Viewfinder } from './Viewfinder'
-import { cameraTarget, cartographicDeg, currentView, pickSurface, surfaceHeight, toDeg, toRad } from './util'
+import { cameraTarget, cartographicDeg, currentView, pickSurface, surfaceHeight, toDeg } from './util'
 
-type ProviderKey = 'tiles' | 'terrain' | 'imagery' | 'labels'
+type ProviderKey = 'tiles' | 'terrain' | 'imagery' | 'labels' | 'map'
 
 // The engine is created once and kept across React refreshes, so a hot update of engine code
 // would leave the old instance running: reload the page instead (dev only).
@@ -86,6 +89,10 @@ export class Engine {
   readonly preloader: TilePreloader
   readonly viewfinder: Viewfinder
   readonly markers: LocationMarkers
+  /** Map mode's own 2D Tiles session (§5.5). */
+  readonly mapTiles: MapTiles
+  /** The map view Map mode opened at from the 3D view; unmoved, leaving restores that view. */
+  private mapEntry: MapView | null = null
   private readonly handler: ScreenSpaceEventHandler
   private readonly subs: Array<() => void> = []
   private clickTimer: number | null = null
@@ -96,7 +103,7 @@ export class Engine {
   private pendingMove: Cartesian2 | null = null
   private terrainOnGlobe: unknown = null
   private keys: ApiKeys = { googleApiKey: null, cesiumIonToken: null }
-  private failed = { tiles: false, terrain: false, imagery: false, labels: false }
+  private failed = { tiles: false, terrain: false, imagery: false, labels: false, map: false }
   private destroyed = false
 
   constructor(container: HTMLElement, creditContainer: HTMLElement) {
@@ -144,6 +151,7 @@ export class Engine {
     const terrain = status('terrain', 'Cesium World Terrain unavailable')
     const imagery = status('imagery', 'Google 2D imagery unavailable')
     const labels = status('labels', 'Google place names unavailable')
+    const map = status('map', 'Google map unavailable')
 
     installDetailShadowPatch()
     this.terrainShadows = new TerrainShadows(
@@ -170,9 +178,8 @@ export class Engine {
       terrain.ready()
       appState().set({ terrainReady: true })
     })
-    this.imagery = new GoogleImagery(scene, this.widget.creditDisplay, imagery.error, imagery.ready, (tileSession) =>
-      appState().set({ tileSession })
-    )
+    this.imagery = new GoogleImagery(scene, this.widget.creditDisplay, imagery.error, imagery.ready)
+    this.mapTiles = new MapTiles((mapSession) => appState().set({ mapSession }), map.error, map.ready)
     this.lightPollution = new LightPollution(scene, (shown) => {
       this.sun?.setUnlitGlobe(shown)
       this.applyStyle()
@@ -187,7 +194,7 @@ export class Engine {
       onUserInput: () => undefined,
       keyboardEnabled: () => {
         const s = appState()
-        return !s.paletteOpen && !s.settingsOpen && !s.onboardingOpen && !s.shortcutsOpen && !s.photoViewer
+        return !s.paletteOpen && !s.settingsOpen && !s.onboardingOpen && !s.shortcutsOpen && !s.photoViewer && !s.settings.map.open
       },
       sampleGround: (lon, lat) => this.preciseGround(lon, lat)
     })
@@ -241,6 +248,8 @@ export class Engine {
     this.sun.update()
     this.moon.update()
     void this.setKeys(keys)
+    // Started in Map mode: the map shows its saved view, and the 3D view waits under it.
+    if (s.settings.map.open) this.pauseForMap()
     void loadGeoid().then(() => {
       if (this.destroyed) return
       this.readouts.refresh()
@@ -261,6 +270,7 @@ export class Engine {
     this.moon.destroy()
     this.readouts.destroy()
     this.imagery.destroy()
+    this.mapTiles.destroy()
     this.lightPollution.destroy()
     this.labels.destroy()
     this.terrainShadows.destroy()
@@ -310,6 +320,11 @@ export class Engine {
       this.labels.configure(keys.googleApiKey, appState().settings.placeLabels, this.failed.labels)
       this.failed.labels = false
     }
+    if ((changed.google || this.failed.map) && appState().settings.map.open) {
+      this.failed.map = false
+      dismissBanner('map')
+      jobs.push(this.mapTiles.configure(keys.googleApiKey, appState().settings.map.type))
+    }
     if (changed.ion || this.failed.terrain) {
       this.failed.terrain = false
       dismissBanner('terrain')
@@ -320,7 +335,7 @@ export class Engine {
   }
 
   retryProviders(): Promise<void> {
-    this.failed = { tiles: true, terrain: true, imagery: true, labels: true }
+    this.failed = { tiles: true, terrain: true, imagery: true, labels: true, map: true }
     return this.setKeys(this.keys)
   }
 
@@ -372,6 +387,14 @@ export class Engine {
       subscribeJson(
         (st) => st.settings.imagery,
         (type) => void this.imagery.configure(this.keys.googleApiKey, type).then(() => this.applyMode())
+      )
+    )
+    s.push(
+      subscribeJson(
+        (st) => st.settings.map.type,
+        (type) => {
+          if (appState().settings.map.open) void this.mapTiles.configure(this.keys.googleApiKey, type)
+        }
       )
     )
     s.push(
@@ -699,27 +722,134 @@ export class Engine {
 
   // ───────────────────────────── commands ─────────────────────────────
 
-  setMode(mode: MapMode): void {
+  /** Switches to a 3D mode (leaving Map mode at the map's center) or to Map mode. */
+  async setMode(mode: MapMode | 'map'): Promise<void> {
+    if (mode === 'map') {
+      this.openMap()
+      return
+    }
+    if (appState().settings.map.open) await this.closeMap(true)
     appState().set({ mode })
     appState().patchSettings((d) => {
       d.lastMode = mode
     })
   }
 
+  // ───────────────────────────── Map mode (§5.5) ─────────────────────────────
+
+  /** The map view now: the live one while a gesture runs, else the committed one. */
+  mapView(): MapView {
+    const live = getMapControl()?.view()
+    if (live) return live
+    const { longitude, latitude, zoom } = appState().settings.map
+    return { longitude, latitude, zoom }
+  }
+
+  /** Opens the map over the 3D view, centered where the 3D view looks, at its scale. */
+  private openMap(): void {
+    const s = appState()
+    if (s.settings.map.open || this.destroyed) return
+    if (s.flyMode) this.camera.toggleFlyMode()
+    const cam = s.camera
+    // The view center now (the store's may lag a moving camera): a one-off ray cast on the
+    // CPU, no depth readback.
+    const target = cam && cam.pitch < LOOKING_DOWN ? cartographicDeg(cameraTarget(this.scene, true)) : null
+    const view = cam
+      ? viewFromCamera({ ...cam, heightAboveGround: cam.heightAgl ?? cam.heightMsl }, target, this.scene.canvas.clientWidth || window.innerWidth)
+      : this.mapView()
+    this.mapEntry = view
+    s.patchSettings((d) => {
+      d.map.open = true
+      d.map.longitude = view.longitude
+      d.map.latitude = view.latitude
+      d.map.zoom = view.zoom
+    })
+    this.pauseForMap()
+  }
+
+  /**
+   * While the map is open the 3D view is covered: Cesium's render loop stops, so it draws,
+   * streams and uploads nothing (§5.3).
+   */
+  private pauseForMap(): void {
+    this.scene.camera.cancelFlight()
+    this.widget.useDefaultRenderLoop = false
+    void this.mapTiles.configure(this.keys.googleApiKey, appState().settings.map.type)
+  }
+
+  /**
+   * Leaves the map for the 3D view. `place`: unless the map is where it opened, the 3D view
+   * opens looking at the map's center, with the last heading and pitch, at the map's scale.
+   */
+  private async closeMap(place: boolean): Promise<void> {
+    if (!appState().settings.map.open) return
+    const view = this.mapView()
+    const entry = this.mapEntry
+    this.mapEntry = null
+    if (place && (!entry || !sameView(view, entry))) {
+      // Sampled while the map still shows, so the 3D view never shows a half-placed camera.
+      const ground = await this.groundHeight(view.longitude, view.latitude)
+      if (this.destroyed) return
+      const cam = appState().camera
+      const look = { heading: cam?.heading ?? 0, pitch: cam?.pitch ?? -35, fov: cam?.fov ?? 60 }
+      this.camera.setView(cameraForView(view, look, this.scene.canvas.clientWidth || window.innerWidth, ground))
+    }
+    appState().patchSettings((d) => {
+      d.map.open = false
+      d.map.longitude = view.longitude
+      d.map.latitude = view.latitude
+      d.map.zoom = view.zoom
+    })
+    this.widget.useDefaultRenderLoop = true
+    this.requestRender()
+    // The status bar's readouts (scale bar) are the 3D view's again.
+    this.scheduleRefresh()
+  }
+
+  /** Centers the map on a place, zoomed so `range` meters fit the window (search in Map mode). */
+  private showOnMap(latitude: number, longitude: number, range: number): void {
+    const width = this.scene.canvas.clientWidth || window.innerWidth
+    const zoom = clampZoom(zoomForMetersPerPixel(latitude, range / (0.8 * width)))
+    const view = { longitude, latitude, zoom }
+    const control = getMapControl()
+    if (control) control.setView(view, true)
+    else
+      appState().patchSettings((d) => {
+        d.map.longitude = longitude
+        d.map.latitude = latitude
+        d.map.zoom = zoom
+      })
+  }
+
   currentView(): CameraView {
     return currentView(this.scene)
   }
 
-  /** The current view as a location: camera, mode, lens, optionally the simulated time, and the spot. */
-  bookmarkFromView(name: string, includeTime: boolean): NewBookmark {
-    const { mode, sim, viewfinder, settings } = appState()
+  /**
+   * The current view as a location: camera, mode, lens, optionally the simulated time, and the
+   * spot. In Map mode: the search pin or the map's center, with the 3D view leaving the map
+   * there would open.
+   */
+  async bookmarkFromView(name: string, includeTime: boolean): Promise<NewBookmark> {
+    const { mode, sim, viewfinder, settings, destination, camera } = appState()
+    let view = this.currentView()
+    let position = settings.map.open ? null : this.locationSpot()
+    if (settings.map.open) {
+      const map = this.mapView()
+      const spot = destination ?? map
+      const ground = await this.groundHeight(spot.longitude, spot.latitude)
+      const look = { heading: camera?.heading ?? 0, pitch: camera?.pitch ?? -35, fov: camera?.fov ?? 60 }
+      view = cameraForView({ ...map, longitude: spot.longitude, latitude: spot.latitude }, look, this.scene.canvas.clientWidth || window.innerWidth, ground)
+      // Height unknown without terrain: measured from the surface on the first visit.
+      position = { longitude: spot.longitude, latitude: spot.latitude, height: this.terrain.available ? ground : null }
+    }
     return {
       name,
-      camera: this.currentView(),
+      camera: view,
       mode,
       time: includeTime ? { utc: new Date(this.sun.utc).toISOString(), timeZone: sim.timeZone } : undefined,
-      viewfinder: viewfinder ? structuredClone(settings.viewfinder) : undefined,
-      position: this.locationSpot()
+      viewfinder: viewfinder && !settings.map.open ? structuredClone(settings.viewfinder) : undefined,
+      position: position ?? this.locationSpot()
     }
   }
 
@@ -734,7 +864,9 @@ export class Engine {
 
   /** Flies to a saved location and restores its mode, lens and simulated time. */
   async flyToBookmark(b: Bookmark): Promise<void> {
-    if (b.mode !== appState().mode) this.setMode(b.mode)
+    // From the map: straight to the location's own view, not via the map's center.
+    await this.closeMap(false)
+    if (b.mode !== appState().mode) await this.setMode(b.mode)
     if (b.time) this.sun.setInstant(Date.parse(b.time.utc), b.time.timeZone)
     // A shot saved in viewfinder mode reopens framed with the same lens.
     if (b.viewfinder) {
@@ -787,6 +919,8 @@ export class Engine {
       )
       range = Math.min(4.0e6, Math.max(1200, diag * 1.1))
     }
+    const onMap = appState().settings.map.open
+    if (onMap) this.showOnMap(latitude, longitude, range)
     const groundHeight = await this.groundHeight(longitude, latitude)
     const marker = this.searchMarker.show(
       {
@@ -797,11 +931,14 @@ export class Engine {
       },
       groundHeight
     )
+    if (onMap) return
     await this.camera.flyToLocation(latitude, longitude, { range, groundHeight })
     await this.searchMarker.refine(marker)
   }
 
   async goToCoordinates(loc: ParsedLocation, detail = 'Coordinates'): Promise<void> {
+    const onMap = appState().settings.map.open
+    if (onMap) this.showOnMap(loc.latitude, loc.longitude, loc.range ?? 4000)
     const groundHeight = await this.groundHeight(loc.longitude, loc.latitude)
     const marker = this.searchMarker.show(
       {
@@ -812,6 +949,7 @@ export class Engine {
       },
       groundHeight
     )
+    if (onMap) return
     await this.camera.flyToLocation(loc.latitude, loc.longitude, {
       range: loc.range ?? 4000,
       altitude: loc.altitude,
@@ -858,32 +996,6 @@ export class Engine {
     const spot = this.horizon.spot
     if (!spot) return Promise.resolve()
     return this.camera.goToEyeLevel(spot, { heading: azimuth, pitch: altitude })
-  }
-
-  // ───────────────────────────── overview map (§5.5) ─────────────────────────────
-
-  /**
-   * A click on the overview map: looking down, the clicked point becomes the view center (same
-   * heading, pitch and distance); looking level or up, the camera itself moves there at the
-   * same height above ground (at eye level, it stands there).
-   */
-  async goToFromOverview(longitude: number, latitude: number): Promise<void> {
-    const { camera: info, flyMode, eyeLevel } = appState()
-    if (flyMode || !info) return
-    const ground = await this.groundHeight(longitude, latitude)
-    if (this.destroyed) return
-    if (eyeLevel) {
-      await this.camera.goToEyeLevel(Cartesian3.fromDegrees(longitude, latitude, ground), { heading: info.heading, pitch: info.pitch })
-      return
-    }
-    const agl = Math.max(info.heightAgl ?? info.height - ground, appState().settings.navigation.minClearance)
-    if (info.pitch < -8) {
-      // Distance to the view center over flat ground, as the overview's wedge draws it.
-      const range = Math.min(Math.max(agl / Math.sin(toRad(-info.pitch)), 100), 4.0e6)
-      await this.camera.flyToLocation(latitude, longitude, { range, heading: info.heading, pitch: info.pitch, groundHeight: ground })
-    } else {
-      await this.camera.flyToView({ longitude, latitude, height: ground + agl, heading: info.heading, pitch: info.pitch, roll: 0 })
-    }
   }
 
   startProfile(): void {

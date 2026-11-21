@@ -72,7 +72,7 @@ export function useShortcuts(): void {
         else runCommand(longer ? 'focal-longer' : 'focal-shorter')
         return
       }
-      if (e.key === ' ' && s.panels.time) {
+      if (e.key === ' ' && s.panels.time && !s.settings.map.open) {
         e.preventDefault()
         runCommand('play-pause')
         return
@@ -81,6 +81,7 @@ export function useShortcuts(): void {
       const map: Record<string, string> = {
         '1': 'mode-photorealistic',
         '2': 'mode-elevation',
+        '3': 'mode-map',
         f: 'fly-mode',
         n: 'reset-north',
         u: 'reset-tilt',
@@ -93,7 +94,6 @@ export function useShortcuts(): void {
         m: 'toggle-place-labels',
         k: 'toggle-light-pollution',
         v: 'toggle-viewfinder',
-        o: 'toggle-overview-map',
         '+': 'zoom-in',
         '=': 'zoom-in',
         '-': 'zoom-out'

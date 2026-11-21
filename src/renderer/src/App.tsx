@@ -4,9 +4,9 @@ import { CommandPalette } from './components/CommandPalette'
 import { ElevationPanel } from './components/ElevationPanel'
 import { HorizonPanel } from './components/HorizonPanel'
 import { LocationsPanel, PhotoViewer } from './components/LocationsPanel'
+import { MapMode } from './components/MapMode'
 import { MapView } from './components/MapView'
 import { Onboarding } from './components/Onboarding'
-import { OverviewMap } from './components/OverviewMap'
 import { Crosshair, FpsIndicator, InspectCard, LoadingBar, StatusChips, Toast } from './components/Overlays'
 import { ProfilePanel } from './components/ProfilePanel'
 import { RightRail } from './components/RightRail'
@@ -84,6 +84,8 @@ function useMenuCommands(): void {
             return runCommand('mode-photorealistic')
           case 'mode-elevation':
             return runCommand('mode-elevation')
+          case 'mode-map':
+            return runCommand('mode-map')
           case 'toggle-fps':
             return runCommand('toggle-fps')
           case 'save-bookmark':
@@ -108,29 +110,23 @@ const RIGHT_PANEL_INSET = 60
 const MIN_STACK_WIDTH = 600
 const STACK_BOTTOM = 40
 const STATUS_CLEARANCE = 44
-const FPS_BOTTOM = 40
 
 /**
- * Keeps the bottom stack (profile, time & sun), the side panels (bookmarks, elevation
- * styling) and the overview map from covering each other. The stack narrows to the space
- * between open side panels and the overview map; only when that space is too small does it
- * span the width, and the side panels and the overview map then end above it instead. The
- * overview map sits at the bottom of the left column, below the left side panel.
+ * Keeps the bottom stack (profile, time & sun) and the side panels (bookmarks, elevation
+ * styling) from covering each other. The stack narrows to the space between open side
+ * panels; only when that space is too small does it span the width, and the side panels
+ * then end above it instead.
  */
 function useOverlayLayout(root: RefObject<HTMLDivElement | null>, stack: RefObject<HTMLDivElement | null>): void {
   const left = useAppStore((s) => s.panels.bookmarks)
   const right = useAppStore((s) => s.panels.elevation)
-  const overview = useAppStore((s) => s.settings.overviewMap.enabled)
   useLayoutEffect(() => {
     const rootEl = root.current
     const stackEl = stack.current
     if (!rootEl || !stackEl) return
-    const overviewEl = overview ? rootEl.querySelector<HTMLElement>('.overview-map') : null
     const apply = () => {
       const width = rootEl.clientWidth
-      const overviewWidth = overviewEl?.offsetWidth ?? 0
-      const overviewHeight = overviewEl?.offsetHeight ?? 0
-      const leftInset = Math.max(left ? GAP + SIDE_PANEL + GAP : EDGE, overviewEl ? GAP + overviewWidth + GAP : EDGE)
+      const leftInset = left ? GAP + SIDE_PANEL + GAP : EDGE
       const rightInset = right ? RIGHT_PANEL_INSET + SIDE_PANEL + GAP : EDGE
       const besidePanels = width - leftInset - rightInset >= MIN_STACK_WIDTH
       const stackHeight = stackEl.offsetHeight
@@ -140,23 +136,20 @@ function useOverlayLayout(root: RefObject<HTMLDivElement | null>, stack: RefObje
       style.setProperty('--stack-height', `${stackHeight}px`)
       const clearance = !besidePanels && stackHeight > 0 ? STACK_BOTTOM + stackHeight + GAP : STATUS_CLEARANCE
       style.setProperty('--side-bottom', `${clearance}px`)
-      style.setProperty('--overview-bottom', `${clearance}px`)
-      style.setProperty('--side-bottom-left', `${overviewEl ? clearance + overviewHeight + GAP : clearance}px`)
-      style.setProperty('--fps-bottom', `${overviewEl ? clearance + overviewHeight + GAP : FPS_BOTTOM}px`)
     }
     apply()
     const observer = new ResizeObserver(apply)
     observer.observe(rootEl)
     observer.observe(stackEl)
-    if (overviewEl) observer.observe(overviewEl)
     return () => observer.disconnect()
-  }, [root, stack, left, right, overview])
+  }, [root, stack, left, right])
 }
 
 export function App() {
   const booted = useAppStore((s) => s.booted)
   const theme = useAppStore((s) => s.settings.theme)
   const modalOpen = useAppStore((s) => s.paletteOpen || s.settingsOpen || s.shortcutsOpen || s.onboardingOpen || !!s.photoViewer)
+  const mapOpen = useAppStore((s) => s.settings.map.open)
   const overlayRef = useRef<HTMLDivElement>(null)
   const stackRef = useRef<HTMLDivElement>(null)
   const [creditEl, setCreditEl] = useState<HTMLDivElement | null>(null)
@@ -187,9 +180,11 @@ export function App() {
 
   return (
     <>
-      {booted && <MapView creditContainer={creditEl} inert={modalOpen} />}
-      {/* While a dialog is open, everything behind it is inert: no focus, no clicks. */}
-      <div ref={overlayRef} className="overlay-root" inert={modalOpen}>
+      {booted && <MapView creditContainer={creditEl} inert={modalOpen || mapOpen} />}
+      {booted && <MapMode />}
+      {/* While a dialog is open, everything behind it is inert: no focus, no clicks. 3D-only
+          overlays are hidden in Map mode (styles: .overlay-root[data-map]). */}
+      <div ref={overlayRef} className="overlay-root" inert={modalOpen} data-map={mapOpen ? '' : undefined}>
         <ViewfinderFrame />
         <LoadingBar />
         <TopBar />
@@ -200,7 +195,6 @@ export function App() {
         <RightRail />
         <LocationsPanel />
         <ElevationPanel />
-        <OverviewMap />
         <InspectCard />
         <Crosshair />
         <div ref={stackRef} className="bottom-stack">

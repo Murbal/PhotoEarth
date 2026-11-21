@@ -20,12 +20,14 @@ function replaceBookmark(updated: Bookmark): void {
 export async function saveCurrentView(opts: { name?: string; edit?: boolean } = {}): Promise<Bookmark | null> {
   const engine = getEngine()
   if (!engine) return null
-  const { settings, target, destination, bookmarks, set, togglePanel, showToast } = appState()
+  const { settings, destination, bookmarks, set, togglePanel, showToast } = appState()
+  // In Map mode the location is at the map's center (§5.5).
+  const target = settings.map.open ? engine.mapView() : appState().target
   const label =
     opts.name ??
     destination?.name ??
     (target ? `View ${formatLatLon(target.latitude, target.longitude, 'decimal')}` : `View ${bookmarks.length + 1}`)
-  const saved = await window.photoearth.bookmarks.create(engine.bookmarkFromView(label, settings.bookmarkIncludeTime))
+  const saved = await window.photoearth.bookmarks.create(await engine.bookmarkFromView(label, settings.bookmarkIncludeTime))
   set({ bookmarks: [...appState().bookmarks, saved], activeLocation: opts.edit ? saved.id : appState().activeLocation })
   togglePanel('bookmarks', true)
   showToast('Location saved')
@@ -43,7 +45,7 @@ export async function setLocationToCurrentView(id: string): Promise<void> {
   const engine = getEngine()
   const b = appState().bookmarks.find((x) => x.id === id)
   if (!engine || !b) return
-  const view = engine.bookmarkFromView(b.name, appState().settings.bookmarkIncludeTime)
+  const view = await engine.bookmarkFromView(b.name, appState().settings.bookmarkIncludeTime)
   await updateLocation(id, { ...view, time: view.time ?? null, viewfinder: view.viewfinder ?? null })
   appState().showToast('Location updated to the current view')
 }

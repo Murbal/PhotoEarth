@@ -49,8 +49,8 @@ export const COMPOSITION_GUIDES: readonly CompositionGuide[] = ['none', 'thirds'
 export const FOCAL_RANGE = { min: 8, max: 800 } as const
 /** Custom sensor dimension range, mm. */
 export const SENSOR_SIZE_RANGE = { min: 1, max: 120 } as const
-/** The overview map's zoom steps on top of its automatic zoom (§5.5). */
-export const OVERVIEW_ZOOM_OFFSET = { min: -6, max: 6 } as const
+/** Map mode's zoom range (Web Mercator, fractional). */
+export const MAP_ZOOM_RANGE = { min: 2, max: 20 } as const
 export const MIN_EXAGGERATION = 1
 export const MAX_EXAGGERATION = 3
 
@@ -90,6 +90,7 @@ export function defaultSettings(): Settings {
     },
     lastCamera: null,
     lastMode: 'photorealistic',
+    map: { open: false, longitude: DEFAULT_VIEW.longitude, latitude: DEFAULT_VIEW.latitude, zoom: 12, type: 'roadmap' },
     imagery: 'satellite',
     placeLabels: true,
     elevation: {
@@ -99,7 +100,6 @@ export function defaultSettings(): Settings {
       hillshade: { enabled: true, opacity: 0.5, followSun: true }
     },
     lightPollution: { enabled: false, opacity: 0.6, source: 'atlas-2025' },
-    overviewMap: { enabled: false, zoomOffset: 0 },
     verticalExaggeration: 1,
     lighting: 'sun',
     shadows: true,
@@ -196,7 +196,7 @@ export function sanitizeSettings(raw: Json): Settings {
   const hill = isObject(e.hillshade) ? e.hillshade : {}
   const horizon = isObject(r.horizon) ? r.horizon : {}
   const lp = isObject(r.lightPollution) ? r.lightPollution : {}
-  const ov = isObject(r.overviewMap) ? r.overviewMap : {}
+  const map = isObject(r.map) ? r.map : {}
   const modes: readonly MapMode[] = ['photorealistic', 'elevation']
   const cascades = o.shadowCascades === 1 || o.shadowCascades === 4 ? o.shadowCascades : null
 
@@ -232,6 +232,13 @@ export function sanitizeSettings(raw: Json): Settings {
     },
     lastCamera: sanitizeCameraView(r.lastCamera),
     lastMode: oneOf(r.lastMode, modes, d.lastMode),
+    map: {
+      open: bool(map.open, d.map.open),
+      longitude: num(map.longitude, d.map.longitude, -180, 180),
+      latitude: num(map.latitude, d.map.latitude, -85, 85),
+      zoom: num(map.zoom, d.map.zoom, MAP_ZOOM_RANGE.min, MAP_ZOOM_RANGE.max),
+      type: oneOf(map.type, IMAGERY_TYPES, d.map.type)
+    },
     imagery: oneOf(r.imagery, IMAGERY_TYPES, d.imagery),
     placeLabels: bool(r.placeLabels, d.placeLabels),
     elevation: {
@@ -264,10 +271,6 @@ export function sanitizeSettings(raw: Json): Settings {
       enabled: bool(lp.enabled, d.lightPollution.enabled),
       opacity: num(lp.opacity, d.lightPollution.opacity, 0, 1),
       source: oneOf(lp.source, LIGHT_POLLUTION_SOURCES, d.lightPollution.source)
-    },
-    overviewMap: {
-      enabled: bool(ov.enabled, d.overviewMap.enabled),
-      zoomOffset: Math.round(num(ov.zoomOffset, d.overviewMap.zoomOffset, OVERVIEW_ZOOM_OFFSET.min, OVERVIEW_ZOOM_OFFSET.max))
     },
     verticalExaggeration: num(r.verticalExaggeration, d.verticalExaggeration, MIN_EXAGGERATION, MAX_EXAGGERATION),
     lighting: oneOf(r.lighting, ['sun', 'flat'], d.lighting),

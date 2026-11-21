@@ -536,8 +536,6 @@ input[type='color'] {
 
 .side-panel.left {
   left: 12px;
-  /* Ends above the overview map when that is shown (--side-bottom-left, set by App). */
-  max-height: calc(100% - var(--side-top) - var(--side-bottom-left, var(--side-bottom, 44px)));
 }
 
 .side-panel.right {
@@ -1559,8 +1557,7 @@ input[type='color'] {
 .fps {
   position: absolute;
   left: 12px;
-  /* Above the overview map when it is shown. */
-  bottom: var(--fps-bottom, 40px);
+  bottom: 40px;
   padding: 4px 8px;
   font-family: var(--mono);
   font-size: 11px;
@@ -2274,148 +2271,221 @@ input[type='color'] {
   background: color-mix(in srgb, var(--cloud) 70%, transparent);
 }
 
-/* ───────────── overview map (§5.5) ───────────── */
+/* ───────────── Map mode (§5.5) ───────────── */
 
-.overview-map {
-  position: absolute;
-  left: 12px;
-  /* Set by App: above the bottom stack when the window is too narrow to sit beside it. */
-  bottom: var(--overview-bottom, 44px);
-  width: 242px;
-  padding: 0;
+/* Over the (paused) 3D canvas, under the overlay UI. */
+.map-mode {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.overview-canvas {
-  position: relative;
-  width: 240px;
-  height: 200px;
-  overflow: hidden;
-  background: #1b2633;
+  background: #e8e4dc;
   cursor: grab;
   touch-action: none;
   contain: strict;
 }
 
-.overview-canvas:active {
+[data-theme='dark'] .map-mode {
+  background: #1b222b;
+}
+
+.map-mode:active {
   cursor: grabbing;
 }
 
-.overview-canvas.disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
-.overview-tiles {
+.map-tiles,
+.map-pins {
   position: absolute;
   inset: 0;
 }
 
-.overview-tile {
+.map-pins {
+  z-index: 1;
+}
+
+.map-layer {
   position: absolute;
   left: 0;
   top: 0;
   transform-origin: 0 0;
+  will-change: transform;
+}
+
+.map-tile {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 256px;
+  height: 256px;
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity 0.15s;
   pointer-events: none;
 }
 
-.overview-tile.loaded {
+.map-tile.loaded {
   opacity: 1;
 }
 
-.overview-overlay {
+.map-camera {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
+  overflow: visible;
 }
 
-.overview-wedge {
-  fill: rgba(79, 179, 255, 0.22);
-  stroke: rgba(79, 179, 255, 0.9);
-  stroke-width: 1.2;
+.map-wedge {
+  fill: rgba(47, 156, 240, 0.16);
+  stroke: rgba(47, 156, 240, 0.85);
+  stroke-width: 1.5;
   stroke-linejoin: round;
 }
 
-.overview-marker circle {
-  fill: #4fb3ff;
+.map-marker circle {
+  fill: #2f9cf0;
   stroke: #fff;
-  stroke-width: 2;
+  stroke-width: 2.5;
 }
 
-.overview-marker path {
+.map-marker path {
   fill: #fff;
   stroke: rgba(0, 0, 0, 0.45);
   stroke-width: 0.8;
 }
 
-.overview-empty {
+.map-pin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  /* The dot's center sits on the position. */
+  margin: -7px 0 0 -7px;
+  color: #10161d;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.map-pin .dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #2f9cf0;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  flex: none;
+}
+
+.map-pin.visited .dot {
+  background: #22a55b;
+}
+
+.map-pin.active .dot {
+  width: 18px;
+  height: 18px;
+  margin: -2px;
+}
+
+/* The search pin has no action: clicks reach a saved location under it. */
+.map-pin.destination {
+  z-index: -1;
+  pointer-events: none;
+}
+
+.map-pin.destination .dot {
+  background: #ff5d5d;
+}
+
+.map-pin .name {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.map-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.map-center::before,
+.map-center::after {
+  content: '';
+  position: absolute;
+  background: #10161d;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
+}
+
+.map-center::before {
+  left: 10px;
+  top: 0;
+  width: 2px;
+  height: 22px;
+}
+
+.map-center::after {
+  left: 0;
+  top: 10px;
+  width: 22px;
+  height: 2px;
+}
+
+.map-empty {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 20px;
-  text-align: center;
   color: var(--text-muted);
-  font-size: 12px;
-}
-
-/* Google's logo and the copyright line must stay legible on the map itself (§3.1, §9). */
-.overview-attribution {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-  padding: 2px 4px 2px;
-  font-size: 9px;
-  line-height: 1.2;
-  color: #fff;
-  text-shadow: 0 0 2px rgba(0, 0, 0, 0.9), 0 0 1px rgba(0, 0, 0, 0.9);
+  font-size: 14px;
   pointer-events: none;
 }
 
-.overview-attribution img {
-  height: 14px;
+/* Google's logo and the copyright of what the map shows stay on screen (§3.1, §9). */
+.map-attribution {
+  position: absolute;
+  left: 12px;
+  right: 80px;
+  bottom: 34px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  font-size: 11px;
+  color: #10161d;
+  text-shadow: 0 0 2px rgba(255, 255, 255, 0.9), 0 0 1px rgba(255, 255, 255, 0.9);
+  pointer-events: none;
+}
+
+.map-attribution img {
+  height: 16px;
   flex: none;
 }
 
-.overview-attribution span {
+.map-attribution span {
   margin-left: auto;
   text-align: right;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
-.overview-controls {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 6px;
-  border-top: 1px solid var(--panel-border);
-}
-
-.overview-controls .spacer {
-  flex: 1;
-}
-
-.overview-controls .segmented {
-  padding: 2px;
-}
-
-.overview-controls .segmented button {
-  padding: 2px 8px;
-  font-size: 11px;
-}
-
-.overview-controls .icon-btn:disabled {
-  opacity: 0.35;
-  cursor: default;
+/* 3D-only overlays are hidden (not unmounted, so they come back as they were). */
+.overlay-root[data-map] .bottom-stack,
+.overlay-root[data-map] .side-panel.right,
+.overlay-root[data-map] .inspect-card,
+.overlay-root[data-map] .crosshair,
+.overlay-root[data-map] .sun-target,
+.overlay-root[data-map] .viewfinder,
+.overlay-root[data-map] .loading-bar,
+.overlay-root[data-map] .statusbar .credits {
+  display: none;
 }

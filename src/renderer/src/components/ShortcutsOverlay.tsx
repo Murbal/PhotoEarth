@@ -37,10 +37,10 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
       ['N', 'Face north'],
       ['U', 'Top-down view'],
       ['R', 'Level the horizon'],
-      ['1 / 2', 'Photorealistic / Elevation mode'],
+      ['1 / 2 / 3', 'Photorealistic / Elevation / Map mode'],
+      ['Arrows / W A S D (Map)', 'Pan the map (Shift: faster)'],
       ['M', 'Place names on / off'],
-      ['K', 'Light pollution overlay on / off'],
-      ['O', 'Overview map on / off']
+      ['K', 'Light pollution overlay on / off']
     ]
   ],
   [

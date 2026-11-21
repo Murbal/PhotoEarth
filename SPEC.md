@@ -49,7 +49,7 @@ CesiumJS natively supports Google Photorealistic 3D Tiles, simulates sun lightin
 The app uses the **Google Map Tiles API** with an API key the user supplies:
 
 - **Photorealistic 3D Tiles**: the main 3D view (textured terrain, buildings, vegetation).
-- **2D Tiles** (`satellite`, `terrain`, `roadmap` map types): imagery draped on the terrain globe in Elevation mode (§5.2), and the optional 2D overview map (§5.5), which shares the globe imagery's session.
+- **2D Tiles** (`satellite`, `terrain`, `roadmap` map types): imagery draped on the terrain globe in Elevation mode (§5.2), and Map mode, a full-window 2D map with its own session (§5.5).
 
 Requirements:
 - Use the session token flow for 2D Tiles, and handle the session expiring.
@@ -113,7 +113,7 @@ Point elevation readouts in Photorealistic mode come from sampling the 3D tilese
 
 ### 4.2 Persistence (userData)
 
-- `settings.json`: UI preferences (including the overview map, §5.5), quality settings, last camera position, last mode.
+- `settings.json`: UI preferences, quality settings, last camera position, last mode, and Map mode's view (§5.5).
 - `bookmarks.json`: saved scouting locations and saved elevation profiles (format version 2, §11.5). Version-1 files (views only) are migrated when read; the original is kept as `bookmarks.v1.backup.json`.
 - `photos/`: reference photos of saved locations and their thumbnails, copied in on import (§11.5).
 - `secrets`: encrypted API keys.
@@ -151,25 +151,29 @@ Point elevation readouts in Photorealistic mode come from sampling the 3D tilese
 - A slider from 1.0× to 3.0× (default 1.0×), applied to terrain and 3D tiles where supported.
 - A clear visual indicator when it isn't 1.0×, so the user doesn't misjudge real scenery.
 
-### 5.5 Overview map
+### 5.5 Map mode
 
-An optional 2D map in the bottom-left corner shows where the camera is and which way it looks, for keeping one's bearings at eye level or under a long lens.
+A third mode next to Photorealistic and Elevation: a full-window 2D Google map for getting around quickly. Pan and zoom to a place, switch back to 3D, and the 3D view opens there.
 
-- **Design**: plain DOM, not a second Cesium scene or widget. A second WebGL context would render (and upload tiles) on every frame the main view moves, competing for the GPU that §5.3 reserves for the 3D view. The overview is a 240 × 200 px box of `<img>` tiles in Web Mercator (`lib/overviewMap.ts`, pure and unit-tested) with an SVG marker and view wedge, drawn by `components/OverviewMap.tsx`.
-  - It redraws only when the store's camera readout changes, which the status bar's readout already publishes at most every 100 ms while the camera moves (it now carries the horizontal field of view too); an unchanged readout draws nothing. Nothing of it runs per rendered frame, it never touches the WebGL context and it reads nothing back from the GPU. An end-to-end test checks that still frames leave it untouched and a moving camera redraws it at the readout's ~10 Hz, not the frame rate.
-  - Tiles are positioned with CSS transforms and kept while they stay in view. When the zoom changes, the previous zoom's tiles stay underneath, scaled, until the new ones have loaded.
-  - Hidden, it is unmounted and costs nothing.
-- **Tiles**: the Google 2D Tiles session of the globe imagery (§3.1): one session, one map type, `settings.imagery`. The map type switch on the overview (satellite / terrain / road) therefore also changes the Elevation mode drape. Renewals reach the overview through the store. An `<img>` can't see the HTTP status, so a failed tile is fetched once more to read it: 400/401/403 count towards renewing the session, as globe tile failures do; missing tiles and network errors don't. Tiles are 256 px and not doubled for high-density displays (that would need a second session).
-- **Attribution**: Google's logo and the copyright line for the overview's own bounds and zoom (the session's viewport endpoint, asked once the map has stood still for 0.6 s and cached per session) are drawn on the map itself, so they show in Photorealistic mode too, where the globe imagery and its credit are hidden (§9).
-- **What it shows**: north up. The map centers 30% of the view reach ahead of the camera along its heading. The camera is a dot with a heading arrow; the wedge opens by the horizontal angle of view (the viewfinder narrows it, §11.1) and reaches as far as the camera looks: to the view center over flat ground (`height above ground / tan(−pitch)`) when looking down, to the visible horizon when looking level or up, at least half the footprint when looking straight down, at most 120 km. All of this comes from the readout (height above ground, pitch, field of view): no picking. The zoom fits that reach to 42% of the map's shorter side, in whole tile zooms (1–19), and keeps the current zoom until the fit moves a quarter zoom past either end of it, so tiles don't flip back and forth at a boundary. The user's zoom steps (wheel, ±, −6…+6) are added on top.
-- **Interaction**:
-  - **Drag** grabs the ground, as in the main view: the camera moves against the pointer by the same map distance, keeping its altitude, heading, pitch and roll. While the drag lasts, the map follows the pointer itself, and the camera is moved at most once per animation frame. Terrain following (§6.1) lifts it where the ground rises, from the height Cesium measures below the camera anyway; nothing is sampled.
-  - **Click** (a press that moves less than 4 px): looking down (pitch below −8°), the clicked point becomes the view center, seen with the same heading, pitch and distance. Looking level or up, the camera itself flies there at the same height above ground. At eye level it stands there.
-  - Disabled in fly mode.
-- **Controls**: the rail button, `O`, and the command palette ("Overview map on / off"); a close button, zoom ± and the map type on the overview itself.
-- **Layout**: it sits at the bottom of the left column. The left side panel ends above it, the FPS indicator moves above it, and the bottom stack keeps clear of it like a side panel; in a window too narrow for that, it rises above the stack (as the side panels do).
-- **Settings**: `settings.overviewMap` (`enabled`, default off; `zoomOffset`).
-- **CSP**: unchanged. Tiles and the viewport endpoint are on `tile.googleapis.com`, and the logo is Cesium's Google credit image on `assets.ion.cesium.com`, all already allowed.
+- **Switching**: the top bar's *Map* tab, `3`, the View menu, or the command palette.
+  - **Map → 3D** (*Photorealistic* / *Elevation*, `1` / `2`): the 3D view opens looking at the map's center, with the last 3D heading and pitch (at least 15° down, so a level eye-level view still shows the place), from the distance at which the 3D view's scale at that point matches the map's. The ground height there is sampled (terrain if available) while the map is still showing, so the 3D view never shows a half-placed camera. A map that wasn't moved returns to exactly the previous 3D view.
+  - **3D → Map**: the map opens on the 3D view center (one ray cast on the CPU at the moment of switching) at the 3D view's scale there. Looking level or up, it opens on the camera with its reach in view.
+  - The last 3D mode stays underneath (`lastMode`), and Map mode is restored at start when it was open.
+- **Rendering**: plain DOM, not a Cesium scene. Each whole zoom is one layer of `<img>` tiles (Web Mercator, 256 px grid) that is moved and scaled with a CSS transform. A frame only rewrites layer transforms and adds or drops tiles at the edges, and frames run only while the map moves. Fractional zooms show the nearest whole zoom's tiles at 71–141 %. The previous zoom's tiles stay underneath, scaled, until the new ones cover the view (at most 1.5 s). Tiles one ring outside the view are kept, so small pans back don't refetch. The math is in `lib/webMercator.ts` and is unit-tested.
+- **Performance (§5.3)**: while the map is open, Cesium's render loop is stopped (`useDefaultRenderLoop = false`): the 3D view draws, streams and uploads nothing, and the map never touches WebGL or reads back from the GPU. An end-to-end test checks that no 3D frame renders while the map is dragged, zoomed and panned.
+- **Tiles**: Map mode has its own 2D Tiles session (`engine/MapTiles.ts`), created the first time the map opens, so it can show its own map type: *Road* (default), *Satellite* (with the roadmap's roads and labels, `layerRoadmap`), or *Terrain*, chosen in the top bar or the palette. On dense displays it asks for 2× tiles (`scaleFactor2x`, `highDpi`), still drawn on the 256 px grid. Sessions are renewed an hour before they expire. An `<img>` can't see the HTTP status, so a failed tile is fetched once more to read it: 400/401/403 count towards renewing the session; missing tiles and network errors don't. A renewal keeps the old tiles on screen until the new session is there.
+- **Attribution**: Google's logo and the copyright for the visible bounds and zoom (the session's viewport endpoint) sit at the bottom of the map. They're asked for once the map has stood still for 0.25 s and on every new session, cached per session (§9). The 3D view's credits are hidden while it is covered.
+- **Navigation**:
+  - **Drag** grabs the ground; a throw keeps gliding (inertia).
+  - **Mouse wheel**: one notch (100 px) is one zoom level, eased over 0.22 s about the cursor. **Trackpad**: two fingers pan, pinch zooms about the fingers (the wheel classifier of §6.1). **Double-click** zooms in one level at the cursor.
+  - **Arrow keys / W A S D** pan at 700 px/s (Shift: 2.5×), for exactly as long as they're held. `+` / `−` and the rail's buttons zoom.
+  - The zoom ease and key panning run on elapsed time, so they end on time at any frame rate.
+  - Zoom range 2–20.
+- **What it shows**: north up, with a crosshair at the center (where the 3D view will open). The 3D camera is drawn as a dot with a heading arrow and a wedge opening by its horizontal angle of view, reaching as far as it looks (to the view center over flat ground when looking down, to the horizon when level, at most 120 km). Saved locations are pins with names, as the locations panel's filter shows them (blue to visit, green visited, the open one larger); clicking one opens it in the panel. The search result is a red pin, which never blocks a click on a location under it.
+- **Search and saving**: a place or coordinates chosen in the palette moves the map there (eased when near, else a jump) and drops the search pin; the 3D camera stays put until the map is left. Saving a location (`Ctrl/Cmd+B`) in Map mode saves the search pin, else the map's center, with the 3D view that leaving the map there would open. Opening a saved location from the list leaves the map straight for that location's own view.
+- **UI while the map is open**: the rail keeps saved locations, settings and help, plus zoom. The 3D tools, camera widgets, side and bottom panels (profile, panorama, viewfinder, time, elevation styling), the inspect card and the 3D loading bar are hidden (not closed: they come back as they were). Commands that act on the 3D view (palette or shortcut: tools, panels, lighting, imagery, camera resets) first leave the map, then run. The status bar shows the cursor's coordinates and a scale bar at the map's center.
+- **Settings**: `settings.map` (`open`, `longitude`, `latitude`, `zoom`, `type`), saved when the map stands still.
+- **CSP**: unchanged. Tiles and the viewport endpoint are on `tile.googleapis.com`, and the logo is Cesium's Google credit image on `assets.ion.cesium.com`, both already allowed.
 
 ## 6. Navigation & Controls
 
@@ -204,8 +208,7 @@ All movement has **inertia** with a configurable damping and an "Off" option.
 | `R` | Reset to a level horizon view (tilt to eye-level at the current position). |
 | `Ctrl/Cmd+K` | Open the search / command palette. |
 | `Ctrl/Cmd+B` | Save the current view as a location (§11.5). |
-| `1` / `2` | Switch Photorealistic / Elevation mode. |
-| `O` | Show / hide the overview map (§5.5). |
+| `1` / `2` / `3` | Switch Photorealistic / Elevation / Map mode (§5.5). In Map mode, the arrow keys and `W A S D` pan the map. |
 | `Space` | Play / pause sun animation (when the time panel is open). |
 | `?` | Show the shortcuts overlay. |
 
@@ -219,7 +222,6 @@ All movement has **inertia** with a configurable damping and an "Off" option.
 - **Tilt indicator**: shows pitch. Click toggles top-down / oblique.
 - **Zoom +/−**, low-key and optional.
 - **Status bar**: cursor lat/lon (switchable between decimal and DMS), **cursor elevation**, camera altitude, heading/pitch, scale bar, and attributions.
-- **Overview map** (optional, §5.5): a 2D map of where the camera is and which way it looks; click or drag it to move the view.
 
 ### 6.4 Search & go-to
 
@@ -228,7 +230,7 @@ All movement has **inertia** with a configurable damping and an "Off" option.
   - Coordinate entry
   - Saved locations (by name, tags, best time or notes) and saved profiles
   - App commands (switch mode, toggle shadows, open settings, etc.)
-- Choosing a result **flies** the camera there with a smooth eased arc. The duration scales with distance and can be interrupted by any user input.
+- Choosing a result **flies** the camera there with a smooth eased arc. The duration scales with distance and can be interrupted by any user input. In Map mode it moves the map instead (§5.5).
 
 ### 6.5 Bookmarks
 
@@ -349,7 +351,7 @@ The main use case is mountains casting long shadows when the sun is low. Real-ti
 ## 9. Licensing & Terms Constraints
 
 - Follow the **Google Map Tiles API** policies: attribution display, no scraping or bulk download, and no persistent caching beyond what the terms allow. The standard HTTP cache is fine.
-  - The overview map (§5.5) shows Google's logo and its own viewport copyright on the map, whatever the main view shows.
+  - Map mode (§5.5) shows Google's logo and the copyright of what it shows on the map itself.
 - No exporting of Google imagery or 3D geometry in this spec.
 - Cesium ion and other terrain sources: follow their attribution requirements as well.
 - **Open-Meteo** (§11.4): credit "Weather data by Open-Meteo.com" (CC BY 4.0) wherever forecast data is shown. The free API is non-commercial only.
