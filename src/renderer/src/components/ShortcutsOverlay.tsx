@@ -52,6 +52,7 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
       ['L', 'Elevation styling panel'],
       ['P', 'Elevation profile'],
       ['H', 'Horizon panorama: skyline, sun & moon paths'],
+      [shortcutLabel('Shift+V'), 'Viewshed analysis: line-of-sight overlay'],
       ['V', 'Viewfinder: lens, crop frame & guides'],
       [', / .', 'Viewfinder: shorter / longer focal length preset'],
       [shortcutLabel('Shift+, / .'), 'Viewfinder: focal length ∓5 %'],

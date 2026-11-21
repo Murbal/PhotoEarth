@@ -5,6 +5,7 @@ import { formatElevation, formatPointForClipboard } from '../lib/units'
 import { appState, useAppStore, type SpotSunInfo } from '../store/appStore'
 import { Icon } from './Icon'
 import { SkyReadout, skySummary } from './LightPollution'
+import { ViewshedReadout } from './ViewshedPanel'
 
 export function StatusChips() {
   const exaggeration = useAppStore((s) => s.settings.verticalExaggeration)
@@ -15,6 +16,7 @@ export function StatusChips() {
   const profilePoints = useAppStore((s) => s.profile.points.length)
   const patchSettings = useAppStore((s) => s.patchSettings)
   const horizonOpen = useAppStore((s) => s.horizon.open)
+  const viewshedPicking = useAppStore((s) => s.viewshed.picking)
   // The light pollution layer drapes on the globe, which Photorealistic mode hides (§7.5).
   const lpHidden = useAppStore((s) => s.settings.lightPollution.enabled && s.mode === 'photorealistic' && s.tilesetReady)
   return (
@@ -39,9 +41,23 @@ export function StatusChips() {
               : 'Click to add points · Enter or double-click to finish · Backspace undo'}
         </span>
       )}
-      {horizonOpen && !profileDrawing && (
+      {horizonOpen && !profileDrawing && !viewshedPicking && (
         <span className="panel chip" role="status">
           Horizon: click the map to move the observer · H or Esc closes
+        </span>
+      )}
+      {viewshedPicking && !profileDrawing && (
+        <span className="panel chip" role="status">
+          <Icon name="viewshed" size={14} style={{ color: 'var(--ok)' }} /> Viewshed: click a point on the map to set target · Esc cancels
+          <button
+            className="icon-btn small"
+            style={{ width: 22, height: 22 }}
+            aria-label="Cancel viewshed target selection"
+            title="Cancel (Esc)"
+            onClick={() => getEngine()?.viewshed.setPicking(false)}
+          >
+            <Icon name="close" size={12} />
+          </button>
         </span>
       )}
       {lpHidden && (
@@ -139,6 +155,9 @@ export function InspectCard() {
             {inspect.loading && <span className="faint"> …</span>}
           </div>
         </div>
+        <button className="icon-btn small" title="Viewshed from here (Shift+V)" aria-label="Viewshed from here" onClick={() => void getEngine()?.openViewshed()}>
+          <Icon name="viewshed" size={14} />
+        </button>
         <button className="icon-btn small" title="Horizon panorama from here (H)" aria-label="Horizon panorama from here" onClick={() => void getEngine()?.openHorizon()}>
           <Icon name="panorama" size={14} />
         </button>
@@ -149,6 +168,7 @@ export function InspectCard() {
           <Icon name="close" size={14} />
         </button>
       </div>
+      <ViewshedReadout />
       <SpotSunTimes />
       <SkyReadout />
     </div>

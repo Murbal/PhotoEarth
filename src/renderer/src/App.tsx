@@ -15,6 +15,7 @@ import { StatusBar } from './components/StatusBar'
 import { TimePanel } from './components/TimePanel'
 import { TopBar } from './components/TopBar'
 import { ViewfinderFrame, ViewfinderPanel } from './components/Viewfinder'
+import { ViewshedPanel } from './components/ViewshedPanel'
 import { runCommand } from './commands'
 import { getEngine } from './engine/instance'
 import { useForecastFeed } from './hooks/useForecastFeed'
@@ -194,6 +195,7 @@ export function App() {
         <div ref={stackRef} className="bottom-stack">
           <ProfilePanel />
           <HorizonPanel />
+          <ViewshedPanel />
           <ViewfinderPanel />
           <TimePanel />
         </div>
