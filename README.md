@@ -2,7 +2,7 @@
 
 # PhotoEarth
 
-A desktop 3D globe for photography location scouting: explore photorealistic terrain, read elevation, and simulate the sun for any date and time to see where light and shadow fall. See [SPEC.md](SPEC.md) for the full specification.
+A desktop 3D globe for photography location scouting: explore photorealistic terrain, read elevation, and simulate the sun and moon for any date and time to see where light and shadow fall and where the moon rises. See [SPEC.md](SPEC.md) for the full specification.
 
 ## Getting started
 
@@ -93,6 +93,8 @@ On Linux the E2E suite needs a display (`xvfb-run -a npm run test:e2e`). Test bu
 
 The sun-position tests compare SunCalc against [astronomy-engine](https://github.com/cosinekitty/astronomy) (VSOP87-based, sub-arcminute) as an independent reference. They cover nine locations, including Tromsø, Longyearbyen and McMurdo for polar day and night, and require ±0.5° (§8.4). Observed agreement is within 0.1° above 2° altitude. Tests run under `TZ=Pacific/Chatham` to prove results depend only on the viewed location's zone.
 
+The moon goes the other way round: it runs on astronomy-engine (topocentric, so parallax is included), and SunCalc's independent moon series checks it. Agreement is within 0.05° in position and a minute in rise, transit and set across six time zones (§11.3).
+
 ## Architecture
 
 ```
@@ -104,11 +106,11 @@ src/
   renderer/src/
     engine/    Engine (owns the CesiumWidget) and the managers from SPEC §4:
                TilesetManager, TerrainManager, GoogleImagery, CameraController,
-               SunController, ElevationStyler, ProfileTool, PointInspector, Readouts,
+               SunController, MoonController, ElevationStyler, ProfileTool, PointInspector, Readouts,
                TerrainShadowOverlay, quality presets
     components/ React overlay UI (the canvas belongs to Cesium)
     store/     Zustand app state; React writes it, the engine subscribes to it
-    lib/       pure, unit-tested logic: time zones, sun, seasons, coordinates, geoid,
+    lib/       pure, unit-tested logic: time zones, sun, moon, seasons, coordinates, geoid,
                profile math, terrain-shadow ray marching, palettes, units
 ```
 

@@ -33,6 +33,7 @@ This first spec covers the **foundation only**: the map view, 3D rendering and n
 | 3D engine | **CesiumJS** | Native 3D Tiles support, a WGS84 globe, built-in sun lighting and shadow maps, terrain providers, and globe materials for elevation styling. |
 | UI | **React** + a small state store (e.g. Zustand) | The map canvas is owned by Cesium; React renders overlay UI only. |
 | Sun math | **SunCalc** (or equivalent) | For human-readable readouts (azimuth, altitude, sunrise/sunset). Rendering uses Cesium's own sun model. |
+| Moon math | **astronomy-engine** | Topocentric moon position, phase and rise/set (§11.3). Also drives Cesium's rendered moon. |
 | Time zones | **tz-lookup** / **geo-tz** (offline) | Maps a coordinate to an IANA time zone so time sliders show local time. |
 | Tests | **Vitest** (unit), **Playwright for Electron** (smoke/E2E) | |
 | Packaging | **electron-builder** | |
@@ -327,7 +328,7 @@ These will get their own spec later:
 
 - **Camera / lens simulation**: place a virtual camera, choose sensor and focal length, and preview the framing and field-of-view frustum on the map. *First slice done: the viewfinder (§11.1).*
 - **Shot planning**: lines from a camera position to a subject, alignment with the sun or moon azimuth, and line-of-sight / visibility checks.
-- **Moon simulation**: position, phase, rise and set. *First slice done: the moon's path and skyline rise/set in the horizon panorama (§11.2).*
+- **Moon simulation**: position, phase, rise and set. *Done (§11.3); the horizon panorama also draws its path and skyline rise/set (§11.2).*
 - **Milky Way / galactic core** position.
 - **Viewshed analysis**: what is visible from a point. *First slice done: the skyline seen from a point (§11.2).*
 - Saved scouting locations with notes, photos, and tags. KML/GPX import and export.
@@ -356,6 +357,16 @@ The PhotoPills / PeakFinder view: does the sun set *into* a notch or *behind* a 
 - **Sun and moon**: their paths for the observer's local date (in the observer's own time zone), sampled every 4 min with hourly marks, solid above the skyline and dashed behind it. Rise and set over the terrain are when the upper limb meets the skyline, found every minute and refined to a second; the readout compares them with a flat horizon and totals the direct sun. The bodies at the current time are drawn at their true angular size. Clicking a path sets the time to that instant.
 - **Peaks**: Places API Nearby Search for `mountain_peak` in up to ten cells (the observer's and those of the most prominent skyline summits, sized by distance, cached per session) plus the peaks the map labels already know. A named peak is labeled when the highest ground within a few hundred meters of its pin rises out of its surroundings and reaches the skyline in its direction (it isn't hidden behind nearer ground).
 - **Chart**: altitude against azimuth, zoomed with the wheel and turned by dragging, with sunrise / sunset close-ups; vertical scale fitted to the skyline (the exaggeration is shown) or 1:1. Ridges are drawn fainter with distance. Hovering reads out the skyline's direction, altitude, distance and height and draws the line of sight on the map; *Look* stands at the observer at eye level facing the selected direction.
+
+### 11.3 Moon (implemented)
+
+The moon follows the same simulated instant and view center as the sun (§8.2, §8.3):
+
+- **Math**: astronomy-engine (`lib/moon.ts`). Positions are **topocentric**: the moon is close enough that the observer's place on the Earth shifts it by up to ~1° (parallax). Azimuth and altitude are apparent (refraction-corrected), like the sun's. Unit tests cross-check SunCalc (an independent series): within 0.05° in position, 0.005 in illuminated fraction, and 1 minute in rise, transit and set across six time zones.
+- **Readouts** (time panel, in a row aligned with the sun's): azimuth, altitude, moonrise, transit and moonset on the local date, plus the phase name, illuminated percentage, distance, and the next full and new moon (from the start of the local day, so "today 14:05" shows when one falls on that date). The moon rises ~50 minutes later each day, so about once a month a date has no moonrise or no moonset; that column shows "—" with a tooltip. At high latitudes the moon can stay up or down all day. Days with a clock change are covered in full (23 or 25 h).
+- **Phase**: named after the principal phase within ±6.1° of elongation (~±12 h of the instant), otherwise crescent or gibbous, waxing or waning. A small disc shows the lit shape **as it looks in the sky from the view center**: the lit limb points towards the sun along the great circle, measured clockwise from the zenith, so a northern evening crescent is lit on the right and a southern one from below.
+- **Rendered moon**: Cesium's `scene.moon` (lit by the sun only, so it shows the phase; drawn behind terrain and buildings, so a rising moon clears a ridge where it really does). Its position is replaced with astronomy-engine's Earth-fixed position (`engine/cesiumMoon.ts`). Cesium's own series is ~0.03° off, and ~0.36° until its ICRF data loads, which a long lens shows. An end-to-end test checks the drawn moon against the readout model to within 1 km.
+- **Moon direction indicator**: the sun indicator's ground arrow and dashed ray, in the moon's color, toggled independently (time panel, command palette, `settings.showMoonIndicator`). It doesn't depend on the lighting mode: the moon doesn't light the scene.
 
 The architecture should not rule any of these out. In particular, `SunController` should be general enough to model other celestial bodies later.
 

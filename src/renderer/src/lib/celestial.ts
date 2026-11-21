@@ -1,19 +1,52 @@
-import { sunDay, sunPosition, type SunDay, type SunPosition } from './sun'
+import { moonDay, moonPosition } from './moon'
+import { sunDay, sunPosition, type SunPosition } from './sun'
+
+/** Where a body stands in the observer's sky. */
+export type HorizonPosition = SunPosition
+
+/** A body's rise, transit and set on one local calendar day. Times are UTC instants. */
+export interface BodyDay {
+  /** Null when the body doesn't rise (or set) on this date. */
+  rise: number | null
+  set: number | null
+  /** Upper culmination (solar noon for the sun); null when it falls on another date. */
+  transit: number | null
+  /** Apparent altitude at the transit, degrees. */
+  transitAltitude: number | null
+  /** Above (or below) the horizon all day. */
+  polar: 'up' | 'down' | null
+}
 
 /**
- * A body whose position the app can simulate. The sun is the only one today; the moon
- * (future work, §11) can implement the same interface without touching the controller.
+ * A body whose position the app can simulate. SunController keeps the sun's own model (it
+ * also needs twilight times); the moon and later shot-planning tools work on this interface.
  */
 export interface CelestialBody {
   id: 'sun' | 'moon'
   label: string
-  position(utcMs: number, latitude: number, longitude: number): SunPosition
-  day(date: string, timeZone: string, latitude: number, longitude: number): SunDay
+  position(utcMs: number, latitude: number, longitude: number): HorizonPosition
+  day(date: string, timeZone: string, latitude: number, longitude: number): BodyDay
 }
 
 export const SUN: CelestialBody = {
   id: 'sun',
   label: 'Sun',
   position: sunPosition,
-  day: sunDay
+  day(date, timeZone, latitude, longitude) {
+    const d = sunDay(date, timeZone, latitude, longitude)
+    return {
+      rise: d.sunrise,
+      set: d.sunset,
+      transit: d.solarNoon,
+      transitAltitude: d.noonAltitude,
+      polar: d.polar === 'day' ? 'up' : d.polar === 'night' ? 'down' : null
+    }
+  }
+}
+
+export const MOON: CelestialBody = {
+  id: 'moon',
+  label: 'Moon',
+  position: moonPosition,
+  day: moonDay
 }

@@ -1,27 +1,18 @@
 import {
-  ArcType,
-  CallbackProperty,
-  Cartesian3,
-  Color,
-  ColorMaterialProperty,
   DynamicAtmosphereLightingType,
   JulianDate,
-  PolylineArrowMaterialProperty,
-  PolylineDashMaterialProperty,
   ShadowMap,
   ShadowMode,
   SunLight,
-  Transforms,
-  Matrix4,
-  type CesiumWidget,
-  type Entity
+  type Cartesian3,
+  type CesiumWidget
 } from 'cesium'
 import type { LightingMode, MapMode } from '@shared/types'
-import { SUN, type CelestialBody } from '../lib/celestial'
-import { dayBands, sunDirectionENU, type BandSegment, type SunDay } from '../lib/sun'
+import { dayBands, sunDay, sunPosition, type BandSegment, type SunDay } from '../lib/sun'
 import { addDays, addMinutes, isValidTimeZone, offsetMinutes, utcToZoned, zoneAbbreviation, zonedToUtc } from '../lib/time'
 import { lookupTimeZone } from '../lib/timezone'
 import { appState, useAppStore, type PlaybackSpeedId, type SunInfo } from '../store/appStore'
+import { DirectionIndicator } from './DirectionIndicator'
 import type { QualityConfig } from './quality'
 import { detailShadowPatchWorking } from './shadows/detailShadowPatch'
 import type { TilesetManager } from './TilesetManager'
@@ -49,7 +40,7 @@ export class SunController {
   private bands: BandSegment[] = []
   private dayKey = ''
   private day: SunDay | null = null
-  private indicator: Entity[] = []
+  private readonly indicator: DirectionIndicator
   private mode: MapMode = 'photorealistic'
   private lighting: LightingMode = 'sun'
   private shadowsWanted = true
@@ -62,21 +53,18 @@ export class SunController {
   private legacyDistance = 20000
   private shadowMapSize = 4096
   private altitude = 45
-  private azimuth = 180
-  private targetPosition: Cartesian3 | null = null
   private cascades: 1 | 4 = 4
   private readonly unsubscribe: Array<() => void> = []
 
   constructor(
     private readonly widget: CesiumWidget,
-    private readonly tiles: TilesetManager,
-    private readonly body: CelestialBody = SUN
+    private readonly tiles: TilesetManager
   ) {
     const { scene, clock } = widget
     clock.shouldAnimate = false
     scene.light = this.sunLight
     if (scene.sun) scene.sun.show = true
-    if (scene.moon) scene.moon.show = true
+    this.indicator = new DirectionIndicator(widget, '#ffc94d')
     const shadowMap = scene.shadowMap
     // Low sun is the main use case: don't fade shadows out near the horizon.
     shadowMap.fadingEnabled = false
@@ -95,7 +83,7 @@ export class SunController {
   destroy(): void {
     this.pause()
     this.unsubscribe.forEach((u) => u())
-    this.removeIndicator()
+    this.indicator.destroy()
   }
 
   /** UTC instant of the current simulated local time. */
@@ -114,7 +102,7 @@ export class SunController {
   }
 
   setTargetPosition(position: Cartesian3): void {
-    this.targetPosition = position
+    this.indicator.setTarget(position)
     this.updateIndicator()
   }
 
@@ -177,14 +165,14 @@ export class SunController {
     this.widget.clock.currentTime = JulianDate.fromDate(new Date(utc))
     const lat = target?.latitude ?? 0
     const lon = target?.longitude ?? 0
-    const pos = this.body.position(utc, lat, lon)
+    const pos = sunPosition(utc, lat, lon)
     this.altitude = pos.altitude
-    this.azimuth = pos.azimuth
+    this.indicator.setDirection(pos)
     // Rise/set times only depend on the date and place; playback changes neither per frame.
     const dayKey = `${sim.date}|${sim.timeZone}|${lat}|${lon}`
     if (dayKey !== this.dayKey || !this.day) {
       this.dayKey = dayKey
-      this.day = this.body.day(sim.date, sim.timeZone, lat, lon)
+      this.day = sunDay(sim.date, sim.timeZone, lat, lon)
     }
     const day = this.day
     const key = `${sim.date}|${sim.timeZone}|${lat.toFixed(2)}|${lon.toFixed(2)}`
@@ -329,62 +317,7 @@ export class SunController {
 
   // ───────────────────────────── direction indicator ─────────────────────────────
 
-  private removeIndicator(): void {
-    for (const e of this.indicator) this.widget.entities.remove(e)
-    this.indicator = []
-  }
-
   private updateIndicator(): void {
-    const show = appState().settings.showSunIndicator && this.lighting === 'sun'
-    if (!show || !this.targetPosition) {
-      if (this.indicator.length) {
-        this.removeIndicator()
-        this.widget.scene.requestRender()
-      }
-      return
-    }
-    if (this.indicator.length === 0) this.createIndicator()
-    this.widget.scene.requestRender()
-  }
-
-  private indicatorPositions(alongGround: boolean): Cartesian3[] {
-    const target = this.targetPosition
-    if (!target) return []
-    const scene = this.widget.scene
-    const length = Math.min(60000, Math.max(40, Cartesian3.distance(scene.camera.positionWC, target) * 0.3))
-    const [e, n, u] = sunDirectionENU({ azimuth: this.azimuth, altitude: Math.max(this.altitude, -5) })
-    const enu = Transforms.eastNorthUpToFixedFrame(target)
-    const local = alongGround
-      ? new Cartesian3(e, n, 0)
-      : new Cartesian3(e, n, u)
-    Cartesian3.normalize(local, local)
-    Cartesian3.multiplyByScalar(local, length, local)
-    const lift = new Cartesian3(0, 0, Math.max(1, length * 0.004))
-    const start = Matrix4.multiplyByPoint(enu, lift, new Cartesian3())
-    const end = Matrix4.multiplyByPoint(enu, Cartesian3.add(local, lift, new Cartesian3()), new Cartesian3())
-    return [start, end]
-  }
-
-  private createIndicator(): void {
-    const sunColor = Color.fromCssColorString('#ffc94d')
-    const ground = this.widget.entities.add({
-      polyline: {
-        positions: new CallbackProperty(() => this.indicatorPositions(true), false),
-        width: 14,
-        material: new PolylineArrowMaterialProperty(sunColor),
-        depthFailMaterial: new ColorMaterialProperty(sunColor.withAlpha(0.35)),
-        arcType: ArcType.NONE
-      }
-    })
-    const ray = this.widget.entities.add({
-      polyline: {
-        positions: new CallbackProperty(() => this.indicatorPositions(false), false),
-        width: 2,
-        material: new PolylineDashMaterialProperty({ color: sunColor, dashLength: 12 }),
-        depthFailMaterial: new PolylineDashMaterialProperty({ color: sunColor.withAlpha(0.3), dashLength: 12 }),
-        arcType: ArcType.NONE
-      }
-    })
-    this.indicator = [ground, ray]
+    this.indicator.update(appState().settings.showSunIndicator && this.lighting === 'sun')
   }
 }

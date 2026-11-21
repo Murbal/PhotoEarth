@@ -28,6 +28,7 @@ import { ProfileTool } from './ProfileTool'
 import { resolveQuality } from './quality'
 import { Readouts } from './Readouts'
 import { SearchMarker } from './SearchMarker'
+import { MoonController } from './MoonController'
 import { installDetailShadowPatch } from './shadows/detailShadowPatch'
 import { SpotSun } from './SpotSun'
 import { SunController } from './SunController'
@@ -67,6 +68,7 @@ export class Engine {
   readonly labels: PlaceLabels
   readonly camera: CameraController
   readonly sun: SunController
+  readonly moon: MoonController
   readonly styler: ElevationStyler
   readonly profile: ProfileTool
   readonly horizon: HorizonTool
@@ -178,6 +180,7 @@ export class Engine {
     })
     this.viewfinder = new Viewfinder(scene, this.camera)
     this.sun = new SunController(this.widget, this.tiles)
+    this.moon = new MoonController(this.widget)
     this.styler = new ElevationStyler(scene, this.terrainShadows)
     this.profile = new ProfileTool(this.widget, (points) => this.sampleProfile(points))
     this.horizon = new HorizonTool(this.widget, {
@@ -221,6 +224,7 @@ export class Engine {
     this.applyMode()
     this.readouts.refresh()
     this.sun.update()
+    this.moon.update()
     void this.setKeys(keys)
     void loadGeoid().then(() => {
       if (this.destroyed) return
@@ -239,6 +243,7 @@ export class Engine {
     this.camera.destroy()
     this.sun.destroy()
     this.spotSun.destroy()
+    this.moon.destroy()
     this.readouts.destroy()
     this.imagery.destroy()
     this.labels.destroy()
@@ -345,6 +350,7 @@ export class Engine {
     s.push(subscribeJson((st) => [st.settings.elevation, st.autoRange], () => this.applyStyle()))
     s.push(subscribeJson((st) => [st.settings.lighting, st.settings.shadows, st.settings.detailShadows], () => this.applyLighting()))
     s.push(subscribeJson((st) => st.settings.showSunIndicator, () => this.sun.update()))
+    s.push(subscribeJson((st) => st.settings.showMoonIndicator, () => this.moon.updateIndicator()))
     s.push(
       subscribeJson(
         (st) => st.settings.imagery,
@@ -537,6 +543,7 @@ export class Engine {
 
   private onTarget(target: Cartesian3): void {
     this.sun.setTargetPosition(target)
+    this.moon.setTargetPosition(target)
     this.terrainShadows.setView(this.scene.camera.positionWC, target, appState().camera?.heightAgl ?? null)
     const t = cartographicDeg(target)
     if (t) this.styler.setGeoidOffset(t.latitude, t.longitude)

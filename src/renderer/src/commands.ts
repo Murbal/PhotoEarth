@@ -109,6 +109,7 @@ export function getCommands(): Command[] {
       run: toggleSetting((d) => void (d.lighting = d.lighting === 'sun' ? 'flat' : 'sun'))
     },
     { id: 'toggle-sun-indicator', title: 'Toggle sun direction indicator', group: 'Time & sun', run: toggleSetting((d) => void (d.showSunIndicator = !d.showSunIndicator)) },
+    { id: 'toggle-moon-indicator', title: 'Toggle moon direction indicator', group: 'Time & sun', run: toggleSetting((d) => void (d.showMoonIndicator = !d.showMoonIndicator)) },
     {
       id: 'toggle-detail-shadows',
       title: 'Toggle building & tree shadows',
@@ -116,7 +117,7 @@ export function getCommands(): Command[] {
       keywords: 'detail shadow map near',
       run: toggleSetting((d) => void (d.detailShadows = !d.detailShadows))
     },
-    { id: 'toggle-time-panel', title: 'Show / hide time & sun panel', group: 'Time & sun', keys: 'T', run: () => appState().togglePanel('time') },
+    { id: 'toggle-time-panel', title: 'Show / hide time & sun panel', group: 'Time & sun', keys: 'T', keywords: 'moon phase moonrise moonset', run: () => appState().togglePanel('time') },
     { id: 'play-pause', title: 'Play / pause sun animation', group: 'Time & sun', keys: 'Space', run: () => engine()?.sun.togglePlay() },
     { id: 'time-now', title: 'Set time to now', group: 'Time & sun', run: () => engine()?.sun.setNow() },
     { id: 'time-back', title: 'Time −15 min', group: 'Time & sun', keys: '[', run: () => engine()?.sun.nudgeMinutes(-15) },
