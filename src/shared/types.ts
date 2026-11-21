@@ -112,6 +112,13 @@ export interface LightPollutionSettings {
   source: LightPollutionSourceId
 }
 
+/** The 2D overview map (§5.5). */
+export interface OverviewMapSettings {
+  enabled: boolean
+  /** Whole zoom steps on top of the automatic zoom (negative: wider). */
+  zoomOffset: number
+}
+
 /** Horizon panorama: what the strip chart draws over the skyline. */
 export interface HorizonSettings {
   /** The moon's path for the same date. */
@@ -135,6 +142,8 @@ export interface Settings {
   elevation: ElevationStyleSettings
   /** Artificial night sky brightness overlay (§7.5). */
   lightPollution: LightPollutionSettings
+  /** The 2D overview map in the corner, in the map type of `imagery` (§5.5). */
+  overviewMap: OverviewMapSettings
   verticalExaggeration: number
   lighting: LightingMode
   shadows: boolean

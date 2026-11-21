@@ -167,6 +167,7 @@ export function RightRail() {
   const placeLabels = useAppStore((s) => s.settings.placeLabels)
   const lightPollution = useAppStore((s) => s.settings.lightPollution.enabled)
   const viewfinder = useAppStore((s) => s.viewfinder)
+  const overviewMap = useAppStore((s) => s.settings.overviewMap.enabled)
   const patchSettings = useAppStore((s) => s.patchSettings)
 
   return (
@@ -225,6 +226,14 @@ export function RightRail() {
           active={lightPollution}
           pressed={lightPollution}
           onClick={() => runCommand('toggle-light-pollution')}
+        />
+        <RailButton
+          icon="map"
+          label={overviewMap ? 'Overview map: hide' : 'Overview map: where the camera is and looks'}
+          keys="O"
+          active={overviewMap}
+          pressed={overviewMap}
+          onClick={() => runCommand('toggle-overview-map')}
         />
         <RailButton icon="bookmark" label="Saved locations" active={panels.bookmarks} pressed={panels.bookmarks} onClick={() => togglePanel('bookmarks')} />
         <div className="divider" />

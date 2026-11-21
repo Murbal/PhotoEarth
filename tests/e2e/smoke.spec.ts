@@ -1056,6 +1056,202 @@ test('weather forecast: cloud bands, sunrise and sunset outlook, jumping to a su
   await panel.getByRole('button', { name: 'Now' }).click()
 })
 
+test('overview map: Google 2D tiles with attribution, a marker updated per readout (not per frame), click and drag move the view', () => awayFromView(async () => {
+  // A fake 2D Tiles session: the overview uses the globe imagery's session and its viewport
+  // attribution, both answered here so the test runs without a key.
+  const png = await testPng(256, 256)
+  const tileRequests: string[] = []
+  await page.route(/^https:\/\/(tile\.googleapis\.com|assets\.ion\.cesium\.com\/google-credit\.png)/, (route) => {
+    const url = route.request().url()
+    if (url.includes('/v1/createSession')) {
+      const expiry = String(Math.floor(Date.now() / 1000) + 14 * 86_400)
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ session: 'test-session', expiry, tileWidth: 256, tileHeight: 256 }) })
+    }
+    if (url.includes('/tile/v1/viewport')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ copyright: 'Imagery ©2026 Test Data', maxZoomRects: [] }) })
+    }
+    if (url.includes('/v1/2dtiles/')) tileRequests.push(url)
+    return route.fulfill({ status: 200, contentType: 'image/png', body: png })
+  })
+  const view = () => page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.currentView())
+  try {
+    await page.evaluate(async () => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      await e.imagery.configure('test-key', 'satellite')
+      e.camera.setView({ longitude: 7.75, latitude: 46, height: 4000, heading: 90, pitch: -30, roll: 0 })
+      e.scene.render()
+      e.readouts.refresh()
+    })
+
+    // On from the rail; the setting is saved.
+    await page.getByRole('button', { name: 'Overview map: where the camera is and looks' }).click()
+    const map = page.getByTestId('overview-map')
+    await expect(map).toBeVisible()
+    await expect.poll(async () => (await page.evaluate(() => window.photoearth.settings.get())).overviewMap.enabled).toBe(true)
+
+    // Tiles of the shared session, with Google's logo and the copyright of what the map shows.
+    await expect.poll(() => page.locator('.overview-tile.loaded').count()).toBeGreaterThan(0)
+    const srcs = await page.locator('.overview-tile').evaluateAll((els) => els.map((el) => (el as HTMLImageElement).src))
+    for (const src of srcs) expect(src).toMatch(/^https:\/\/tile\.googleapis\.com\/v1\/2dtiles\/\d+\/\d+\/\d+\?session=test-session&key=test-key$/)
+    const attribution = page.getByTestId('overview-attribution')
+    await expect(attribution.locator('img[alt="Google"]')).toBeVisible()
+    await expect(attribution).toContainText('Imagery ©2026 Test Data')
+
+    // The marker faces the camera's heading, and the wedge opens around it.
+    await expect(page.locator('.overview-marker')).toHaveAttribute('transform', /rotate\(90\.0\)$/)
+    expect(await page.locator('.overview-wedge').getAttribute('d')).toMatch(/^M[\d.]+ [\d.]+ L.* A.* Z$/)
+
+    // Nothing runs per frame: frames of a still camera leave the map alone, and a moving
+    // camera redraws it only at the readout's ~10 Hz, not at the frame rate. Each redraw is
+    // one batch of DOM writes (one observer callback).
+    const redraws = await page.evaluate(async () => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      const root = document.querySelector('.overview-canvas')!
+      const frame = () => new Promise((r) => setTimeout(r, 16))
+      let n = 0
+      const observer = new MutationObserver(() => n++)
+      observer.observe(root, { attributes: true, childList: true, subtree: true })
+      // Let the readout settle on the current view first (the ground below the camera firms
+      // up as globe tiles arrive): until 30 frames in a row leave the map alone.
+      for (let quiet = 0, i = 0; quiet < 30 && i < 600; i++) {
+        const seen = n
+        e.scene.requestRender()
+        e.scene.render()
+        await frame()
+        quiet = n === seen ? quiet + 1 : 0
+      }
+      n = 0
+      for (let i = 0; i < 30; i++) {
+        e.scene.requestRender()
+        e.scene.render()
+        await frame()
+      }
+      const still = n
+      n = 0
+      const start = performance.now()
+      let frames = 0
+      while (performance.now() - start < 1000) {
+        e.scene.camera.moveRight(120)
+        e.scene.render()
+        frames++
+        await frame()
+      }
+      await frame()
+      observer.disconnect()
+      return { still, moving: n, frames }
+    })
+    expect(redraws.still).toBe(0)
+    expect(redraws.moving).toBeGreaterThan(0)
+    expect(redraws.moving).toBeLessThanOrEqual(13)
+    expect(redraws.frames).toBeGreaterThan(redraws.moving * 2)
+
+    // Drag: the camera moves against the pointer by the map distance, keeping its height and
+    // orientation.
+    await page.evaluate(() => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      e.camera.setView({ longitude: 7.75, latitude: 46, height: 4000, heading: 90, pitch: -30, roll: 0 })
+      e.scene.render()
+      e.readouts.refresh()
+    })
+    await expect(page.locator('.overview-marker')).toHaveAttribute('transform', /rotate\(90\.0\)$/)
+    const zoomOf = async () => {
+      const keys = await page.locator('.overview-tile').evaluateAll((els) =>
+        els.filter((el) => (el as HTMLElement).style.zIndex === '1').map((el) => (el as HTMLImageElement).src)
+      )
+      return Number(/2dtiles\/(\d+)\//.exec(keys[0])![1])
+    }
+    const zoom = await zoomOf()
+    const canvas = page.locator('.overview-canvas')
+    const box = (await canvas.boundingBox())!
+    const before = await view()
+    await page.mouse.move(box.x + 120, box.y + 100)
+    await page.mouse.down()
+    for (let i = 1; i <= 8; i++) await page.mouse.move(box.x + 120 + i * 5, box.y + 100)
+    await page.mouse.up()
+    const after = await view()
+    const worldPx = 256 * 2 ** zoom
+    expect(after.longitude - before.longitude).toBeCloseTo((-40 / worldPx) * 360, 6)
+    expect(after.latitude).toBeCloseTo(before.latitude, 6)
+    expect(after.height).toBeCloseTo(before.height, 0)
+    expect(after.heading).toBeCloseTo(before.heading, 3)
+    expect(after.pitch).toBeCloseTo(before.pitch, 3)
+    await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.readouts.refresh())
+
+    // Click: the clicked point becomes the view center, seen from the same heading and pitch.
+    await page.evaluate(() => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      const g = window as unknown as { __flights: unknown[] }
+      g.__flights = []
+      const original = e.camera.flyToLocation
+      e.camera.__originalFlyToLocation = original
+      e.camera.flyToLocation = (latitude: number, longitude: number, opts: unknown) => {
+        g.__flights.push({ latitude, longitude, opts })
+        return original.call(e.camera, latitude, longitude, opts)
+      }
+    })
+    const markerY = await page.locator('.overview-marker').evaluate((el) => Number(/translate\([\d.-]+ ([\d.-]+)\)/.exec(el.getAttribute('transform')!)![1]))
+    await page.mouse.click(box.x + 120, box.y + markerY - 60)
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __flights: unknown[] }).__flights.length)).toBe(1)
+    const flight = await page.evaluate(() => (window as unknown as { __flights: any[] }).__flights[0])
+    expect(flight.opts.heading).toBeCloseTo(90, 3)
+    expect(flight.opts.pitch).toBeCloseTo(-30, 3)
+    // 60 map pixels north of the camera.
+    const yOf = (lat: number) => (0.5 - Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360)) / (2 * Math.PI)) * worldPx
+    expect(yOf(after.latitude) - yOf(flight.latitude)).toBeCloseTo(60, -0.5)
+
+    // O hides it again.
+    await page.keyboard.press('o')
+    await expect(map).toHaveCount(0)
+  } finally {
+    await page.evaluate(async () => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      if (e.camera.__originalFlyToLocation) e.camera.flyToLocation = e.camera.__originalFlyToLocation
+      e.scene.camera.cancelFlight()
+      await e.imagery.configure(null, 'satellite')
+    })
+    await page.unroute(/^https:\/\/(tile\.googleapis\.com|assets\.ion\.cesium\.com\/google-credit\.png)/)
+  }
+  expect(tileRequests.length).toBeGreaterThan(0)
+}))
+
+test('overview map: from the palette, beside the side and bottom panels at any size, and hidden again', async () => {
+  await page.keyboard.press('ControlOrMeta+k')
+  await page.keyboard.type('overview map')
+  await expect(page.locator('.palette-item').first()).toContainText('Overview map on / off')
+  await page.keyboard.press('Enter')
+  const map = page.getByTestId('overview-map')
+  await expect(map).toBeVisible()
+  // Without a session it says what is missing.
+  await expect(map).toContainText('Add a Google Maps Platform key')
+
+  const rects = () =>
+    page.evaluate(() => {
+      const r = (sel: string) => Array.from(document.querySelectorAll(sel)).map((el) => el.getBoundingClientRect().toJSON() as DOMRect)
+      return { overview: r('.overview-map')[0], others: [...r('.side-panel'), ...r('.bottom-stack > .panel'), ...r('.statusbar')] }
+    })
+  const overlaps = (a: DOMRect, b: DOMRect) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+  await page.keyboard.press('t')
+  await page.getByRole('button', { name: 'Saved locations', exact: true }).click()
+  try {
+    for (const [width, height] of [[1440, 900], [1920, 1080], [1100, 900], [1280, 760]]) {
+      await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setContentSize(size[0], size[1]), [width, height])
+      await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width)
+      await page.waitForTimeout(100)
+      const { overview, others } = await rects()
+      expect(others.length).toBeGreaterThanOrEqual(3)
+      for (const o of others) expect(overlaps(overview, o), `${width}×${height}: ${JSON.stringify({ overview, o })}`).toBe(false)
+    }
+  } finally {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1440, 900))
+    await page.keyboard.press('t')
+    await page.getByRole('button', { name: 'Saved locations', exact: true }).click()
+  }
+
+  await page.getByRole('button', { name: 'Hide overview map' }).click()
+  await expect(map).toHaveCount(0)
+  await expect.poll(async () => (await page.evaluate(() => window.photoearth.settings.get())).overviewMap.enabled).toBe(false)
+})
+
 test('light pollution: overlay layer, legend, and a sky brightness estimate at the inspected point', async () => {
   // Offline and deterministic: color tiles are a 1×1 PNG, the data tiles a uniform field of
   // 1.29× natural brightness (the 2025 atlas's value for Zermatt), gzipped as served.

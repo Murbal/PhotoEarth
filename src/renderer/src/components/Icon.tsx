@@ -141,6 +141,8 @@ const PATHS: Record<string, ReactElement> = {
       <path d="M17 3.5v4M15 5.5h4" />
     </>
   ),
+  /** A folded paper map: the 2D overview map. */
+  map: <path d="M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20zM9 4v13.5M15 6.5V20" />,
   now: (
     <>
       <circle cx="12" cy="12" r="9" />

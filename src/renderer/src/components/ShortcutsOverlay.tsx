@@ -39,7 +39,8 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
       ['R', 'Level the horizon'],
       ['1 / 2', 'Photorealistic / Elevation mode'],
       ['M', 'Place names on / off'],
-      ['K', 'Light pollution overlay on / off']
+      ['K', 'Light pollution overlay on / off'],
+      ['O', 'Overview map on / off']
     ]
   ],
   [

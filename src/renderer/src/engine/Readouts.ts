@@ -1,5 +1,6 @@
-import { Cartesian2, Cartesian3, Cartographic, Ellipsoid, IntersectionTests, Ray, type Scene } from 'cesium'
+import { Cartesian2, Cartesian3, Cartographic, Ellipsoid, IntersectionTests, PerspectiveFrustum, Ray, type Scene } from 'cesium'
 import { toMsl } from '../lib/geoid'
+import { horizontalFov } from '../lib/overviewMap'
 import { niceScale } from '../lib/units'
 import { appState } from '../store/appStore'
 import { cameraTarget, pickSurface, surfaceHeight, toDeg } from './util'
@@ -18,7 +19,7 @@ const scratchScreen = new Cartesian2()
 export class Readouts {
   private cursorTimer: number | null = null
   private pendingCursor: Cartesian2 | null = null
-  private lastCamera = { pos: new Cartesian3(), dir: new Cartesian3() }
+  private lastCamera = { pos: new Cartesian3(), dir: new Cartesian3(), fov: 0 }
   /** Camera of the previous rendered frame, to tell when the view is moving. */
   private prevFrame = { pos: new Cartesian3(), dir: new Cartesian3() }
   private lastMoveAt = Number.NEGATIVE_INFINITY
@@ -105,13 +106,16 @@ export class Readouts {
       Cartesian3.clone(cam.positionWC, prev.pos)
       Cartesian3.clone(cam.directionWC, prev.dir)
     }
+    const fov = this.fov()
     const moved =
       !Cartesian3.equalsEpsilon(cam.positionWC, this.lastCamera.pos, 0, 0.01) ||
-      !Cartesian3.equalsEpsilon(cam.directionWC, this.lastCamera.dir, 1e-6)
+      !Cartesian3.equalsEpsilon(cam.directionWC, this.lastCamera.dir, 1e-6) ||
+      Math.abs(fov - this.lastCamera.fov) > 0.05
     if (!moved || now - this.lastCameraUpdate < 100) return
     this.lastCameraUpdate = now
     Cartesian3.clone(cam.positionWC, this.lastCamera.pos)
     Cartesian3.clone(cam.directionWC, this.lastCamera.dir)
+    this.lastCamera.fov = fov
     this.updateCamera()
     if (now - this.lastTargetUpdate > 300) {
       this.lastTargetUpdate = now
@@ -146,10 +150,18 @@ export class Readouts {
         heightMsl: toMsl(latitude, longitude, c.height),
         heightAgl: ground !== undefined ? c.height - ground : null,
         heading: (toDeg(cam.heading) + 360) % 360,
-        pitch: toDeg(cam.pitch)
+        pitch: toDeg(cam.pitch),
+        fov: this.fov()
       },
       scale: this.computeScale(ground ?? this.targetHeight ?? 0)
     })
+  }
+
+  /** Horizontal angle of view in degrees (the viewfinder narrows it). */
+  private fov(): number {
+    const f = this.scene.camera.frustum
+    if (!(f instanceof PerspectiveFrustum) || f.fov === undefined) return 60
+    return horizontalFov(toDeg(f.fov), f.aspectRatio ?? 1)
   }
 
   private updateTarget(fast = false): void {

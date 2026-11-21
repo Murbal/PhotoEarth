@@ -49,6 +49,8 @@ export const COMPOSITION_GUIDES: readonly CompositionGuide[] = ['none', 'thirds'
 export const FOCAL_RANGE = { min: 8, max: 800 } as const
 /** Custom sensor dimension range, mm. */
 export const SENSOR_SIZE_RANGE = { min: 1, max: 120 } as const
+/** The overview map's zoom steps on top of its automatic zoom (§5.5). */
+export const OVERVIEW_ZOOM_OFFSET = { min: -6, max: 6 } as const
 export const MIN_EXAGGERATION = 1
 export const MAX_EXAGGERATION = 3
 
@@ -97,6 +99,7 @@ export function defaultSettings(): Settings {
       hillshade: { enabled: true, opacity: 0.5, followSun: true }
     },
     lightPollution: { enabled: false, opacity: 0.6, source: 'atlas-2025' },
+    overviewMap: { enabled: false, zoomOffset: 0 },
     verticalExaggeration: 1,
     lighting: 'sun',
     shadows: true,
@@ -193,6 +196,7 @@ export function sanitizeSettings(raw: Json): Settings {
   const hill = isObject(e.hillshade) ? e.hillshade : {}
   const horizon = isObject(r.horizon) ? r.horizon : {}
   const lp = isObject(r.lightPollution) ? r.lightPollution : {}
+  const ov = isObject(r.overviewMap) ? r.overviewMap : {}
   const modes: readonly MapMode[] = ['photorealistic', 'elevation']
   const cascades = o.shadowCascades === 1 || o.shadowCascades === 4 ? o.shadowCascades : null
 
@@ -260,6 +264,10 @@ export function sanitizeSettings(raw: Json): Settings {
       enabled: bool(lp.enabled, d.lightPollution.enabled),
       opacity: num(lp.opacity, d.lightPollution.opacity, 0, 1),
       source: oneOf(lp.source, LIGHT_POLLUTION_SOURCES, d.lightPollution.source)
+    },
+    overviewMap: {
+      enabled: bool(ov.enabled, d.overviewMap.enabled),
+      zoomOffset: Math.round(num(ov.zoomOffset, d.overviewMap.zoomOffset, OVERVIEW_ZOOM_OFFSET.min, OVERVIEW_ZOOM_OFFSET.max))
     },
     verticalExaggeration: num(r.verticalExaggeration, d.verticalExaggeration, MIN_EXAGGERATION, MAX_EXAGGERATION),
     lighting: oneOf(r.lighting, ['sun', 'flat'], d.lighting),

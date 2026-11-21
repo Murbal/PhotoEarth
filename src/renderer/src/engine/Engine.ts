@@ -42,7 +42,7 @@ import { TilePreloader } from './TilePreloader'
 import { TilesetManager } from './TilesetManager'
 import { setUploadBudgets } from './uploadBudget'
 import { Viewfinder } from './Viewfinder'
-import { cameraTarget, cartographicDeg, currentView, pickSurface, surfaceHeight, toDeg } from './util'
+import { cameraTarget, cartographicDeg, currentView, pickSurface, surfaceHeight, toDeg, toRad } from './util'
 
 type ProviderKey = 'tiles' | 'terrain' | 'imagery' | 'labels'
 
@@ -170,7 +170,9 @@ export class Engine {
       terrain.ready()
       appState().set({ terrainReady: true })
     })
-    this.imagery = new GoogleImagery(scene, this.widget.creditDisplay, imagery.error, imagery.ready)
+    this.imagery = new GoogleImagery(scene, this.widget.creditDisplay, imagery.error, imagery.ready, (tileSession) =>
+      appState().set({ tileSession })
+    )
     this.lightPollution = new LightPollution(scene, (shown) => {
       this.sun?.setUnlitGlobe(shown)
       this.applyStyle()
@@ -856,6 +858,32 @@ export class Engine {
     const spot = this.horizon.spot
     if (!spot) return Promise.resolve()
     return this.camera.goToEyeLevel(spot, { heading: azimuth, pitch: altitude })
+  }
+
+  // ───────────────────────────── overview map (§5.5) ─────────────────────────────
+
+  /**
+   * A click on the overview map: looking down, the clicked point becomes the view center (same
+   * heading, pitch and distance); looking level or up, the camera itself moves there at the
+   * same height above ground (at eye level, it stands there).
+   */
+  async goToFromOverview(longitude: number, latitude: number): Promise<void> {
+    const { camera: info, flyMode, eyeLevel } = appState()
+    if (flyMode || !info) return
+    const ground = await this.groundHeight(longitude, latitude)
+    if (this.destroyed) return
+    if (eyeLevel) {
+      await this.camera.goToEyeLevel(Cartesian3.fromDegrees(longitude, latitude, ground), { heading: info.heading, pitch: info.pitch })
+      return
+    }
+    const agl = Math.max(info.heightAgl ?? info.height - ground, appState().settings.navigation.minClearance)
+    if (info.pitch < -8) {
+      // Distance to the view center over flat ground, as the overview's wedge draws it.
+      const range = Math.min(Math.max(agl / Math.sin(toRad(-info.pitch)), 100), 4.0e6)
+      await this.camera.flyToLocation(latitude, longitude, { range, heading: info.heading, pitch: info.pitch, groundHeight: ground })
+    } else {
+      await this.camera.flyToView({ longitude, latitude, height: ground + agl, heading: info.heading, pitch: info.pitch, roll: 0 })
+    }
   }
 
   startProfile(): void {

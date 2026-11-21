@@ -93,6 +93,7 @@ export function useShortcuts(): void {
         m: 'toggle-place-labels',
         k: 'toggle-light-pollution',
         v: 'toggle-viewfinder',
+        o: 'toggle-overview-map',
         '+': 'zoom-in',
         '=': 'zoom-in',
         '-': 'zoom-out'

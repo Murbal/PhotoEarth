@@ -86,6 +86,14 @@ export function getCommands(): Command[] {
       })
     },
     {
+      id: 'toggle-overview-map',
+      title: 'Overview map on / off (2D map of where the camera is and looks)',
+      group: 'View',
+      keys: 'O',
+      keywords: 'minimap mini map 2d inset locator position orientation google',
+      run: toggleSetting((d) => void (d.overviewMap.enabled = !d.overviewMap.enabled))
+    },
+    {
       id: 'toggle-viewfinder',
       title: 'Viewfinder on / off (lens, crop frame, guides)',
       group: 'View',

@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { NO_FILTER, type LocationFilter } from '@shared/locations'
 import { defaultSettings } from '@shared/settings'
 import type { ApiKeys, Bookmark, MapMode, SavedProfile, SecretsStatus, Settings } from '@shared/types'
+import type { TileSession } from '../engine/GoogleImagery'
 import type { BodyDay } from '../lib/celestial'
 import type { SkyEstimate } from '../lib/skyBrightness'
 import type { SunlitSpan } from '../lib/horizon'
@@ -38,6 +39,8 @@ export interface CameraInfo {
   heightAgl: number | null
   heading: number
   pitch: number
+  /** Horizontal angle of view, degrees (the overview map's view wedge). */
+  fov: number
 }
 
 export interface CursorInfo {
@@ -257,6 +260,8 @@ export interface AppState {
   autoRange: { min: number; max: number } | null
   terrainReady: boolean
   tilesetReady: boolean
+  /** The Google 2D Tiles session, shared by the globe imagery and the overview map (§5.5). */
+  tileSession: TileSession | null
   /** Heightmap terrain shadows (§8.1.1). */
   terrainShadows: 'off' | 'loading' | 'ready' | 'unavailable'
   toast: Toast | null
@@ -325,6 +330,7 @@ export const useAppStore = create<AppState>()(
     autoRange: null,
     terrainReady: false,
     tilesetReady: false,
+    tileSession: null,
     terrainShadows: 'off',
     toast: null,
 

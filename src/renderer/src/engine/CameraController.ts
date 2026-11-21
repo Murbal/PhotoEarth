@@ -21,6 +21,9 @@ import { MovementSpeed } from './MovementSpeed'
 import { cameraTarget, clamp, pickSurface, pickSurfaceCpu, raycastSurface, surfaceHeight, toDeg, toRad } from './util'
 import { GESTURE_GAP_MS, WheelClassifier } from './WheelInput'
 
+/** followPointer while an overview map drag carries the camera (never a real pointer id). */
+const GLIDE_POINTER = -1
+
 /** Standing eye height for eye-level mode, meters. */
 export const EYE_HEIGHT = 1.7
 /** Standing within this of a pin counts as standing at it (eye-level toggle). */
@@ -1024,6 +1027,43 @@ export class CameraController {
         cancel: () => resolve()
       })
     })
+  }
+
+  // ───────────────────────────── overview map ─────────────────────────────
+
+  /**
+   * An overview map drag begins (§5.5): stops flights and inertia, and follows the terrain at
+   * the current height above ground for as long as the drag lasts.
+   */
+  beginGlide(): void {
+    this.userInput()
+    this.headingVelocity = 0
+    this.startFollow()
+    this.followPointer = GLIDE_POINTER
+  }
+
+  /**
+   * Carries the camera over the ground to a new spot, keeping its altitude, heading, pitch
+   * and roll. Nothing is sampled here: followTerrain lifts the camera where the ground rises,
+   * from the height Cesium measures below the camera every frame anyway.
+   */
+  glideTo(longitude: number, latitude: number): void {
+    if (this.flyMode) return
+    const cam = this.scene.camera
+    if (!Matrix4.equals(cam.transform, Matrix4.IDENTITY)) cam.lookAtTransform(Matrix4.IDENTITY)
+    const c = Cartographic.fromCartesian(cam.positionWC)
+    if (!c) return
+    if (this.followAgl === null) this.startFollow()
+    cam.setView({
+      destination: Cartesian3.fromDegrees(longitude, latitude, c.height),
+      orientation: { heading: cam.heading, pitch: cam.pitch, roll: cam.roll }
+    })
+    this.scene.requestRender()
+  }
+
+  endGlide(): void {
+    if (this.followPointer === GLIDE_POINTER) this.followPointer = null
+    this.endFollow()
   }
 
   /** Double-click: fly closer to the clicked point, keeping the heading. */
