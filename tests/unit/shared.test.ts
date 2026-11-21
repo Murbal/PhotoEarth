@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { classifyGoogleError, classifyIonError } from '@shared/apiErrors'
 import { buildAutocompleteBody, parseAutocomplete, parsePlaceDetails } from '@shared/places'
-import { defaultSettings, sanitizeSettings } from '@shared/settings'
+import { DETAIL_SHADOW_RANGE, defaultSettings, sanitizeSettings } from '@shared/settings'
 
 describe('settings sanitization', () => {
   it('returns defaults for garbage', () => {
@@ -38,6 +38,17 @@ describe('settings sanitization', () => {
 
   it('rejects incomplete camera views', () => {
     expect(sanitizeSettings({ lastCamera: { longitude: 7 } }).lastCamera).toBeNull()
+  })
+
+  it('clamps the detail shadow range override and keeps 0 as off', () => {
+    const range = (v: unknown) => sanitizeSettings({ quality: { overrides: { detailShadowDistance: v } } }).quality.overrides.detailShadowDistance
+    expect(range(undefined)).toBeNull()
+    expect(range('600')).toBeNull()
+    expect(range(Number.NaN)).toBeNull()
+    expect(range(0)).toBe(0)
+    expect(range(1200)).toBe(1200)
+    expect(range(-50)).toBe(0)
+    expect(range(1e6)).toBe(DETAIL_SHADOW_RANGE.max)
   })
 })
 

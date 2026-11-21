@@ -105,6 +105,7 @@ export function resolveQuality(
     shadowMapSize: Math.min(pick('shadowMapSize'), Math.min(limits.maxTextureSize, MAX_SHADOW_ATLAS) / atlasPerCascade),
     shadowCascades,
     softShadows: pick('softShadows'),
+    detailShadowDistance: pick('detailShadowDistance'),
     terrainShadowResolution: pick('terrainShadowResolution'),
     msaaSamples: Math.max(1, Math.min(pick('msaaSamples'), limits.maxSamples)),
     fxaa: pick('fxaa'),

@@ -24,6 +24,8 @@ export interface QualityOverrides {
   shadowMapSize: number | null
   shadowCascades: 1 | 4 | null
   softShadows: boolean | null
+  /** Range of building/tree detail shadows near a low camera, meters (0 = off). */
+  detailShadowDistance: number | null
   /** Cells per side of the terrain shadow grids. */
   terrainShadowResolution: number | null
   msaaSamples: number | null
