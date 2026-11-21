@@ -1020,6 +1020,50 @@ test('moon: readouts, direction line, and the rendered moon where the readouts p
   expect(offset.km).toBeLessThan(1) // < 0.0002°
 })
 
+test('milky way: core readout, astro dark-window jump, direction indicator, and horizon arch', async () => {
+  const panel = page.locator('.time-panel')
+  if (!(await panel.isVisible())) await page.keyboard.press('t')
+  // Summer new moon (2026-07-14) in Los Angeles: prime Galactic Core dark window.
+  await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.sun.setInstant(Date.parse('2026-07-14T21:00:00Z')))
+  await expect(panel.locator('.sky-readouts')).toContainText('Core')
+  const astro = panel.locator('.astro-window')
+  await expect(astro).toBeVisible()
+  await expect(astro).toContainText('Core window')
+  await expect(astro).toContainText('Peak core')
+  await expect(astro).toContainText('Arch')
+
+  // Clicking Peak core jumps directly into the dark window where the core is visible.
+  await astro.getByRole('button', { name: /^\d\d:\d\d \(/ }).click()
+  await expect(astro).toContainText('Visible (dark sky)')
+
+  // Core direction indicator: two entities while enabled, removed when disabled.
+  const entities = () => page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.widget.entities.values.length)
+  const before = await entities()
+  await panel.getByText('Core direction').click()
+  await expect.poll(entities).toBe(before + 2)
+  await panel.getByText('Core direction').click()
+  await expect.poll(entities).toBe(before)
+
+  // Horizon Panorama draws the Milky Way arch and Galactic Core path, toggled by its checkbox.
+  await page.evaluate(() => {
+    const e = (window as unknown as { __photoearth: any }).__photoearth
+    const heights = new Float32Array(64 * 64).fill(0)
+    e.horizon.debugOpen(-119.59, 37.75, [{ cx: 0, cy: 0, half: 20000, n: 64, heights, minHeight: 0, maxHeight: 0 }], [])
+  })
+  const horizon = page.locator('.horizon-panel')
+  await expect(horizon).toBeVisible()
+  await expect(horizon.locator('.horizon-milky-way-arch')).toHaveCount(1)
+  await expect(horizon.locator('.horizon-core-marker')).toHaveCount(1)
+  await expect(horizon.locator('.horizon-stats')).toContainText('Galactic Core')
+  await expect(astro).toContainText('skyline')
+  await horizon.getByText('Milky Way', { exact: true }).click()
+  await expect(horizon.locator('.horizon-milky-way-arch')).toHaveCount(0)
+  await horizon.getByText('Milky Way', { exact: true }).click()
+  await expect(horizon.locator('.horizon-milky-way-arch')).toHaveCount(1)
+  await horizon.getByRole('button', { name: 'Close horizon panorama' }).click()
+  await expect(horizon).toBeHidden()
+})
+
 test('weather forecast: cloud bands, sunrise and sunset outlook, jumping to a sunset', async () => {
   const panel = page.locator('.time-panel')
   if (!(await panel.isVisible())) {

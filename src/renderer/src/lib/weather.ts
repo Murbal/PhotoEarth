@@ -85,6 +85,19 @@ export function valueAt(s: WeatherSeries, key: Exclude<HourlyKey, 'windDirection
   return a + (b - a) * f
 }
 
+/**
+ * Combined cloud cover (0–100 %) at an instant from low, mid and high layers under random
+ * overlap: `1 − (1 − L)(1 − M)(1 − H)`. Null outside the forecast or when all layers are missing.
+ */
+export function totalCloudAt(s: WeatherSeries, utc: number): number | null {
+  const low = valueAt(s, 'cloudLow', utc)
+  const mid = valueAt(s, 'cloudMid', utc)
+  const high = valueAt(s, 'cloudHigh', utc)
+  if (low === null && mid === null && high === null) return null
+  const clear = (v: number | null) => 1 - Math.min(100, Math.max(0, v ?? 0)) / 100
+  return Math.round(100 * (1 - clear(low) * clear(mid) * clear(high)))
+}
+
 export interface ForecastHour {
   utc: number
   cloudLow: number | null

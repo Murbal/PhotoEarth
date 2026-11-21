@@ -2,7 +2,7 @@
 
 # PhotoEarth
 
-A desktop 3D globe for photography location scouting: explore photorealistic terrain, read elevation, and simulate the sun and moon for any date and time to see where light and shadow fall and where the moon rises. See [SPEC.md](SPEC.md) for the full specification.
+A desktop 3D globe for photography location scouting: explore photorealistic terrain, read elevation, and simulate the sun, moon and Milky Way for any date and time to see where light and shadow fall, when the moon rises, and when the Galactic Core clears the skyline in dark skies. See [SPEC.md](SPEC.md) for the full specification.
 
 ## Getting started
 
@@ -63,7 +63,7 @@ They're loaded in the main process only, so they never end up in the renderer bu
 | `T` / `L` / `P` | Time & sun panel / elevation styling / elevation profile |
 | `V` | Viewfinder: frame the view through a real sensor and focal length |
 | `Shift+V` | Viewshed analysis: highlight all terrain with line of sight to a target |
-| `H` | Horizon panorama: the skyline with the sun and moon paths |
+| `H` | Horizon panorama: the skyline with the sun, moon and Milky Way paths |
 | `X` | Shot alignment: Camera → Subject line of sight & reverse Sun/Moon date finder |
 | `,` / `.`, `Shift+,` / `Shift+.` | Viewfinder: previous / next focal length preset, ∓5 % |
 | `M` | Place names on / off |
@@ -72,7 +72,7 @@ They're loaded in the main process only, so they never end up in the renderer bu
 
 ### Horizon panorama
 
-`H` (or the panorama button on the inspect card, the right rail or the palette) answers "does the sun set into that notch or behind the peak, and when?". From the inspected point (else the search pin or the view center) it traces the terrain skyline through 360° out to ~300 km on Cesium World Terrain, and draws it as a strip chart of altitude against compass direction. Over it go the sun's and the moon's paths for the chosen date, marked hourly, solid where they are above the skyline and dashed behind it, with the times they clear and drop behind the terrain (compared with a flat-horizon sunrise and sunset) and the hours of direct sun. Named peaks on the skyline are labeled from Google Places.
+`H` (or the panorama button on the inspect card, the right rail or the palette) answers "does the sun set into that notch or behind the peak, and when?". From the inspected point (else the search pin or the view center) it traces the terrain skyline through 360° out to ~300 km on Cesium World Terrain, and draws it as a strip chart of altitude against compass direction. Over it go the sun's, moon's and Galactic Core's paths for the chosen date, marked hourly, solid where they are above the skyline and dashed behind it, with the times they clear and drop behind the terrain (compared with a flat-horizon sunrise and sunset) and the hours of direct sun, plus the Milky Way arch at the simulated instant. Named peaks on the skyline are labeled from Google Places.
 
 Scroll to zoom, drag to turn, or jump to the sunrise or sunset close-up; *1:1* shows true angles instead of the stretched skyline. Hovering shows the direction, altitude, distance and height of the skyline and draws the line of sight on the map. Clicking the sun or moon path sets the time to that moment, and *Look* stands you at the observer at eye level, facing the selected direction. While the panorama is open, clicking the map moves the observer. It needs the Cesium ion token; peak names need the Google key.
 
@@ -126,6 +126,14 @@ The time panel (`T`) shows the [Open-Meteo](https://open-meteo.com/) forecast fo
 
 Each request sends only coordinates to Open-Meteo: the view center and the two points 150 km toward the sunset and sunrise. It's made from the main process once the view settles, at most once an hour per place (forecasts are reused within 3 km). Switch it off with *Forecast* in the time panel.
 
+### Milky Way & Astro Dark-Window
+
+The time panel (`T`) and horizon panorama (`H`) include astrophotography planning for the **Galactic Core** (Sagittarius A*) and the **Milky Way arch**:
+
+- **Core readout & arch framing**: live azimuth, altitude, clickable rise/transit/set times (handling DST days and latitudes where the core never rises or is circumpolar), plus the arch's peak elevation and core tilt (*Horizontal pano*, *Diagonal / pano*, or *Vertical / overhead*).
+- **Astro Dark-Window**: intersects astronomical night (sun below −18°), moonless skies (or optionally ≤ 10 % crescent moon), Galactic Core visibility above a configurable minimum altitude (and above the traced terrain skyline while Horizon Panorama is open), and Open-Meteo cloud cover when within the 16-day forecast. Click a dark-window time, peak core, or a day's `✦` button in the forecast strip to jump straight to that instant.
+- **Horizon Panorama & 3D indicator**: toggle *Milky Way* in the horizon panorama to overlay the Galactic Core path, terrain rise/set crossings and the Milky Way arch at the current instant; toggle *Core direction* in the time panel (or command palette) to draw a 3D direction arrow and ray toward the core on the map and show its bearing in the viewfinder.
+
 ## Architecture
 
 ```
@@ -138,12 +146,12 @@ src/
   renderer/src/
     engine/    Engine (owns the CesiumWidget) and the managers from SPEC §4:
                TilesetManager, TerrainManager, GoogleImagery, CameraController,
-               SunController, MoonController, ElevationStyler, ProfileTool, HorizonTool,
+               SunController, MoonController, MilkyWayController, ElevationStyler, ProfileTool, HorizonTool,
                ViewshedTool, AlignmentTool, PointInspector, Readouts, LocationMarkers,
                TerrainShadows, quality presets
     components/ React overlay UI (the canvas belongs to Cesium)
     store/     Zustand app state; React writes it, the engine subscribes to it
-    lib/       pure, unit-tested logic: time zones, sun, moon, alignment, seasons, coordinates, geoid,
+    lib/       pure, unit-tested logic: time zones, sun, moon, milky way & astro windows, alignment, seasons, coordinates, geoid,
                profile math, terrain-shadow & viewshed ray marching, horizon panorama,
                weather outlook, palettes, units
 ```

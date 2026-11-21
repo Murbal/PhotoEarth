@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { classifyGoogleError, classifyIonError } from '@shared/apiErrors'
 import { buildAutocompleteBody, parseAutocomplete, parsePlaceDetails } from '@shared/places'
-import { DETAIL_SHADOW_RANGE, defaultSettings, sanitizeSettings } from '@shared/settings'
+import { DETAIL_SHADOW_RANGE, MIN_CORE_ALTITUDE_RANGE, defaultSettings, sanitizeSettings } from '@shared/settings'
 
 describe('settings sanitization', () => {
   it('returns defaults for garbage', () => {
@@ -49,6 +49,27 @@ describe('settings sanitization', () => {
     expect(range(1200)).toBe(1200)
     expect(range(-50)).toBe(0)
     expect(range(1e6)).toBe(DETAIL_SHADOW_RANGE.max)
+  })
+
+  it('sanitizes Milky Way and astro dark-window settings', () => {
+    const d = defaultSettings()
+    expect(d.showMilkyWayIndicator).toBe(false)
+    expect(d.horizon.milkyWay).toBe(true)
+    expect(d.astro).toEqual({ minCoreAltitude: 5, allowLowMoon: false })
+
+    const s = sanitizeSettings({
+      showMilkyWayIndicator: true,
+      horizon: { moon: false, milkyWay: false, peakNames: 'nope' },
+      astro: { minCoreAltitude: 120, allowLowMoon: true }
+    })
+    expect(s.showMilkyWayIndicator).toBe(true)
+    expect(s.horizon).toEqual({ moon: false, milkyWay: false, peakNames: true })
+    expect(s.astro).toEqual({ minCoreAltitude: MIN_CORE_ALTITUDE_RANGE.max, allowLowMoon: true })
+
+    expect(sanitizeSettings({ astro: { minCoreAltitude: -10, allowLowMoon: 'yes' } }).astro).toEqual({
+      minCoreAltitude: MIN_CORE_ALTITUDE_RANGE.min,
+      allowLowMoon: false
+    })
   })
 })
 

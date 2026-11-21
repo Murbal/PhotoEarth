@@ -1,3 +1,4 @@
+import { galacticCoreDay, galacticCorePosition } from './milkyWay'
 import { moonDay, moonPosition } from './moon'
 import { sunDay, sunPosition, type SunPosition } from './sun'
 
@@ -19,10 +20,10 @@ export interface BodyDay {
 
 /**
  * A body whose position the app can simulate. SunController keeps the sun's own model (it
- * also needs twilight times); the moon and later shot-planning tools work on this interface.
+ * also needs twilight times); the moon, Galactic Core and shot-planning tools work on this interface.
  */
 export interface CelestialBody {
-  id: 'sun' | 'moon'
+  id: 'sun' | 'moon' | 'galacticCore'
   label: string
   position(utcMs: number, latitude: number, longitude: number): HorizonPosition
   day(date: string, timeZone: string, latitude: number, longitude: number): BodyDay
@@ -49,4 +50,11 @@ export const MOON: CelestialBody = {
   label: 'Moon',
   position: moonPosition,
   day: moonDay
+}
+
+export const GALACTIC_CORE: CelestialBody = {
+  id: 'galacticCore',
+  label: 'Galactic Core',
+  position: galacticCorePosition,
+  day: galacticCoreDay
 }

@@ -15,6 +15,7 @@ import {
   HORIZON_DISTANCE_M,
   hourIndex,
   hoursOnDate,
+  totalCloudAt,
   twilightAzimuths,
   valueAt,
   windLevel,
@@ -165,6 +166,16 @@ describe('reading the series', () => {
     expect(valueAt(s, 'cloudMid', START + 4.75 * HOUR)).toBe(50)
     expect(valueAt(s, 'cloudHigh', START - 1)).toBeNull()
     expect(valueAt(s, 'cloudHigh', START + 48 * HOUR)).toBeNull()
+  })
+
+  it('combines low, mid and high cloud layers under random overlap', () => {
+    const clear = series(4, { cloudLow: 0, cloudMid: 0, cloudHigh: 0 })
+    const layered = series(4, { cloudLow: 50, cloudMid: 50, cloudHigh: 0 })
+    const missing = series(4, { cloudLow: null, cloudMid: null, cloudHigh: null })
+    expect(totalCloudAt(clear, START)).toBe(0)
+    expect(totalCloudAt(layered, START)).toBe(75)
+    expect(totalCloudAt(missing, START)).toBeNull()
+    expect(totalCloudAt(clear, START - HOUR)).toBeNull()
   })
 
   it('lists the hours of a local date', () => {

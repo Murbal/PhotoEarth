@@ -2,6 +2,14 @@ import { useMemo } from 'react'
 import { getEngine } from '../engine/instance'
 import { PLAYBACK_SPEEDS } from '../engine/SunController'
 import { sunlitBands } from '../lib/horizon'
+import {
+  archFramingLabel,
+  astroNight,
+  coreVisibilityStatus,
+  LOW_MOON_ILLUMINATION,
+  type AstroNight,
+  type TimeSpan
+} from '../lib/milkyWay'
 import { seasonEvents } from '../lib/seasons'
 import {
   LIGHT_WINDOWS,
@@ -13,6 +21,7 @@ import {
   type SkyBand
 } from '../lib/sun'
 import {
+  addDays,
   dateFromDayOfYear,
   dayOfYear,
   daysInYear,
@@ -21,12 +30,14 @@ import {
   formatLongDate,
   formatOffset,
   formatShortDate,
+  localMinutesOf,
   parseDate,
   utcToZoned,
-  withYear
+  withYear,
+  zonedToUtc
 } from '../lib/time'
 import { compassPoint } from '../lib/units'
-import { useAppStore, type MoonInfo, type PlaybackSpeedId } from '../store/appStore'
+import { useAppStore, type MilkyWayInfo, type MoonInfo, type PlaybackSpeedId } from '../store/appStore'
 import { CloudLanes, ForecastSection, useViewForecast } from './Forecast'
 import { Icon } from './Icon'
 import { MoonDisc } from './MoonDisc'
@@ -167,6 +178,8 @@ export function TimePanel() {
   const sim = useAppStore((s) => s.sim)
   const sun = useAppStore((s) => s.sun)
   const moon = useAppStore((s) => s.moon)
+  const milkyWay = useAppStore((s) => s.milkyWay)
+  const horizonState = useAppStore((s) => s.horizon)
   const settings = useAppStore((s) => s.settings)
   const patchSim = useAppStore((s) => s.patchSim)
   const patchSettings = useAppStore((s) => s.patchSettings)
@@ -218,6 +231,38 @@ export function TimePanel() {
     }
     return { rise: clock(moonRise), transit: clock(moonTransit), set: clock(moonSet) }
   }, [moonRise, moonTransit, moonSet, sim.date, sim.timeZone])
+  const coreRise = milkyWay?.rise ?? null
+  const coreTransit = milkyWay?.transit ?? null
+  const coreSet = milkyWay?.set ?? null
+  const coreTimes = useMemo(() => {
+    const clock = (t: number | null) => {
+      const m = markerMinutes(t, sim.date, sim.timeZone)
+      return m === null ? '—' : formatClock(m)
+    }
+    return { rise: clock(coreRise), transit: clock(coreTransit), set: clock(coreSet) }
+  }, [coreRise, coreTransit, coreSet, sim.date, sim.timeZone])
+
+  // Before 06:00 local, show the night that started the previous evening so clicking a post-midnight peak stays on the same night.
+  const nightDate = sim.minutes < 360 ? addDays(sim.date, -1) : sim.date
+  const useHorizonSkyline = horizonState.open && horizonState.horizon !== null && horizonState.observer !== null
+  const astroLat = useHorizonSkyline ? horizonState.observer!.latitude : (target?.latitude ?? 0)
+  const astroLon = useHorizonSkyline ? horizonState.observer!.longitude : (target?.longitude ?? 0)
+  const astroHorizon = useHorizonSkyline ? horizonState.horizon : null
+  const minCoreAlt = settings.astro.minCoreAltitude
+  const maxMoonIllum = settings.astro.allowLowMoon ? LOW_MOON_ILLUMINATION : 0
+  const weatherSeries = forecast?.observer ?? null
+  const astro = useMemo(
+    () =>
+      open
+        ? astroNight(nightDate, sim.timeZone, astroLat, astroLon, {
+            minCoreAltitude: minCoreAlt,
+            maxMoonIllumination: maxMoonIllum,
+            horizon: astroHorizon,
+            weather: weatherSeries
+          })
+        : null,
+    [open, nightDate, sim.timeZone, astroLat, astroLon, minCoreAlt, maxMoonIllum, astroHorizon, weatherSeries]
+  )
   const bands = sun?.bands ?? NO_BANDS
   const dayBackground = useMemo(() => dayGradient(bands), [bands])
 
@@ -258,7 +303,7 @@ export function TimePanel() {
           </div>
           <div
             className="small muted time-location"
-            title="Sun and moon positions, their rise and set times, and the time zone are calculated for the ground at the center of the view (the ring on the map). Pan the map to move it; the inspected point and search pin don't change it."
+            title="Sun, moon and Galactic Core positions, their rise and set times, and the time zone are calculated for the ground at the center of the view (the ring on the map). Pan the map to move it; the inspected point and search pin don't change it."
           >
             <span className="sun-target-key" aria-hidden="true" />
             For the view center{target ? ` · ${shortLatLon(target.latitude, target.longitude)}` : ''}
@@ -417,6 +462,55 @@ export function TimePanel() {
           <span className="mono" title={moon && moon.set === null && !moon.polar ? 'No moonset on this date' : 'Moonset (upper limb)'}>
             {moon?.polar ? '—' : moonTimes.set}
           </span>
+
+          <span className="body-label" title="Galactic Core (Sagittarius A*)">
+            <span className="body-key milky-way" aria-hidden="true" />
+            Core
+          </span>
+          <span className="mono">{milkyWay ? `${milkyWay.azimuth.toFixed(1)}° ${compassPoint(milkyWay.azimuth)}` : '—'}</span>
+          <span className="mono" style={{ color: milkyWay && milkyWay.altitude < 0 ? 'var(--text-muted)' : 'var(--milky-way)' }}>
+            {milkyWay ? `${milkyWay.altitude.toFixed(1)}°` : '—'}
+          </span>
+          <span className="mono" title={milkyWay?.polar === 'down' ? 'Galactic Core never rises at this latitude' : 'Galactic Core rise'}>
+            {milkyWay?.polar === 'up' ? (
+              'up all day'
+            ) : milkyWay?.polar === 'down' ? (
+              'never rises'
+            ) : coreRise !== null && coreTimes.rise !== '—' ? (
+              <button className="time-link mw mono" onClick={() => engine?.sun.setInstant(coreRise)} title="Jump to Galactic Core rise">
+                {coreTimes.rise}
+              </button>
+            ) : (
+              coreTimes.rise
+            )}
+          </span>
+          <span
+            className="mono"
+            title={
+              milkyWay?.transitAltitude != null
+                ? `Galactic Core transit, ${milkyWay.transitAltitude.toFixed(1)}° high — click to jump`
+                : 'No Galactic Core transit on this date'
+            }
+          >
+            {coreTransit !== null && coreTimes.transit !== '—' ? (
+              <button className="time-link mw mono" onClick={() => engine?.sun.setInstant(coreTransit)}>
+                {coreTimes.transit}
+              </button>
+            ) : (
+              coreTimes.transit
+            )}
+          </span>
+          <span className="mono" title="Galactic Core set">
+            {milkyWay?.polar ? (
+              '—'
+            ) : coreSet !== null && coreTimes.set !== '—' ? (
+              <button className="time-link mw mono" onClick={() => engine?.sun.setInstant(coreSet)} title="Jump to Galactic Core set">
+                {coreTimes.set}
+              </button>
+            ) : (
+              coreTimes.set
+            )}
+          </span>
         </div>
         <div className="sky-side">
           <div className="small muted">Day length {dayLength}</div>
@@ -425,6 +519,24 @@ export function TimePanel() {
       </div>
 
       <LightWindowsTable bands={bands} minutes={sim.minutes} />
+
+      {astro && (
+        <AstroWindowSection
+          astro={astro}
+          milkyWay={milkyWay}
+          moon={moon}
+          utc={sun?.utc ?? zonedToUtc(sim.date, sim.minutes, sim.timeZone)}
+          latitude={astroLat}
+          longitude={astroLon}
+          horizon={astroHorizon}
+          timeZone={sim.timeZone}
+          minCoreAltitude={minCoreAlt}
+          allowLowMoon={settings.astro.allowLowMoon}
+          onChangeMinAlt={(alt) => patchSettings((d) => void (d.astro.minCoreAltitude = alt))}
+          onToggleLowMoon={(allow) => patchSettings((d) => void (d.astro.allowLowMoon = allow))}
+          onPick={(t) => engine?.sun.setInstant(t)}
+        />
+      )}
 
       {settings.forecast && (
         <ForecastSection
@@ -465,6 +577,14 @@ export function TimePanel() {
             onChange={(e) => patchSettings((d) => void (d.showMoonIndicator = e.target.checked))}
           />
           Moon direction
+        </label>
+        <label className="switch" title="Show a direction arrow and ray toward the Galactic Core (Sagittarius A*) on the 3D map">
+          <input
+            type="checkbox"
+            checked={settings.showMilkyWayIndicator}
+            onChange={(e) => patchSettings((d) => void (d.showMilkyWayIndicator = e.target.checked))}
+          />
+          Core direction
         </label>
         <label className="switch" title="Cloud, visibility, wind and fog forecast for the view center from Open-Meteo (sends its coordinates)">
           <input type="checkbox" checked={settings.forecast} onChange={(e) => patchSettings((d) => void (d.forecast = e.target.checked))} />
@@ -543,5 +663,180 @@ function ShadowSourceNote({ status }: { status: 'off' | 'loading' | 'ready' | 'u
     <span className="small muted" title={note.title}>
       {note.text}
     </span>
+  )
+}
+
+const MIN_ALT_OPTIONS = [0, 5, 10, 15, 20] as const
+
+function spanRange(span: TimeSpan, timeZone: string): string {
+  return `${formatClock(localMinutesOf(span.start, timeZone))}–${formatClock(localMinutesOf(span.end, timeZone))}`
+}
+
+function AstroWindowSection({
+  astro,
+  milkyWay,
+  moon,
+  utc,
+  latitude,
+  longitude,
+  horizon,
+  timeZone,
+  minCoreAltitude,
+  allowLowMoon,
+  onChangeMinAlt,
+  onToggleLowMoon,
+  onPick
+}: {
+  astro: AstroNight
+  milkyWay: MilkyWayInfo | null
+  moon: MoonInfo | null
+  utc: number
+  latitude: number
+  longitude: number
+  horizon: import('../lib/panorama').Horizon | null
+  timeZone: string
+  minCoreAltitude: number
+  allowLowMoon: boolean
+  onChangeMinAlt: (alt: number) => void
+  onToggleLowMoon: (allow: boolean) => void
+  onPick: (utc: number) => void
+}) {
+  const nextDay = addDays(astro.date, 1)
+  const nightLabel = `${formatShortDate(astro.date)}–${parseDate(nextDay).day}`
+  const status = coreVisibilityStatus(utc, latitude, longitude, {
+    minCoreAltitude,
+    maxMoonIllumination: allowLowMoon ? LOW_MOON_ILLUMINATION : 0,
+    horizon,
+    polar: milkyWay?.polar,
+    corePos: milkyWay ?? undefined,
+    moonAlt: moon?.altitude,
+    moonIllumination: moon?.illumination
+  })
+  const primaryCore = astro.coreDarkWindows[0] ?? null
+  const primaryDark = astro.moonlessDark[0] ?? null
+  const inCoreWindow = astro.coreDarkWindows.some((w) => utc >= w.start && utc <= w.end)
+
+  return (
+    <div className="astro-window" role="region" aria-label="Milky Way and Astro Dark-Window">
+      <div className="astro-row">
+        <span className="k">Astro window</span>
+        <span className="small muted">{nightLabel}</span>
+        {astro.skylineAware && (
+          <span className="badge" title="Core visibility accounts for the traced Horizon Panorama skyline">
+            skyline
+          </span>
+        )}
+        <span className={`badge astro-status astro-status-${status.kind}`}>{status.label}</span>
+        {milkyWay && (
+          <span
+            className="small muted"
+            title={`Milky Way arch apex ${milkyWay.archElevation.toFixed(0)}° toward ${compassPoint(milkyWay.archApexAzimuth)}; Galactic Plane tilt at the core ${milkyWay.coreTilt.toFixed(0)}° from horizontal.`}
+          >
+            Arch <span className="mono">{Math.round(milkyWay.archElevation)}°</span> · tilt <span className="mono">{Math.round(milkyWay.coreTilt)}°</span> ·{' '}
+            {archFramingLabel(milkyWay.framing)}
+          </span>
+        )}
+        <span className="astro-controls">
+          <label className="small muted astro-min-alt" title="Minimum Galactic Core altitude for the core dark window">
+            Core ≥
+            <select
+              className="input astro-select"
+              aria-label="Minimum Galactic Core altitude"
+              value={minCoreAltitude}
+              onChange={(e) => onChangeMinAlt(Number(e.target.value))}
+            >
+              {MIN_ALT_OPTIONS.map((v) => (
+                <option key={v} value={v}>
+                  {v}°
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="switch small muted" title="Allow a thin crescent moon (≤ 10% illuminated) during the astro dark window">
+            <input type="checkbox" checked={allowLowMoon} onChange={(e) => onToggleLowMoon(e.target.checked)} />
+            ≤10% moon
+          </label>
+        </span>
+      </div>
+
+      <div className="astro-row astro-summary">
+        {astro.astroDark.length === 0 ? (
+          <span className="small muted">
+            No astronomical night (sun reaches {astro.darkestSunAltitude.toFixed(1)}°)
+          </span>
+        ) : astro.moonlessDark.length === 0 ? (
+          <span className="small muted">
+            Astro dark{' '}
+            <button className="time-link mw mono" onClick={() => onPick(astro.astroDark[0].start)} title="Jump to start of astronomical night">
+              {spanRange(astro.astroDark[0], timeZone)}
+            </button>{' '}
+            · moon up all night
+          </span>
+        ) : (
+          <>
+            <span className="small muted">
+              Dark ({allowLowMoon ? 'dark moon' : 'moonless'}){' '}
+              {astro.moonlessDark.map((w, i) => (
+                <span key={w.start}>
+                  {i > 0 ? ', ' : ''}
+                  <button className="time-link mw mono" onClick={() => onPick(w.start)} title="Jump to dark window start">
+                    {spanRange(w, timeZone)}
+                  </button>
+                </span>
+              ))}{' '}
+              ({formatDuration(astro.totalMoonlessDarkMs)})
+            </span>
+            {primaryCore ? (
+              <span className={`small${inCoreWindow ? ' astro-now' : ''}`}>
+                <span className="k">Core window</span>{' '}
+                {astro.coreDarkWindows.map((w, i) => (
+                  <span key={w.start}>
+                    {i > 0 ? ', ' : ''}
+                    <button className="time-link mw mono" onClick={() => onPick(w.start)} title="Jump to Galactic Core dark-window start">
+                      {spanRange(w, timeZone)}
+                    </button>
+                  </span>
+                ))}{' '}
+                <span className="muted">({formatDuration(astro.totalCoreDarkMs)})</span>
+              </span>
+            ) : (
+              <span className="small muted">
+                {milkyWay?.polar === 'down'
+                  ? 'Core never rises here'
+                  : `Core stays below ${astro.skylineAware ? 'skyline / ' : ''}${minCoreAltitude}° in dark sky`}
+              </span>
+            )}
+            {astro.peakCore && (
+              <span className="small">
+                <span className="k">Peak core</span>{' '}
+                <button
+                  className="time-link mw mono"
+                  onClick={() => onPick(astro.peakCore!.utc)}
+                  title={`Jump to peak Galactic Core in the dark window (${astro.peakCore.altitude.toFixed(1)}° ${compassPoint(astro.peakCore.azimuth)})`}
+                >
+                  {formatClock(localMinutesOf(astro.peakCore.utc, timeZone))} ({astro.peakCore.altitude.toFixed(1)}° {compassPoint(astro.peakCore.azimuth)})
+                </button>
+              </span>
+            )}
+            {!astro.peakCore && primaryDark && (
+              <span className="small muted">
+                <button className="time-link mw" onClick={() => onPick(Math.round((primaryDark.start + primaryDark.end) / 2))}>
+                  Jump to mid-dark
+                </button>
+              </span>
+            )}
+          </>
+        )}
+        {astro.clouds && (
+          <span
+            className={`badge clarity-${astro.clouds.clarity}${astro.clouds.bestUtc !== null ? ' clickable' : ''}`}
+            title={`Mean ${astro.clouds.meanCloud}% cloud cover across the ${astro.clouds.scope === 'core' ? 'core dark' : 'dark'} window (best ${astro.clouds.minCloud}%).${astro.clouds.bestUtc !== null ? ' Click to jump to clearest sky.' : ''}`}
+            onClick={() => astro.clouds?.bestUtc !== null && astro.clouds && onPick(astro.clouds.bestUtc)}
+          >
+            {astro.clouds.label} · {astro.clouds.meanCloud}% cloud
+          </span>
+        )}
+      </div>
+    </div>
   )
 }

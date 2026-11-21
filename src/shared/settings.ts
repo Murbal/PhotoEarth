@@ -58,6 +58,8 @@ export const VIEWSHED_RADIUS_RANGE = { min: 1000, max: 100000 } as const
 export const VIEWSHED_OFFSET_RANGE = { min: 0, max: 500 } as const
 export const MIN_EXAGGERATION = 1
 export const MAX_EXAGGERATION = 3
+/** Minimum Galactic Core altitude range for the astro dark-window setting, degrees. */
+export const MIN_CORE_ALTITUDE_RANGE = { min: 0, max: 45 } as const
 /**
  * Detail shadow range override, meters; 0 turns detail shadows off. Ultra uses 2500; past
  * ~5 km one shadow map spreads too thin for buildings and the heightmap shades terrain anyway.
@@ -120,9 +122,11 @@ export function defaultSettings(): Settings {
     detailShadows: true,
     showSunIndicator: false,
     showMoonIndicator: false,
+    showMilkyWayIndicator: false,
     forecast: true,
+    astro: { minCoreAltitude: 5, allowLowMoon: false },
     viewfinder: defaultViewfinder(),
-    horizon: { moon: true, peakNames: true },
+    horizon: { moon: true, milkyWay: true, peakNames: true },
     viewshed: defaultViewshed(),
     bookmarkIncludeTime: true,
     showLocationMarkers: true,
@@ -210,6 +214,7 @@ export function sanitizeSettings(raw: Json): Settings {
   const slope = isObject(e.slope) ? e.slope : {}
   const hill = isObject(e.hillshade) ? e.hillshade : {}
   const horizon = isObject(r.horizon) ? r.horizon : {}
+  const astro = isObject(r.astro) ? r.astro : {}
   const vs = isObject(r.viewshed) ? r.viewshed : {}
   const lp = isObject(r.lightPollution) ? r.lightPollution : {}
   const modes: readonly MapMode[] = ['photorealistic', 'elevation']
@@ -287,10 +292,16 @@ export function sanitizeSettings(raw: Json): Settings {
     detailShadows: bool(r.detailShadows, d.detailShadows),
     showSunIndicator: bool(r.showSunIndicator, d.showSunIndicator),
     showMoonIndicator: bool(r.showMoonIndicator, d.showMoonIndicator),
+    showMilkyWayIndicator: bool(r.showMilkyWayIndicator, d.showMilkyWayIndicator),
     forecast: bool(r.forecast, d.forecast),
+    astro: {
+      minCoreAltitude: num(astro.minCoreAltitude, d.astro.minCoreAltitude, MIN_CORE_ALTITUDE_RANGE.min, MIN_CORE_ALTITUDE_RANGE.max),
+      allowLowMoon: bool(astro.allowLowMoon, d.astro.allowLowMoon)
+    },
     viewfinder: sanitizeViewfinder(r.viewfinder),
     horizon: {
       moon: bool(horizon.moon, d.horizon.moon),
+      milkyWay: bool(horizon.milkyWay, d.horizon.milkyWay),
       peakNames: bool(horizon.peakNames, d.horizon.peakNames)
     },
     viewshed: {

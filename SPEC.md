@@ -33,7 +33,7 @@ This first spec covers the **foundation only**: the map view, 3D rendering and n
 | 3D engine | **CesiumJS** | Native 3D Tiles support, a WGS84 globe, built-in sun lighting and shadow maps, terrain providers, and globe materials for elevation styling. |
 | UI | **React** + a small state store (e.g. Zustand) | The map canvas is owned by Cesium; React renders overlay UI only. |
 | Sun math | **SunCalc** (or equivalent) | For human-readable readouts (azimuth, altitude, sunrise/sunset). Rendering uses Cesium's own sun model. |
-| Moon math | **astronomy-engine** | Topocentric moon position, phase and rise/set (§11.3). Also drives Cesium's rendered moon. |
+| Moon & Milky Way math | **astronomy-engine** | Topocentric moon position, phase and rise/set (§11.3, drives Cesium's rendered moon), plus Galactic Core (Sagittarius A*) and Galactic Plane arch ephemeris (§11.8). |
 | Time zones | **tz-lookup** / **geo-tz** (offline) | Maps a coordinate to an IANA time zone so time sliders show local time. |
 | Tests | **Vitest** (unit), **Playwright for Electron** (smoke/E2E) | |
 | Packaging | **electron-builder** | |
@@ -369,7 +369,7 @@ These will get their own spec later:
 - **Camera / lens simulation**: place a virtual camera, choose sensor and focal length, and preview the framing and field-of-view frustum on the map. *First slice done: the viewfinder (§11.1).*
 - **Shot planning**: lines from a camera position to a subject, alignment with the sun or moon azimuth, and line-of-sight / visibility checks. *Done: two-pin Camera → Subject planner and reverse Sun/Moon alignment finder (§11.7).*
 - **Moon simulation**: position, phase, rise and set. *Done (§11.3); the horizon panorama also draws its path and skyline rise/set (§11.2).*
-- **Milky Way / galactic core** position.
+- **Milky Way / galactic core** position. *Done (§11.8): Galactic Core & arch ephemeris, Astro Dark-Window, Horizon Panorama arch/path, and 3D direction indicator.*
 - **Viewshed analysis**: what is visible from a point. *Done: skyline panorama (§11.2) and 3D viewshed analysis overlay (§11.6).*
 - Saved scouting locations with notes, photos, and tags. *Done (§11.5).* KML/GPX import and export remain.
 - Weather / cloud cover overlays. *First slice done: the forecast in the time panel (§11.4).*
@@ -452,6 +452,20 @@ Plans exact sun and moon alignments behind specific landmarks, peaks or building
   - Uses celestial declination pre-filtering and local hour-angle prediction (`astronomy-engine`) to skip non-candidate days, then scans and golden-section refines local minima to ~1-second precision using `lib/sun.ts` (SunCalc) and `lib/moon.ts` (topocentric `astronomy-engine`), with full-day scans above ±66° latitude or near zenith. Searches run in continuous UTC milliseconds and format results in the observer's time zone, avoiding missed or duplicated alignments across DST transitions.
   - **Photographer filters**: body (Both / Sun / Moon), azimuth and altitude tolerances, minimum Moon illumination %, and Moon sky / twilight filter based on geometric Sun altitude (Any, Golden & Blue hour −6°..+6°, Golden hour −4°..+6°, Blue hour −6°..−4°, Twilight −18°..−0.833°, Night < −18°, Daylight ≥ −0.833°).
   - Clicking a result sets the simulation date and time to that exact instant; an optional *Frame shot on click* toggle (or each row's Look button) also stands at the Camera pin looking toward the Subject.
+
+### 11.8 Milky Way / Galactic Core & Astro Dark-Window (implemented)
+
+Astrophotography planning built on `astronomy-engine` (`lib/milkyWay.ts`), following the simulated clock and view center (or the Horizon Panorama observer when open):
+
+- **Galactic Core & arch math**: Sagittarius A* (J2000 RA 17h45m40.04s, Dec −29°00′28.1″) is transformed to apparent (refraction-corrected) horizontal coordinates via `Rotation_EQJ_HOR` and `HorizonFromVector('normal')`. The Milky Way arch samples the Galactic Plane (`b = 0°`, `l ∈ [−180°, +180°]`) in a single combined `Rotation_GAL_EQJ` + `Rotation_EQJ_HOR` transform, marking the bright core stretch (`|l| ≤ 55°`). Analytical **arch elevation** (`acos(|NGP.z|)` = peak altitude of the plane) and **core tilt** (inclination of the plane at `l = 0°` from horizontal) give framing guidance (*Horizontal pano*, *Diagonal / pano*, *Vertical / overhead*). Rise, upper transit (with peak altitude) and set times use `SearchRiseSet` / `SearchHourAngle` over the full local day (including 23 h / 25 h DST days), reporting `polar: 'down'` above ~61.6° N where the core never rises and `polar: 'up'` south of ~61° S where it is circumpolar.
+- **Astro Dark-Window**: evaluated for each night from local 12:00 to next-day 12:00 (DST-safe in UTC ms), intersecting:
+  1. Astronomical night (geometric sun altitude < −18°),
+  2. Moonless sky (moon below 0°, or optionally ≤ 10 % illuminated via `settings.astro.allowLowMoon`),
+  3. Galactic Core above the configurable minimum altitude (`settings.astro.minCoreAltitude`, default 5°, range 0°–45°) and above the traced terrain skyline when Horizon Panorama is open,
+  4. Combined Open-Meteo cloud cover (`1 − (1 − L)(1 − M)(1 − H)`) across the window when within the 16-day forecast, yielding *Clear* / *Mostly clear* / *Partly cloudy* / *Cloudy* and the clearest instant.
+- **Time panel & Forecast**: adds a **Core** row aligned with Sun and Moon (azimuth, altitude, clickable rise/transit/set), a compact **Astro window** bar (live visibility status, arch elevation/tilt, dark & core windows, clickable peak-core / window-start jumps, min-altitude and ≤10 % moon controls, and sky clarity badge), and a night astro indicator (`✦`) on each day chip in the 16-day forecast strip plus a night clarity summary line.
+- **Horizon panorama**: a toggleable **Milky Way** layer (`settings.horizon.milkyWay`, also in the command palette) draws the Galactic Core's daily path (solid above the skyline, dashed behind terrain, hourly marks, skyline rise/set crossings, clickable to set time) and the Milky Way arch shape at the current simulated instant (luminous core band and full galactic plane above the skyline, faint dashed behind terrain), plus a skyline-aware dark-window summary.
+- **3D map & viewfinder indicator**: optional Galactic Core direction arrow and dashed ray on the 3D map (`MilkyWayController` via `DirectionIndicator`, `settings.showMilkyWayIndicator`), toggled from the time panel (*Core direction*) and the command palette, plus a live Core azimuth/altitude readout in the viewfinder header while enabled. No per-frame GPU readbacks; strictly `requestRenderMode` compliant.
 
 The architecture should not rule any of these out. In particular, `SunController` should be general enough to model other celestial bodies later.
 

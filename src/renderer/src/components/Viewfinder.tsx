@@ -147,6 +147,8 @@ function NumberField({
 export function ViewfinderPanel() {
   const on = useAppStore((s) => s.viewfinder)
   const settings = useAppStore((s) => s.settings.viewfinder)
+  const showCore = useAppStore((s) => s.settings.showMilkyWayIndicator)
+  const milkyWay = useAppStore((s) => s.milkyWay)
   const heading = useAppStore((s) => s.camera?.heading ?? null)
   const pitch = useAppStore((s) => s.camera?.pitch ?? null)
   const patchSettings = useAppStore((s) => s.patchSettings)
@@ -179,6 +181,17 @@ export function ViewfinderPanel() {
           <span className="mono">{bearing === null ? '—' : `${bearing.toFixed(1)}° ${compassPoint(bearing)}`}</span>
           <span className="k">Tilt</span>
           <span className="mono">{pitch === null ? '—' : `${pitch > 0 ? '+' : pitch < 0 ? '−' : ''}${Math.abs(pitch).toFixed(1)}°`}</span>
+          {showCore && milkyWay && (
+            <>
+              <span className="k" style={{ color: 'var(--milky-way)' }} title="Galactic Core (Sagittarius A*) azimuth and altitude">
+                Core
+              </span>
+              <span className="mono" style={{ color: 'var(--milky-way)' }}>
+                {milkyWay.azimuth.toFixed(1)}° {compassPoint(milkyWay.azimuth)} / {milkyWay.altitude >= 0 ? '+' : '−'}
+                {Math.abs(milkyWay.altitude).toFixed(1)}°
+              </span>
+            </>
+          )}
         </div>
         <button
           className="icon-btn small"

@@ -18,6 +18,16 @@ import {
   type SkylineDay
 } from '../lib/panorama'
 import { moonPhase, moonPosition } from '../lib/moon'
+import {
+  astroNight,
+  galacticCorePosition,
+  galacticCoreState,
+  LOW_MOON_ILLUMINATION,
+  milkyWayArch,
+  type AstroNight,
+  type GalacticCoreState,
+  type MilkyWayArchPoint
+} from '../lib/milkyWay'
 import { sunDay, sunPosition } from '../lib/sun'
 import { addDays, formatClock, formatDuration, localMinutesOf, utcToZoned, zoneAbbreviation, zonedToUtc } from '../lib/time'
 import { lookupTimeZone } from '../lib/timezone'
@@ -53,6 +63,7 @@ interface Sky {
   end: number
   sun: BodySky
   moon: BodySky | null
+  milkyWay: BodySky | null
   sunrise: number | null
   sunset: number | null
   moonPhase: ReturnType<typeof moonPhase>
@@ -89,11 +100,14 @@ function HorizonPanelBody() {
   const units = useAppStore((s) => s.settings.units)
   const coordFormat = useAppStore((s) => s.settings.coordFormat)
   const prefs = useAppStore((s) => s.settings.horizon)
+  const astroPrefs = useAppStore((s) => s.settings.astro)
   const patchSettings = useAppStore((s) => s.patchSettings)
   const { horizon, observer } = state
   // The observer's own day and clock, which may differ from the view center's.
   const timeZone = useMemo(() => (observer ? lookupTimeZone(observer.latitude, observer.longitude) : 'UTC'), [observer])
-  const date = utcToZoned(sunUtc ?? Date.now(), timeZone).date
+  const localNow = utcToZoned(sunUtc ?? Date.now(), timeZone)
+  const date = localNow.date
+  const nightDate = localNow.minutes < 360 ? addDays(localNow.date, -1) : localNow.date
 
   const wrapRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -120,9 +134,28 @@ function HorizonPanelBody() {
     const end = zonedToUtc(addDays(date, 1), 0, timeZone)
     const sun = bodySky(horizon, (t) => sunPosition(t, latitude, longitude), date, timeZone, start, end, SUN_RADIUS)
     const moon = prefs.moon ? bodySky(horizon, (t) => moonPosition(t, latitude, longitude), date, timeZone, start, end, MOON_RADIUS) : null
+    const milkyWay = prefs.milkyWay ? bodySky(horizon, (t) => galacticCorePosition(t, latitude, longitude), date, timeZone, start, end, 0) : null
     const day = sunDay(date, timeZone, latitude, longitude)
-    return { start, end, sun, moon, sunrise: day.sunrise, sunset: day.sunset, moonPhase: moonPhase((start + end) / 2) }
-  }, [horizon, observer, date, timeZone, prefs.moon])
+    return { start, end, sun, moon, milkyWay, sunrise: day.sunrise, sunset: day.sunset, moonPhase: moonPhase((start + end) / 2) }
+  }, [horizon, observer, date, timeZone, prefs.moon, prefs.milkyWay])
+
+  const milkyWayInstant = useMemo((): { arch: MilkyWayArchPoint[]; core: GalacticCoreState } | null => {
+    if (!prefs.milkyWay || !observer || sunUtc === null) return null
+    return {
+      arch: milkyWayArch(sunUtc, observer.latitude, observer.longitude, 4),
+      core: galacticCoreState(sunUtc, observer.latitude, observer.longitude)
+    }
+  }, [prefs.milkyWay, observer, sunUtc])
+
+  const horizonAstro = useMemo((): AstroNight | null => {
+    if (!prefs.milkyWay || !horizon || !observer) return null
+    return astroNight(nightDate, timeZone, observer.latitude, observer.longitude, {
+      minCoreAltitude: astroPrefs.minCoreAltitude,
+      maxMoonIllumination: astroPrefs.allowLowMoon ? LOW_MOON_ILLUMINATION : 0,
+      horizon,
+      stepMinutes: 5
+    })
+  }, [prefs.milkyWay, horizon, observer, nightDate, timeZone, astroPrefs.minCoreAltitude, astroPrefs.allowLowMoon])
 
   const plotW = width - PAD.left - PAD.right
   const plotH = HEIGHT - PAD.top - PAD.bottom
@@ -260,7 +293,7 @@ function HorizonPanelBody() {
     const py = clientY - r.top
     let best: PathPoint | null = null
     let bestD = HIT_PX
-    for (const body of [sky.sun, sky.moon]) {
+    for (const body of [sky.sun, sky.moon, sky.milkyWay]) {
       if (!body) continue
       for (const p of body.path) {
         if (Math.abs(azDelta(p.azimuth, view.center)) > view.span / 2) continue
@@ -347,6 +380,10 @@ function HorizonPanelBody() {
           <input type="checkbox" checked={prefs.moon} onChange={(e) => patchSettings((d) => void (d.horizon.moon = e.target.checked))} />
           Moon
         </label>
+        <label className="switch small" title="Milky Way arch and Galactic Core path">
+          <input type="checkbox" checked={prefs.milkyWay} onChange={(e) => patchSettings((d) => void (d.horizon.milkyWay = e.target.checked))} />
+          Milky Way
+        </label>
         <label className="switch small" title="Name the peaks on the skyline (Google Places)">
           <input type="checkbox" checked={prefs.peakNames} onChange={(e) => patchSettings((d) => void (d.horizon.peakNames = e.target.checked))} />
           Peaks
@@ -374,7 +411,7 @@ function HorizonPanelBody() {
             height={HEIGHT}
             viewBox={`0 0 ${width} ${HEIGHT}`}
             role="img"
-            aria-label="Skyline altitude by compass direction, with the sun and moon paths"
+            aria-label="Skyline altitude by compass direction, with the sun, moon and Milky Way paths"
             tabIndex={0}
             onPointerDown={(e) => {
               e.currentTarget.setPointerCapture(e.pointerId)
@@ -454,8 +491,17 @@ function HorizonPanelBody() {
                 <path key={i} d={d} fill="none" stroke="var(--text)" strokeOpacity={[0.95, 0.75, 0.55, 0.4][i]} strokeWidth={1.4} strokeLinejoin="round" />
               ))}
 
+              {milkyWayInstant && (
+                <MilkyWayArchLayer arch={milkyWayInstant.arch} horizon={horizon} frame={frame} view={view} plotW={plotW} />
+              )}
+              {sky?.milkyWay && (
+                <BodyLayer body={sky.milkyWay} horizon={horizon} frame={frame} view={view} plotW={plotW} color="var(--milky-way)" timeZone={timeZone} small />
+              )}
               {sky?.moon && <BodyLayer body={sky.moon} horizon={horizon} frame={frame} view={view} plotW={plotW} color="var(--moon)" timeZone={timeZone} small />}
               {sky && <BodyLayer body={sky.sun} horizon={horizon} frame={frame} view={view} plotW={plotW} color="var(--sun)" timeZone={timeZone} />}
+              {milkyWayInstant && (
+                <CoreMarker pos={milkyWayInstant.core} frame={frame} view={view} color="var(--milky-way)" />
+              )}
               {sky?.moon && sunUtc !== null && observer && sunUtc >= sky.start && sunUtc < sky.end && (
                 <Disc pos={moonPosition(sunUtc, observer.latitude, observer.longitude)} radius={MOON_RADIUS} frame={frame} view={view} color="var(--moon)" />
               )}
@@ -500,6 +546,15 @@ function HorizonPanelBody() {
           <span className="faint">times {zoneAbbreviation(sky.start + 12 * 3600000, timeZone) || timeZone}</span>
           <SunSummary sky={sky} timeZone={timeZone} />
           {sky.moon && <MoonSummary sky={sky} timeZone={timeZone} />}
+          {sky.milkyWay && (
+            <MilkyWaySummary
+              body={sky.milkyWay}
+              core={milkyWayInstant?.core ?? null}
+              astro={horizonAstro}
+              timeZone={timeZone}
+              onPick={(utc) => engine?.sun.setInstant(utc)}
+            />
+          )}
           {state.peakStatus === 'unavailable' && prefs.peakNames && <span className="faint">Peak names need a Google Maps Platform key with Places API (New).</span>}
           {hover && (
             <span className="horizon-hover">
@@ -712,6 +767,122 @@ function MoonSummary({ sky, timeZone }: { sky: Sky; timeZone: string }) {
         {phase.name}, {Math.round(phase.fraction * 100)} %
       </span>
       <span className="mono">{events(sky.moon!.day, timeZone)}</span>
+    </span>
+  )
+}
+
+/** Milky Way arch (Galactic Plane b = 0°) at the current simulated instant: glowing above skyline, dashed behind terrain. */
+function MilkyWayArchLayer({
+  arch,
+  horizon,
+  frame,
+  view,
+  plotW
+}: {
+  arch: readonly MilkyWayArchPoint[]
+  horizon: Horizon
+  frame: Frame
+  view: View
+  plotW: number
+}) {
+  const below = frame.lo - 5
+  const maxJump = (180 / view.span) * plotW
+  const toPath = (pts: ReadonlyArray<{ azimuth: number; altitude: number }>) =>
+    pts.map((p, i) => `${i ? 'L' : 'M'}${frame.x(p.azimuth).toFixed(1)},${frame.y(p.altitude).toFixed(1)}`).join('')
+  const asPathPoints = arch.filter((p) => p.altitude > below).map((p, idx) => ({ ...p, utc: idx }))
+  const fullRuns = pathRuns(
+    asPathPoints,
+    (p) => aboveSkyline(horizon, p, 0),
+    (p) => frame.x(p.azimuth),
+    maxJump
+  )
+  const coreRuns = pathRuns(
+    asPathPoints.filter((p) => p.isCoreRegion),
+    (p) => aboveSkyline(horizon, p, 0),
+    (p) => frame.x(p.azimuth),
+    maxJump
+  )
+  return (
+    <g pointerEvents="none" className="horizon-milky-way-arch">
+      {fullRuns.map((r, i) =>
+        r.points.length < 2 ? null : r.visible ? (
+          <g key={`mw-full-${i}`}>
+            <path d={toPath(r.points)} fill="none" stroke="var(--milky-way)" strokeWidth={10} strokeOpacity={0.13} strokeLinecap="round" strokeLinejoin="round" />
+            <path d={toPath(r.points)} fill="none" stroke="var(--milky-way)" strokeWidth={1.3} strokeOpacity={0.45} strokeLinecap="round" strokeLinejoin="round" />
+          </g>
+        ) : (
+          <path
+            key={`mw-full-h-${i}`}
+            d={toPath(r.points)}
+            fill="none"
+            stroke="var(--milky-way)"
+            strokeWidth={1}
+            strokeOpacity={0.22}
+            strokeDasharray="2 4"
+          />
+        )
+      )}
+      {coreRuns.map((r, i) =>
+        r.points.length < 2 || !r.visible ? null : (
+          <g key={`mw-core-${i}`}>
+            <path d={toPath(r.points)} fill="none" stroke="var(--milky-way)" strokeWidth={16} strokeOpacity={0.22} strokeLinecap="round" strokeLinejoin="round" />
+            <path d={toPath(r.points)} fill="none" stroke="var(--milky-way)" strokeWidth={2.4} strokeOpacity={0.8} strokeLinecap="round" strokeLinejoin="round" />
+          </g>
+        )
+      )}
+    </g>
+  )
+}
+
+/** Galactic Center (Sgr A*) marker at the current simulated instant. */
+function CoreMarker({ pos, frame, view, color }: { pos: { azimuth: number; altitude: number }; frame: Frame; view: View; color: string }) {
+  if (Math.abs(azDelta(pos.azimuth, view.center)) > view.span / 2 + 1) return null
+  const cx = frame.x(pos.azimuth)
+  const cy = frame.y(pos.altitude)
+  return (
+    <g pointerEvents="none" className="horizon-core-marker">
+      <circle cx={cx} cy={cy} r={8} fill={color} fillOpacity="0.22" />
+      <path d={`M${cx},${cy - 5}L${cx + 5},${cy}L${cx},${cy + 5}L${cx - 5},${cy}Z`} fill={color} stroke="var(--panel-solid)" strokeWidth="1" />
+    </g>
+  )
+}
+
+function MilkyWaySummary({
+  body,
+  core,
+  astro,
+  timeZone,
+  onPick
+}: {
+  body: BodySky
+  core: GalacticCoreState | null
+  astro: AstroNight | null
+  timeZone: string
+  onPick: (utc: number) => void
+}) {
+  const firstWin = astro?.coreDarkWindows[0] ?? null
+  return (
+    <span className="horizon-summary">
+      <span className="dot" style={{ background: 'var(--milky-way)' }} />
+      <span className="k">Galactic Core</span>
+      <span className="mono">{events(body.day, timeZone)}</span>
+      {core && (
+        <span className="faint" title={`Milky Way arch apex ${core.archElevation.toFixed(0)}°, core tilt ${core.coreTilt.toFixed(0)}°`}>
+          arch {Math.round(core.archElevation)}° · tilt {Math.round(core.coreTilt)}°
+        </span>
+      )}
+      {firstWin && (
+        <>
+          <span className="k">dark window</span>
+          <button
+            className="time-link mw mono"
+            title="Skyline-aware Galactic Core dark window — click to jump to peak core"
+            onClick={() => onPick(astro!.peakCore?.utc ?? firstWin.start)}
+          >
+            {clock(firstWin.start, timeZone)}–{clock(firstWin.end, timeZone)}
+          </button>
+        </>
+      )}
     </span>
   )
 }
