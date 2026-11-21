@@ -2,7 +2,6 @@ import {
   Cartesian2,
   Cartesian3,
   Color,
-  HeightReference,
   HorizontalOrigin,
   LabelCollection,
   LabelStyle,
@@ -43,8 +42,15 @@ const MAX_VISIBLE = 60
 const SETTLE_MS = 450
 /** Re-declutter at most this often while the view moves. */
 const UPDATE_MS = 90
-/** Line-of-sight ray casts per update; the rest wait for the next one. */
-const RAYS_PER_UPDATE = 10
+/**
+ * Ray-cast time per update at rest (surface anchors and line of sight; each cast walks tile
+ * geometry on the CPU). None while the camera moves: those frames have no time to spare.
+ */
+const RAY_BUDGET_MS = 6
+/** No frame rendered for this long: the camera is at rest. */
+const REST_AFTER_MS = 100
+/** Surface anchors are found by casting down from this height above the ellipsoid. */
+const CLAMP_FROM_M = 10000
 /** Above this camera height, labels not yet clamped to the surface use sea level instead. */
 const UNCLAMPED_OK_M = 20000
 
@@ -79,6 +85,10 @@ interface Entry {
   /** Line of sight from `seenFrom`: whether terrain or buildings hide the anchor. */
   occluded: boolean | null
   seenFrom: Cartesian3
+  /** Where the label stands on the loaded surface (3D tiles or terrain), once found. */
+  anchor: Cartesian3 | null
+  /** The surface below may have changed (new detail loaded): find the anchor again. */
+  anchorStale: boolean
 }
 
 export interface PlaceLabelEvents {
@@ -89,6 +99,7 @@ export interface PlaceLabelEvents {
 const scratchScreen = new Cartesian2()
 const scratchToLabel = new Cartesian3()
 const scratchRay = new Ray()
+const scratchTop = new Cartesian3()
 /** A `seenFrom` that makes the next update re-check the line of sight. */
 const FAR = new Cartesian3(1e12, 0, 0)
 
@@ -123,6 +134,11 @@ export class PlaceLabels {
   private dirty = true
   private readonly lastPos = new Cartesian3()
   private readonly lastDir = new Cartesian3()
+  /** Camera of the previous rendered frame: whether the view is moving right now. */
+  private readonly framePos = new Cartesian3()
+  private readonly frameDir = new Cartesian3()
+  private moving = false
+  private lastFrameAt = 0
   private readonly measure = document.createElement('canvas').getContext('2d')
   private readonly removePostRender: () => void
 
@@ -183,13 +199,16 @@ export class PlaceLabels {
    * visibility until they are re-checked.
    */
   refresh(): void {
-    for (const entry of this.entries.values()) Cartesian3.clone(FAR, entry.seenFrom)
+    for (const entry of this.entries.values()) {
+      Cartesian3.clone(FAR, entry.seenFrom)
+      entry.anchorStale = true
+    }
     this.poke()
   }
 
   private poke(): void {
     this.dirty = true
-    this.scene.requestRender()
+    this.requestUpdate()
   }
 
   private reset(): void {
@@ -297,7 +316,8 @@ export class PlaceLabels {
         horizontalOrigin: HorizontalOrigin.CENTER,
         verticalOrigin: VerticalOrigin.BOTTOM,
         pixelOffset: new Cartesian2(0, -4),
-        heightReference: HeightReference.CLAMP_TO_GROUND,
+        // Placed on the surface by update() (not CLAMP_TO_GROUND: Cesium re-clamps every
+        // label on every newly loaded tile, ray casting each one, which stalls camera motion).
         // Never clipped glyph by glyph by the ground; occlusion is decided per label below.
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
         translucencyByDistance: translucency,
@@ -310,7 +330,9 @@ export class PlaceLabels {
         height: style.size + 6,
         tier: place.tier,
         occluded: null,
-        seenFrom: new Cartesian3()
+        seenFrom: new Cartesian3(),
+        anchor: null,
+        anchorStale: true
       })
     }
     this.sorted = [...this.entries.values()].sort((a, b) => comparePriority(a.place, b.place))
@@ -326,45 +348,77 @@ export class PlaceLabels {
   private onPostRender(): void {
     if (!this.active || this.sorted.length === 0) return
     const camera = this.scene.camera
+    this.moving =
+      !Cartesian3.equalsEpsilon(camera.positionWC, this.framePos, 0, 0.05) ||
+      !Cartesian3.equalsEpsilon(camera.directionWC, this.frameDir, 1e-6)
+    Cartesian3.clone(camera.positionWC, this.framePos)
+    Cartesian3.clone(camera.directionWC, this.frameDir)
+    this.lastFrameAt = performance.now()
     const moved =
       !Cartesian3.equalsEpsilon(camera.positionWC, this.lastPos, 0, 0.05) ||
       !Cartesian3.equalsEpsilon(camera.directionWC, this.lastDir, 1e-6)
     if (!moved && !this.dirty) return
-    const now = performance.now()
-    if (now - this.lastUpdate < UPDATE_MS) {
-      // Catch up once the burst of frames is over.
+    this.requestUpdate()
+  }
+
+  /**
+   * Runs update() now, or once UPDATE_MS have passed since the last one. Work left over (ray
+   * casts waiting for the camera to rest or for budget) continues on a timer, without
+   * rendering frames just for it; the scene renders only when a label's visibility changes.
+   */
+  private requestUpdate(): void {
+    if (!this.active) return
+    const wait = UPDATE_MS - (performance.now() - this.lastUpdate)
+    if (wait > 0) {
       if (this.trailingTimer === null) {
         this.trailingTimer = window.setTimeout(() => {
           this.trailingTimer = null
-          this.poke()
-        }, UPDATE_MS)
+          this.runUpdate()
+        }, wait)
       }
       return
     }
-    this.lastUpdate = now
+    this.runUpdate()
+  }
+
+  private runUpdate(): void {
+    if (!this.active || this.sorted.length === 0) return
+    const camera = this.scene.camera
+    this.lastUpdate = performance.now()
     this.dirty = false
     Cartesian3.clone(camera.positionWC, this.lastPos)
     Cartesian3.clone(camera.directionWC, this.lastDir)
-    if (this.update()) this.scene.requestRender()
+    const { changed, pending } = this.update()
+    if (changed) this.scene.requestRender()
+    if (pending) {
+      this.dirty = true
+      this.requestUpdate()
+    }
   }
 
-  /** Picks which labels show this frame. Returns whether any visibility changed. */
-  private update(): boolean {
+  /** Picks which labels show. */
+  private update(): { changed: boolean; pending: boolean } {
     const scene = this.scene
     const camera = scene.camera
     const width = scene.canvas.clientWidth
     const height = scene.canvas.clientHeight
     const candidates: Entry[] = []
     const boxes: ScreenBox[] = []
-    let rays = 0
     let pending = false
+    // A moving camera renders every frame; no frame for a while means it has come to rest.
+    const moving = this.moving && performance.now() - this.lastFrameAt < REST_AFTER_MS
+    const deadline = moving ? 0 : performance.now() + RAY_BUDGET_MS
+    const canCast = () => performance.now() < deadline
     const high = camera.positionCartographic.height > UNCLAMPED_OK_M
     for (const entry of this.sorted) {
-      // Until the label has been clamped to the surface its position is on the ellipsoid,
-      // which can be deep under the terrain. The engine refreshes when tiles load. From high
-      // up the difference doesn't matter, and far-away surface may never load in detail.
-      const clamped = (entry.label as Label & { _clampedPosition?: Cartesian3 })._clampedPosition
-      const position = clamped ?? (high ? entry.label.position : undefined)
+      // Until the label stands on the surface its position is on the ellipsoid, which can be
+      // deep under the terrain. From high up the difference doesn't matter, and far-away
+      // surface may never load in detail.
+      if (!high && entry.anchorStale && this.roughlyInView(entry)) {
+        if (canCast()) this.clamp(entry)
+        else pending = true
+      }
+      const position = entry.anchor ?? (high ? entry.label.position : undefined)
       if (!position) continue
       const toLabel = Cartesian3.subtract(position, camera.positionWC, scratchToLabel)
       const distance = Cartesian3.magnitude(toLabel)
@@ -378,8 +432,7 @@ export class PlaceLabels {
       const stale =
         entry.occluded === null || Cartesian3.distance(entry.seenFrom, camera.positionWC) > Math.max(5, distance * 0.02)
       if (stale) {
-        if (rays < RAYS_PER_UPDATE) {
-          rays++
+        if (canCast()) {
           entry.occluded = this.isOccluded(position, toLabel, distance)
           Cartesian3.clone(camera.positionWC, entry.seenFrom)
         } else {
@@ -403,9 +456,32 @@ export class PlaceLabels {
         changed = true
       }
     }
-    // More line-of-sight checks are waiting: carry on after this frame.
-    if (pending) this.dirty = true
-    return changed || pending
+    return { changed, pending }
+  }
+
+  /** In range and in front of the camera, judged from the sea-level position (cheap). */
+  private roughlyInView(entry: Entry): boolean {
+    const camera = this.scene.camera
+    const toLabel = Cartesian3.subtract(entry.anchor ?? entry.label.position, camera.positionWC, scratchToLabel)
+    const distance = Cartesian3.magnitude(toLabel)
+    // Generous: the surface can stand kilometres above sea level.
+    if (distance > rangeOf(entry.place) + 9000 || distance < minRangeOf(entry.place) * 0.5) return false
+    return Cartesian3.dot(toLabel, camera.directionWC) > -distance * 0.2
+  }
+
+  /** Stands the label on the loaded surface below its place (tries again after the next refresh). */
+  private clamp(entry: Entry): void {
+    entry.anchorStale = false
+    const { longitude, latitude } = entry.place
+    const top = Cartesian3.fromDegrees(longitude, latitude, CLAMP_FROM_M, this.scene.ellipsoid, scratchTop)
+    Cartesian3.clone(top, scratchRay.origin)
+    Cartesian3.negate(this.scene.ellipsoid.geodeticSurfaceNormal(top, scratchRay.direction), scratchRay.direction)
+    const hit = raycastSurface(this.scene, scratchRay)
+    if (!hit) return
+    entry.anchor = Cartesian3.clone(hit, entry.anchor ?? new Cartesian3())
+    entry.label.position = entry.anchor
+    // A new anchor means a new line of sight.
+    Cartesian3.clone(FAR, entry.seenFrom)
   }
 
   /** Whether terrain or buildings sit between the camera and the label's anchor. */

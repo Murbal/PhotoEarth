@@ -8,6 +8,10 @@ export const MIN_SPEED = 2
 const SMOOTHING_SECONDS = 0.2
 /** Turns are extrapolated for this fraction of the lookahead (they're less predictable). */
 const TURN_FRACTION = 0.5
+/** Screen-space error multiplier for the predicted-pose preload traversal. */
+const PRELOAD_SSE_FACTOR = 2
+/** Run the predicted-pose preload traversal on one frame in this many. */
+const PRELOAD_EVERY_FRAMES = 6
 /** Extra field of view for the preload culling volume, to cover turns (radians). */
 const EXTRA_FOV = CesiumMath.toRadians(25)
 
@@ -106,7 +110,10 @@ export class TilePreloader {
   ) {
     const camera = scene.camera
     this.originalCanPreload = camera.canPreloadFlight.bind(camera)
-    camera.canPreloadFlight = () => this.originalCanPreload() || this.active
+    // The predicted-pose pass is a full extra tileset traversal: run it every few frames only
+    // (it just issues requests; vite/cesium.ts keeps those alive between runs).
+    camera.canPreloadFlight = () =>
+      this.originalCanPreload() || (this.active && scene.frameState.frameNumber % PRELOAD_EVERY_FRAMES === 0)
     this.removeListener = scene.preUpdate.addEventListener(() => this.update())
   }
 
@@ -123,12 +130,17 @@ export class TilePreloader {
   private update(): void {
     const camera = this.scene.camera
     this.predictor.sample(camera.positionWC, camera.directionWC, performance.now() / 1000)
-    // A Cesium flight is preloading its destination already.
+    // A Cesium flight is preloading its destination already (at full detail).
+    const sceneWithFactor = this.scene as Scene & { preloadFlightScreenSpaceErrorFactor?: number }
     if (this.originalCanPreload()) {
       this.active = false
+      sceneWithFactor.preloadFlightScreenSpaceErrorFactor = 1
       return
     }
     this.active = this.predictor.speed > MIN_SPEED && camera.frustum instanceof PerspectiveFrustum
+    // Coarser than the view: far fewer tiles to traverse, and a moving view shows coarser
+    // tiles anyway (see vite/cesium.ts).
+    sceneWithFactor.preloadFlightScreenSpaceErrorFactor = PRELOAD_SSE_FACTOR
     if (!this.active) return
 
     const c = Cartographic.fromCartesian(camera.positionWC)

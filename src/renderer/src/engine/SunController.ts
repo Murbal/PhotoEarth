@@ -18,6 +18,12 @@ import { detailShadowPatchWorking } from './shadows/detailShadowPatch'
 import type { TilesetManager } from './TilesetManager'
 import { clamp, smoothstep } from './util'
 
+/**
+ * How far beyond the detail-shadow range a building or tree may stand and still cast into it,
+ * meters: a 70 m building's shadow with the sun 7° up.
+ */
+const DETAIL_CASTER_MARGIN = 600
+
 export const PLAYBACK_SPEEDS: Record<PlaybackSpeedId, { label: string; kind: 'time' | 'days'; rate: number }> = {
   '1m': { label: '1 min/s', kind: 'time', rate: 1 },
   '10m': { label: '10 min/s', kind: 'time', rate: 10 },
@@ -230,6 +236,9 @@ export class SunController {
     const shadowMap = scene.shadowMap
     shadowMap.enabled = enabled
     shadowMap.maximumDistance = distance
+    // With the heightmap shading distant terrain, only casters near the camera's detail range
+    // matter; vite/cesium.ts skips the rest (they were most of the frame at a low sun).
+    ;(shadowMap as unknown as { casterMargin?: number }).casterMargin = this.terrainShadows ? DETAIL_CASTER_MARGIN : undefined
     this.applyBias(distance)
     globe.shadows = enabled && !photo ? ShadowMode.ENABLED : ShadowMode.DISABLED
     this.tiles.setShadows(enabled && photo)

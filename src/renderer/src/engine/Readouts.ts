@@ -133,7 +133,11 @@ export class Readouts {
     if (!c) return
     const longitude = toDeg(c.longitude)
     const latitude = toDeg(c.latitude)
-    const ground = surfaceHeight(this.scene, longitude, latitude)
+    // Cesium already sampled the surface below the camera for this frame (its collision
+    // check); sampling again would cast another ray through the 3D tiles.
+    const sampled = this.scene.globeHeight
+    const ground =
+      sampled !== undefined && Number.isFinite(sampled) && sampled > -1000 ? sampled : surfaceHeight(this.scene, longitude, latitude)
     appState().set({
       camera: {
         longitude,
@@ -149,7 +153,8 @@ export class Readouts {
   }
 
   private updateTarget(fast = false): void {
-    const target = cameraTarget(this.scene, fast)
+    const target = fast ? this.estimateTarget() : cameraTarget(this.scene)
+    if (!target) return
     const c = Cartographic.fromCartesian(target)
     if (!c) return
     const next = { longitude: toDeg(c.longitude), latitude: toDeg(c.latitude) }
@@ -159,6 +164,24 @@ export class Readouts {
       appState().set({ target: next })
     }
     this.onTarget(target)
+  }
+
+  /**
+   * While the view moves: the view center on the ellipsoid raised to the last measured target
+   * height. Ray casting through the 3D tiles every few frames costs milliseconds; this is
+   * close enough for the sun, time zone and shadow grids until the precise pick on move end.
+   */
+  private estimateTarget(): Cartesian3 | undefined {
+    const h = this.targetHeight
+    if (h === null) return cameraTarget(this.scene, true)
+    const canvas = this.scene.canvas
+    const ray = this.scene.camera.getPickRay(Cartesian2.fromElements(canvas.clientWidth / 2, canvas.clientHeight / 2, scratchScreen), scratchRay)
+    if (!ray) return undefined
+    const r = this.scene.ellipsoid.radii
+    const hit = IntersectionTests.rayEllipsoid(ray, new Ellipsoid(r.x + h, r.y + h, r.z + h))
+    // Missed (looking at the sky), or the camera is below that height: keep the last target.
+    if (!hit || hit.start <= 0) return undefined
+    return Ray.getPoint(ray, hit.start, new Cartesian3())
   }
 
   /**

@@ -14,6 +14,7 @@ import { classifyGoogleError } from '@shared/apiErrors'
 import type { ApiCheck } from '@shared/types'
 import { RECEIVER_GLSL } from './shadows/shaders'
 import type { ShadowBinding } from './shadows/ShadowCompute'
+import { ContentGate } from './ContentGate'
 import { RECEIVER_UNIFORMS } from './TerrainShadows'
 import { httpStatusOf, responseTextOf } from './util'
 
@@ -81,14 +82,19 @@ export interface TilesetEvents {
  * Google Photorealistic 3D Tiles. The mesh is both what you see and the shadow caster:
  * its geometry already contains Google's elevation.
  */
+/** Screen-space error multiplier while the camera moves (see setMoving). */
+const MOVING_SSE_FACTOR = 1.5
+
 export class TilesetManager {
   tileset: Cesium3DTileset | null = null
   private generation = 0
   private failures = 0
   private visible = true
   private sse = 16
+  private moving = false
   private shadows = true
   private readonly shader: CustomShader
+  private readonly gate: ContentGate
 
   constructor(
     private readonly scene: Scene,
@@ -96,6 +102,7 @@ export class TilesetManager {
     binding: ShadowBinding
   ) {
     this.shader = createTilesetShader(binding)
+    this.gate = new ContentGate(scene)
   }
 
   /** The tileset shader (exposed for the end-to-end shader compile test). */
@@ -114,8 +121,12 @@ export class TilesetManager {
         {
           // Google requires its attributions to be visible on screen, not in a lightbox.
           showCreditsOnScreen: true,
-          maximumScreenSpaceError: this.sse,
+          maximumScreenSpaceError: this.moving ? this.sse * MOVING_SSE_FACTOR : this.sse,
           enableCollision: true,
+          // Keep CPU copies of tile geometry for picking (collision, surface heights, ray
+          // casts). Without them every pick reads buffers back from the GPU and stalls the
+          // frame; vite/cesium.ts makes Cesium honor this on WebGL 2.
+          enablePick: true,
           shadows: this.shadows ? ShadowMode.ENABLED : ShadowMode.DISABLED,
           dynamicScreenSpaceError: true,
           foveatedScreenSpaceError: true,
@@ -128,6 +139,7 @@ export class TilesetManager {
       }
       tileset.show = this.visible
       tileset.customShader = this.shader
+      ;(tileset as unknown as { contentGate?: () => Promise<void> }).contentGate = this.gate.acquire
       tileset.loadProgress.addEventListener((pending: number, processing: number) => {
         this.events.onProgress(pending + processing)
       })
@@ -167,7 +179,23 @@ export class TilesetManager {
 
   setScreenSpaceError(sse: number): void {
     this.sse = sse
-    if (this.tileset) this.tileset.maximumScreenSpaceError = sse
+    this.applyScreenSpaceError()
+  }
+
+  /**
+   * While the camera moves, settle for somewhat coarser tiles (their parents, which are
+   * already loaded): fewer tiles to traverse, draw and cast shadows from each frame. Full
+   * detail is back as soon as the camera stops.
+   */
+  setMoving(moving: boolean): void {
+    if (moving === this.moving) return
+    this.moving = moving
+    this.applyScreenSpaceError()
+    this.gate.setMoving(moving)
+  }
+
+  private applyScreenSpaceError(): void {
+    if (this.tileset) this.tileset.maximumScreenSpaceError = this.moving ? this.sse * MOVING_SSE_FACTOR : this.sse
   }
 
   setShadows(enabled: boolean): void {

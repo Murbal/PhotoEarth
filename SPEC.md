@@ -140,7 +140,8 @@ Point elevation readouts in Photorealistic mode come from sampling the 3D tilese
   - MSAA / FXAA
   - Resolution scale (with an option for device-pixel-ratio-aware rendering)
 - An optional on-screen FPS and tile-load indicator.
-- Rendering only when needed (`requestRenderMode`) when the scene is idle, to save power. Animation (sun playback, flying) forces continuous rendering.
+- Rendering only when needed (`requestRenderMode`) when the scene is idle, to save power. Animation (sun playback, flying) forces continuous rendering. An idle view must not keep a CPU core busy.
+- While the camera moves, steady frames come before detail: tiles may drop to a coarser level of detail (full detail returns when the camera stops), and work that can wait (tile content creation beyond one tile per frame, large GPU uploads, terrain-shadow re-centering, label ray casts) is deferred or spread over frames. Nothing on the per-frame path may read back from the GPU.
 - A subtle loading indicator while tiles stream in.
 
 ### 5.4 Vertical exaggeration
