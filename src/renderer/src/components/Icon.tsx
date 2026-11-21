@@ -154,6 +154,22 @@ const PATHS: Record<string, ReactElement> = {
       <circle cx="12" cy="12" r="9" />
       <circle cx="12" cy="12" r="2" fill="currentColor" />
     </>
+  ),
+  /** Two pins connected by a sightline to a target: Camera → Subject shot alignment. */
+  alignment: (
+    <>
+      <circle cx="5.5" cy="18.5" r="2.2" fill="currentColor" />
+      <path d="M7.3 16.7 15.8 8.2" strokeDasharray="2 2" />
+      <circle cx="18" cy="6" r="3" />
+      <path d="M18 1.5v1.3M18 9.2v1.3M13.5 6h1.3M21.2 6h1.3" />
+    </>
+  ),
+  /** Swap two items vertically. */
+  swap: (
+    <>
+      <path d="M7 16V4M7 4 4 7M7 4l3 3" />
+      <path d="M17 8v12M17 20l-3-3M17 20l3-3" />
+    </>
   )
 }
 

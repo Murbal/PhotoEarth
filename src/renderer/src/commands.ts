@@ -262,6 +262,42 @@ export function getCommands(): Command[] {
       keywords: 'viewshed palette gradient green',
       run: toggleSetting((d) => void (d.viewshed.colorMode = d.viewshed.colorMode === 'distance' ? 'solid' : 'distance'))
     },
+    {
+      id: 'toggle-alignment',
+      title: 'Shot alignment: camera → subject & sun/moon date finder',
+      group: 'Tools',
+      keys: 'X',
+      keywords: 'align alignment sun moon date finder reverse ephemeris camera subject line of sight los bearing azimuth elevation landmark',
+      run: () => engine()?.toggleAlignment()
+    },
+    {
+      id: 'alignment-pick-camera',
+      title: 'Shot alignment: pick camera pin on map',
+      group: 'Tools',
+      keywords: 'align observer tripod position',
+      run: () => engine()?.alignment.open('camera')
+    },
+    {
+      id: 'alignment-pick-subject',
+      title: 'Shot alignment: pick subject pin on map',
+      group: 'Tools',
+      keywords: 'align target landmark peak building',
+      run: () => engine()?.alignment.open('subject')
+    },
+    {
+      id: 'alignment-look',
+      title: 'Shot alignment: look from camera toward subject',
+      group: 'Tools',
+      keywords: 'align frame shot eye level viewfinder',
+      run: () => void engine()?.lookAlongAlignment()
+    },
+    {
+      id: 'alignment-clear',
+      title: 'Shot alignment: clear pins',
+      group: 'Tools',
+      keywords: 'align reset remove',
+      run: () => engine()?.alignment.clearPins()
+    },
     { id: 'clear-marker', title: 'Clear inspection marker', group: 'Tools', keys: 'Esc', run: () => engine()?.inspector.clear() },
     { id: 'clear-search-pin', title: 'Clear search result pin', group: 'Tools', keywords: 'destination marker', run: () => engine()?.searchMarker.clear() },
     { id: 'toggle-elevation-panel', title: 'Show / hide elevation styling', group: 'Elevation', keys: 'L', run: () => appState().togglePanel('elevation') },

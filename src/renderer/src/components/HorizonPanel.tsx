@@ -290,6 +290,24 @@ function HorizonPanelBody() {
     void engine?.lookFromHorizon(az, Math.max(-10, Math.min(30, horizonAt(horizon, az) || 0)))
   }
 
+  const alignFromHorizon = () => {
+    if (!horizon || !observer) return
+    const az = lookAz ?? view.center
+    const i = sampleIndex(horizon, az)
+    const alt = horizonAt(horizon, az)
+    const dist = horizon.distance[i]
+    const skyH = horizon.height[i]
+    const eyeEllip = horizon.eye
+    const groundEllip = eyeEllip - 1.7
+    const peak = state.peaks.find((p) => Math.abs(azDelta(p.azimuth, az)) < 1.2)
+    engine?.alignment.openFromHorizon(
+      { longitude: observer.longitude, latitude: observer.latitude, groundHeight: groundEllip, eyeHeight: 1.7 },
+      az,
+      Number.isFinite(alt) ? alt : 0,
+      dist > 10 && Number.isFinite(skyH) ? { distance: dist, height: skyH, label: peak?.name } : undefined
+    )
+  }
+
   const loading = state.status === 'loading'
   const hover = hoverAz !== null && horizon ? hoverInfo(horizon, hoverAz, sky, state.geoid) : null
 
@@ -333,6 +351,9 @@ function HorizonPanelBody() {
           <input type="checkbox" checked={prefs.peakNames} onChange={(e) => patchSettings((d) => void (d.horizon.peakNames = e.target.checked))} />
           Peaks
         </label>
+        <button className="btn" disabled={!horizon} onClick={alignFromHorizon} title="Find Sun and Moon alignment dates for the selected skyline direction">
+          <Icon name="alignment" size={14} /> Align
+        </button>
         <button className="btn" disabled={!horizon} onClick={look} title="Stand at the observer at eye level, facing the selected direction (or the sun)">
           <Icon name="person" size={14} /> Look
         </button>
