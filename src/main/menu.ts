@@ -38,6 +38,7 @@ export function buildMenu(): void {
         { type: 'separator' },
         { label: 'Bookmarks Panel', click: () => send('toggle-bookmarks') },
         { label: 'Time & Sun Panel', click: () => send('toggle-time-panel') },
+        { label: 'Viewfinder', click: () => send('toggle-viewfinder') },
         { label: 'FPS Indicator', click: () => send('toggle-fps') },
         { type: 'separator' },
         { role: 'togglefullscreen' },

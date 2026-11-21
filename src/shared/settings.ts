@@ -1,12 +1,16 @@
 import type {
   CameraView,
+  CompositionGuide,
+  FrameAspect,
   ImageryType,
   MapMode,
   PaletteId,
   QualityOverrides,
   QualityPreset,
   ScrollGesture,
-  Settings
+  SensorId,
+  Settings,
+  ViewfinderSettings
 } from './types'
 
 /** Bernese Oberland, looking north-east across the Lauterbrunnen valley towards the Jungfrau. */
@@ -26,6 +30,13 @@ export const IMAGERY_TYPES: readonly ImageryType[] = ['satellite', 'terrain', 'r
 export const CONTOUR_INTERVALS = [10, 20, 50, 100, 200, 500] as const
 /** Imperial contour intervals in feet (stored as meters). */
 export const CONTOUR_INTERVALS_FT = [25, 50, 100, 200, 500, 1000, 2000] as const
+export const SENSOR_IDS: readonly SensorId[] = ['ff', 'apsc', 'apsc-canon', 'm43', '1in', 'mf44', 'phone', 'custom']
+export const FRAME_ASPECTS: readonly FrameAspect[] = ['native', '3:2', '4:3', '1:1', '4:5', '5:4', '16:9', '65:24']
+export const COMPOSITION_GUIDES: readonly CompositionGuide[] = ['none', 'thirds', 'phi', 'center', 'diagonals']
+/** Focal length range of the viewfinder, mm. */
+export const FOCAL_RANGE = { min: 8, max: 800 } as const
+/** Custom sensor dimension range, mm. */
+export const SENSOR_SIZE_RANGE = { min: 1, max: 120 } as const
 export const MIN_EXAGGERATION = 1
 export const MAX_EXAGGERATION = 3
 
@@ -38,6 +49,10 @@ export const EMPTY_OVERRIDES: QualityOverrides = {
   msaaSamples: null,
   fxaa: null,
   resolutionScale: null
+}
+
+export function defaultViewfinder(): ViewfinderSettings {
+  return { sensor: 'ff', customSensor: { width: 36, height: 24 }, focalLength: 50, aspect: 'native', portrait: false, guide: 'thirds' }
 }
 
 export function defaultSettings(): Settings {
@@ -74,6 +89,7 @@ export function defaultSettings(): Settings {
     shadows: true,
     detailShadows: true,
     showSunIndicator: false,
+    viewfinder: defaultViewfinder(),
     bookmarkIncludeTime: true,
     onboardingComplete: false
   }
@@ -125,6 +141,21 @@ export function sanitizeCameraView(v: Json): CameraView | null {
     heading: heading as number,
     pitch: clamp(pitch as number, -90, 90),
     roll: roll as number
+  }
+}
+
+export function sanitizeViewfinder(v: Json): ViewfinderSettings {
+  const d = defaultViewfinder()
+  const r = isObject(v) ? v : {}
+  const custom = isObject(r.customSensor) ? r.customSensor : {}
+  const size = (x: Json, fallback: number) => num(x, fallback, SENSOR_SIZE_RANGE.min, SENSOR_SIZE_RANGE.max)
+  return {
+    sensor: oneOf(r.sensor, SENSOR_IDS, d.sensor),
+    customSensor: { width: size(custom.width, d.customSensor.width), height: size(custom.height, d.customSensor.height) },
+    focalLength: num(r.focalLength, d.focalLength, FOCAL_RANGE.min, FOCAL_RANGE.max),
+    aspect: oneOf(r.aspect, FRAME_ASPECTS, d.aspect),
+    portrait: bool(r.portrait, d.portrait),
+    guide: oneOf(r.guide, COMPOSITION_GUIDES, d.guide)
   }
 }
 
@@ -211,6 +242,7 @@ export function sanitizeSettings(raw: Json): Settings {
     shadows: bool(r.shadows, d.shadows),
     detailShadows: bool(r.detailShadows, d.detailShadows),
     showSunIndicator: bool(r.showSunIndicator, d.showSunIndicator),
+    viewfinder: sanitizeViewfinder(r.viewfinder),
     bookmarkIncludeTime: bool(r.bookmarkIncludeTime, d.bookmarkIncludeTime),
     onboardingComplete: bool(r.onboardingComplete, d.onboardingComplete)
   }

@@ -763,6 +763,84 @@ test('rising well above the ground ends eye level, so the button enters it again
   await expect(button).toHaveAttribute('aria-label', 'Eye level at cursor (1.7 m)')
 }))
 
+/** The camera field of view and the angles it gives the viewfinder frame. */
+function viewfinderState() {
+  return page.evaluate(() => {
+    const e = (window as unknown as { __photoearth: any }).__photoearth
+    const f = e.scene.camera.frustum
+    const canvas = e.scene.canvas as HTMLCanvasElement
+    const frame = e.viewfinder.frame as { x: number; y: number; width: number; height: number } | null
+    // Cesium's PerspectiveFrustum: fov spans the larger side of the view.
+    const fovy = f.aspectRatio <= 1 ? f.fov : 2 * Math.atan(Math.tan(f.fov / 2) / f.aspectRatio)
+    const fovx = 2 * Math.atan(Math.tan(fovy / 2) * f.aspectRatio)
+    const span = (full: number, size: number, view: number) => (2 * Math.atan((Math.tan(full / 2) * size) / view) * 180) / Math.PI
+    const svg = document.querySelector('svg.viewfinder')
+    return {
+      fov: f.fov as number,
+      frame,
+      drawn: svg?.getAttribute('data-frame')?.split(' ').map(Number) ?? null,
+      h: frame ? span(fovx, frame.width, canvas.clientWidth) : null,
+      v: frame ? span(fovy, frame.height, canvas.clientHeight) : null
+    }
+  })
+}
+
+test('the viewfinder frame shows exactly the lens angle of view, and switching off restores the field of view', async () => {
+  const before = await viewfinderState()
+  expect(before.frame).toBeNull()
+  try {
+    await checkViewfinder(before.fov)
+  } finally {
+    // Later tests expect the plain view.
+    const close = page.getByRole('button', { name: 'Close viewfinder' })
+    if (await close.count()) await close.click()
+  }
+})
+
+async function checkViewfinder(originalFov: number): Promise<void> {
+  const lensState = () => viewfinderState()
+  await page.keyboard.press('v')
+  await expect(page.locator('svg.viewfinder')).toBeVisible()
+  await expect(page.locator('.viewfinder-panel')).toContainText('50 mm · FF · 3:2 · 39.6° × 27.0°')
+  // 50 mm on full frame: 39.6° × 27.0° across the frame (after the 300 ms ease).
+  await expect.poll(async () => (await lensState()).h ?? 0).toBeCloseTo(39.6, 1)
+  let s = await lensState()
+  expect(s.v).toBeCloseTo(27.0, 1)
+  // The overlay draws the same rectangle the engine sized the field of view for.
+  expect(s.drawn).toEqual([s.frame!.x, s.frame!.y, s.frame!.width, s.frame!.height])
+
+  // `.` steps to the next longer preset: 85 mm, 23.9° × 16.1°.
+  await page.keyboard.press('.')
+  await expect(page.locator('.viewfinder-panel')).toContainText('85 mm · FF')
+  await expect.poll(async () => (await lensState()).h ?? 0).toBeCloseTo(23.9, 1)
+
+  try {
+    // A tall window: Cesium's fov is now vertical, and the frame still shows the lens angle.
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(820, 1000))
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(820)
+    await expect.poll(async () => (await lensState()).h ?? 0).toBeCloseTo(23.9, 1)
+    s = await lensState()
+    expect(s.v).toBeCloseTo(16.1, 1)
+    expect(s.drawn).toEqual([s.frame!.x, s.frame!.y, s.frame!.width, s.frame!.height])
+  } finally {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1440, 900))
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(1440)
+  }
+
+  // Guides are drawn inside the frame.
+  await page.locator('.viewfinder-panel select').last().selectOption('diagonals')
+  await expect(page.locator('svg.viewfinder line.vf-guide')).toHaveCount(2)
+  await page.getByRole('button', { name: '50', exact: true }).click()
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+
+  // Off again: the original field of view comes back exactly.
+  await page.keyboard.press('v')
+  await expect(page.locator('svg.viewfinder')).toHaveCount(0)
+  await expect.poll(async () => (await lensState()).fov).toBe(originalFov)
+  // The lens settings were saved.
+  await expect.poll(async () => (await page.evaluate(() => window.photoearth.settings.get())).viewfinder.guide).toBe('diagonals')
+}
+
 test('time zone follows the viewed location', async () => {
   await page.keyboard.press('t')
   await expect(page.locator('.time-panel')).toContainText('America/Los_Angeles', { timeout: 10_000 })

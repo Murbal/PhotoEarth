@@ -163,6 +163,7 @@ export function RightRail() {
   const camera = useAppStore((s) => s.camera)
   const pinElsewhere = !!pin && (!camera || haversine(pin, camera) > 5)
   const placeLabels = useAppStore((s) => s.settings.placeLabels)
+  const viewfinder = useAppStore((s) => s.viewfinder)
   const patchSettings = useAppStore((s) => s.patchSettings)
 
   return (
@@ -189,6 +190,14 @@ export function RightRail() {
             if (profileOn) e.profile.clear()
             else e.startProfile()
           }}
+        />
+        <RailButton
+          icon="viewfinder"
+          label="Viewfinder: lens, crop frame & guides"
+          keys="V"
+          active={viewfinder}
+          pressed={viewfinder}
+          onClick={() => set({ viewfinder: !viewfinder })}
         />
         <RailButton
           icon="labels"

@@ -323,7 +323,7 @@ The main use case is mountains casting long shadows when the sun is low. Real-ti
 
 These will get their own spec later:
 
-- **Camera / lens simulation**: place a virtual camera, choose sensor and focal length, and preview the framing and field-of-view frustum on the map.
+- **Camera / lens simulation**: place a virtual camera, choose sensor and focal length, and preview the framing and field-of-view frustum on the map. *First slice done: the viewfinder (§11.1).*
 - **Shot planning**: lines from a camera position to a subject, alignment with the sun or moon azimuth, and line-of-sight / visibility checks.
 - **Moon simulation**: position, phase, rise and set.
 - **Golden hour / blue hour** bands and twilight phases.
@@ -332,6 +332,19 @@ These will get their own spec later:
 - Saved scouting locations with notes, photos, and tags. KML/GPX import and export.
 - Weather / cloud cover overlays.
 - Screenshot / export of views, within the licensing limits.
+
+### 11.1 Viewfinder (implemented)
+
+The first slice of the camera simulation frames the current view through a real lens:
+
+- **Lens**: sensor presets (36 × 24, 23.5 × 15.6, 22.3 × 14.9, 17.3 × 13, 13.2 × 8.8, 44 × 33, a 4:3 phone main camera whose focal length is entered as its 35 mm equivalent) or a custom size; focal length 8–800 mm on a logarithmic slider, a numeric field and presets (14 … 600 mm). Angles of view are those of a rectilinear lens: `2·atan(d / 2f)` across the frame's width, height and diagonal. Crop factors are diagonal ratios to 36 × 24.
+- **Frame**: the sensor's ratio or 3:2, 4:3, 1:1, 4:5, 5:4, 16:9, 65:24, cut from the sensor as the largest rectangle of that ratio (as in-camera crop modes do); portrait turns the camera 90°. On screen it is the largest centered rectangle of the ratio inside the window less a small margin (clear of the status bar); outside it the view is dimmed.
+- **Field of view**: Cesium's `PerspectiveFrustum.fov` spans the longer side of the canvas (horizontal when `aspectRatio > 1`, else vertical). It is set to `2·atan(tan(aov / 2) · view / frame)` along that side so the frame, not the window, shows the angle of view, recomputed on every resize. Switching off restores the navigation mode's default field of view exactly.
+- **Guides**: none, rule of thirds, phi grid (0.382 / 0.618), center cross, diagonals; drawn in SVG with `pointer-events: none`.
+- **Readout**: focal length, sensor, frame ratio, horizontal × vertical (and diagonal) angle of view, the 35 mm equivalent, and the lens's compass bearing and tilt.
+- **Persistence**: the lens settings are part of `settings.json`; bookmarks saved in viewfinder mode store them and reopen framed.
+
+Level of detail follows from the narrower frustum by itself (Cesium's screen-space error uses the frustum's vertical field of view), so distant terrain seen through a long lens streams in at the detail its on-screen size needs.
 
 The architecture should not rule any of these out. In particular, `SunController` should be general enough to model other celestial bodies later.
 

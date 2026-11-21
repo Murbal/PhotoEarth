@@ -33,6 +33,7 @@ import { TerrainManager } from './TerrainManager'
 import { TerrainShadows } from './TerrainShadows'
 import { TilePreloader } from './TilePreloader'
 import { TilesetManager } from './TilesetManager'
+import { Viewfinder } from './Viewfinder'
 import { cartographicDeg, currentView, pickSurface, surfaceHeight } from './util'
 
 type ProviderKey = 'tiles' | 'terrain' | 'imagery' | 'labels'
@@ -71,6 +72,7 @@ export class Engine {
   readonly readouts: Readouts
   readonly terrainShadows: TerrainShadows
   readonly preloader: TilePreloader
+  readonly viewfinder: Viewfinder
   private readonly handler: ScreenSpaceEventHandler
   private readonly subs: Array<() => void> = []
   private clickTimer: number | null = null
@@ -170,6 +172,7 @@ export class Engine {
       },
       sampleGround: (lon, lat) => this.preciseGround(lon, lat)
     })
+    this.viewfinder = new Viewfinder(scene, this.camera)
     this.sun = new SunController(this.widget, this.tiles)
     this.styler = new ElevationStyler(scene, this.terrainShadows)
     this.profile = new ProfileTool(this.widget, (points) => this.sampleProfile(points))
@@ -221,6 +224,7 @@ export class Engine {
     window.removeEventListener('online', this.onOnline)
     this.subs.forEach((u) => u())
     this.handler.destroy()
+    this.viewfinder.destroy()
     this.camera.destroy()
     this.sun.destroy()
     this.readouts.destroy()
@@ -358,6 +362,12 @@ export class Engine {
       )
     )
     s.push(useAppStore.subscribe((st) => st.profile.hoverIndex, () => this.requestRender()))
+    s.push(
+      subscribeJson(
+        (st) => [st.viewfinder, st.settings.viewfinder] as const,
+        ([on, lens]) => this.viewfinder.update(on, lens)
+      )
+    )
   }
 
   private applyMode(): void {
@@ -589,18 +599,25 @@ export class Engine {
   }
 
   bookmarkFromView(name: string, includeTime: boolean): NewBookmark {
-    const { mode, sim } = appState()
+    const { mode, sim, viewfinder, settings } = appState()
     return {
       name,
       camera: this.currentView(),
       mode,
-      time: includeTime ? { utc: new Date(this.sun.utc).toISOString(), timeZone: sim.timeZone } : undefined
+      time: includeTime ? { utc: new Date(this.sun.utc).toISOString(), timeZone: sim.timeZone } : undefined,
+      viewfinder: viewfinder ? structuredClone(settings.viewfinder) : undefined
     }
   }
 
   async flyToBookmark(b: Bookmark): Promise<void> {
     if (b.mode !== appState().mode) this.setMode(b.mode)
     if (b.time) this.sun.setInstant(Date.parse(b.time.utc), b.time.timeZone)
+    // A shot saved in viewfinder mode reopens framed with the same lens.
+    if (b.viewfinder) {
+      const lens = b.viewfinder
+      appState().patchSettings((d) => void (d.viewfinder = structuredClone(lens)))
+      appState().set({ viewfinder: true })
+    }
     await this.camera.flyToView(b.camera)
   }
 

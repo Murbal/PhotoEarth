@@ -1,6 +1,7 @@
 import type { ImageryType, QualityPreset } from '@shared/types'
 import { getEngine } from './engine/instance'
 import { saveCurrentView } from './lib/bookmarks'
+import { GUIDES, nudgeFocal, stepFocal } from './lib/lens'
 import { shortcutLabel } from './lib/platform'
 import { appState } from './store/appStore'
 
@@ -36,6 +37,14 @@ function setQuality(preset: QualityPreset): () => void {
     })
 }
 
+/** Changes the viewfinder's lens and makes sure the viewfinder is showing it. */
+function viewfinder(fn: (d: ReturnType<typeof appState>['settings']['viewfinder']) => void): () => void {
+  return () => {
+    appState().patchSettings((d) => fn(d.viewfinder))
+    appState().set({ viewfinder: true })
+  }
+}
+
 export function getCommands(): Command[] {
   return [
     { id: 'mode-photorealistic', title: 'Photorealistic mode', group: 'View', keys: '1', keywords: '3d tiles google', run: () => engine()?.setMode('photorealistic') },
@@ -47,6 +56,49 @@ export function getCommands(): Command[] {
       keys: 'M',
       keywords: 'labels map names cities towns peaks',
       run: toggleSetting((d) => void (d.placeLabels = !d.placeLabels))
+    },
+    {
+      id: 'toggle-viewfinder',
+      title: 'Viewfinder on / off (lens, crop frame, guides)',
+      group: 'View',
+      keys: 'V',
+      keywords: 'camera lens focal length sensor frame crop field of view fov composition',
+      run: () => appState().set({ viewfinder: !appState().viewfinder })
+    },
+    {
+      id: 'focal-longer',
+      title: 'Viewfinder: next longer focal length',
+      group: 'View',
+      keys: '.',
+      keywords: 'zoom lens telephoto',
+      run: viewfinder((v) => void (v.focalLength = stepFocal(v.focalLength, 1)))
+    },
+    {
+      id: 'focal-shorter',
+      title: 'Viewfinder: next shorter focal length',
+      group: 'View',
+      keys: ',',
+      keywords: 'zoom lens wide angle',
+      run: viewfinder((v) => void (v.focalLength = stepFocal(v.focalLength, -1)))
+    },
+    { id: 'focal-nudge-up', title: 'Viewfinder: focal length +5 %', group: 'View', keys: shortcutLabel('Shift+.'), run: viewfinder((v) => void (v.focalLength = nudgeFocal(v.focalLength, 1))) },
+    { id: 'focal-nudge-down', title: 'Viewfinder: focal length −5 %', group: 'View', keys: shortcutLabel('Shift+,'), run: viewfinder((v) => void (v.focalLength = nudgeFocal(v.focalLength, -1))) },
+    {
+      id: 'viewfinder-orientation',
+      title: 'Viewfinder: portrait / landscape',
+      group: 'View',
+      keywords: 'rotate vertical horizontal orientation',
+      run: viewfinder((v) => void (v.portrait = !v.portrait))
+    },
+    {
+      id: 'viewfinder-guide',
+      title: 'Viewfinder: next composition guide',
+      group: 'View',
+      keywords: 'rule of thirds golden ratio phi grid diagonals center',
+      run: viewfinder((v) => {
+        const i = GUIDES.findIndex((g) => g.id === v.guide)
+        v.guide = GUIDES[(i + 1) % GUIDES.length].id
+      })
     },
     { id: 'toggle-shadows', title: 'Toggle shadows', group: 'Time & sun', run: toggleSetting((d) => void (d.shadows = !d.shadows)) },
     {

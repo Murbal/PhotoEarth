@@ -76,6 +76,22 @@ export interface ElevationStyleSettings {
   hillshade: { enabled: boolean; opacity: number; followSun: boolean }
 }
 
+export type SensorId = 'ff' | 'apsc' | 'apsc-canon' | 'm43' | '1in' | 'mf44' | 'phone' | 'custom'
+export type FrameAspect = 'native' | '3:2' | '4:3' | '1:1' | '4:5' | '5:4' | '16:9' | '65:24'
+export type CompositionGuide = 'none' | 'thirds' | 'phi' | 'center' | 'diagonals'
+
+/** Viewfinder mode: the simulated camera and how its frame is drawn. */
+export interface ViewfinderSettings {
+  sensor: SensorId
+  /** Dimensions of the custom sensor, mm (landscape). */
+  customSensor: { width: number; height: number }
+  /** Focal length on the dial, mm (35 mm-equivalent for sensors that are specified that way). */
+  focalLength: number
+  aspect: FrameAspect
+  portrait: boolean
+  guide: CompositionGuide
+}
+
 export interface Settings {
   version: 1
   units: Units
@@ -95,6 +111,7 @@ export interface Settings {
   /** Shadow-map detail (buildings, trees) on top of heightmap terrain shadows. */
   detailShadows: boolean
   showSunIndicator: boolean
+  viewfinder: ViewfinderSettings
   bookmarkIncludeTime: boolean
   onboardingComplete: boolean
 }
@@ -113,6 +130,8 @@ export interface Bookmark {
   camera: CameraView
   mode: MapMode
   time?: BookmarkTime
+  /** Set when the view was saved in viewfinder mode: reopens framed with the same lens. */
+  viewfinder?: ViewfinderSettings
 }
 
 export type NewBookmark = Omit<Bookmark, 'id' | 'createdAt'>
@@ -227,6 +246,7 @@ export type MenuCommand =
   | 'save-bookmark'
   | 'toggle-bookmarks'
   | 'toggle-time-panel'
+  | 'toggle-viewfinder'
 
 export interface PhotoEarthApi {
   info(): Promise<AppInfo>

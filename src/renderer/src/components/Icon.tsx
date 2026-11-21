@@ -107,6 +107,15 @@ const PATHS: Record<string, ReactElement> = {
       <path d="M12 11v6M12 7h.01" />
     </>
   ),
+  /** Viewfinder corner brackets around a lens: viewfinder mode. */
+  viewfinder: (
+    <>
+      <path d="M3.5 8V5.5a2 2 0 0 1 2-2H8M16 3.5h2.5a2 2 0 0 1 2 2V8M20.5 16v2.5a2 2 0 0 1-2 2H16M8 20.5H5.5a2 2 0 0 1-2-2V16" />
+      <circle cx="12" cy="12" r="3.5" />
+    </>
+  ),
+  chevronDown: <path d="m6 9 6 6 6-6" />,
+  chevronUp: <path d="m6 15 6-6 6 6" />,
   chevronLeft: <path d="m15 6-6 6 6 6" />,
   chevronRight: <path d="m9 6 6 6-6 6" />,
   undo: <path d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3" />,

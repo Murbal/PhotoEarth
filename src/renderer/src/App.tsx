@@ -13,6 +13,7 @@ import { ShortcutsOverlay } from './components/ShortcutsOverlay'
 import { StatusBar } from './components/StatusBar'
 import { TimePanel } from './components/TimePanel'
 import { TopBar } from './components/TopBar'
+import { ViewfinderFrame, ViewfinderPanel } from './components/Viewfinder'
 import { runCommand } from './commands'
 import { getEngine } from './engine/instance'
 import { useShortcuts } from './hooks/useShortcuts'
@@ -86,6 +87,8 @@ function useMenuCommands(): void {
             return s.togglePanel('bookmarks')
           case 'toggle-time-panel':
             return s.togglePanel('time')
+          case 'toggle-viewfinder':
+            return runCommand('toggle-viewfinder')
         }
       }),
     []
@@ -171,6 +174,7 @@ export function App() {
       {booted && <MapView creditContainer={creditEl} inert={modalOpen} />}
       {/* While a dialog is open, everything behind it is inert: no focus, no clicks. */}
       <div ref={overlayRef} className="overlay-root" inert={modalOpen}>
+        <ViewfinderFrame />
         <LoadingBar />
         <TopBar />
         <div className="top-center">
@@ -184,6 +188,7 @@ export function App() {
         <Crosshair />
         <div ref={stackRef} className="bottom-stack">
           <ProfilePanel />
+          <ViewfinderPanel />
           <TimePanel />
         </div>
         <FpsIndicator />

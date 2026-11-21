@@ -38,7 +38,7 @@ export function focalLengthToFov(mm: number): number {
 
 /** Fly mode uses a wide 20 mm lens for a first-person feel; orbit keeps Cesium's 60°. */
 export const FLY_FOCAL_LENGTH = 20
-const ORBIT_FOV = CesiumMath.toRadians(60)
+export const ORBIT_FOV = CesiumMath.toRadians(60)
 const FOV_EASE_MS = 300
 
 /** How often the distance ahead (a CPU ray cast) is re-measured during keyboard movement. */
@@ -123,6 +123,8 @@ export class CameraController {
   private headingPivot: Cartesian3 | null = null
   private animationToken = 0
   private fovRaf: number | null = null
+  /** A field of view that replaces the orbit / fly default (viewfinder mode), radians. */
+  private fovOverride: number | null = null
   /**
    * Terrain following during drags, their inertia and keyboard movement: the height above
    * ground to keep (null: off; NaN: record it on the next frame). These all move the camera
@@ -471,8 +473,45 @@ export class CameraController {
     this.endFollow()
     this.scene.screenSpaceCameraController.enableInputs = !active
     if (!active) this.keys.clear()
-    this.easeFov(active ? focalLengthToFov(FLY_FOCAL_LENGTH) : ORBIT_FOV)
+    this.easeFov(this.targetFov())
     this.callbacks.onFlyModeChange(active)
+  }
+
+  /** The field of view of the current navigation mode, without an override (radians). */
+  private defaultFov(): number {
+    return this.flyMode ? focalLengthToFov(FLY_FOCAL_LENGTH) : ORBIT_FOV
+  }
+
+  private targetFov(): number {
+    return this.fovOverride ?? this.defaultFov()
+  }
+
+  /**
+   * Viewfinder mode: holds the field of view at `fov` (radians, Cesium's `fov`: across the
+   * longer side of the view) through fly mode changes; null returns to the mode's default.
+   * Eases when asked (switching on / off), else snaps (dragging the focal length, resizing).
+   */
+  setFovOverride(fov: number | null, ease: boolean): void {
+    this.fovOverride = fov
+    if (ease) {
+      this.easeFov(this.targetFov())
+      return
+    }
+    if (this.fovRaf !== null) cancelAnimationFrame(this.fovRaf)
+    this.fovRaf = null
+    const frustum = this.scene.camera.frustum
+    if (frustum instanceof PerspectiveFrustum) frustum.fov = this.targetFov()
+    this.scene.requestRender()
+  }
+
+  /**
+   * Looking around turns the view by a fixed angle per pixel or second: through a long lens
+   * that is far too fast, so it slows down in proportion to the narrower field of view.
+   */
+  private lookScale(): number {
+    const frustum = this.scene.camera.frustum
+    const fov = frustum instanceof PerspectiveFrustum ? (frustum.fov ?? ORBIT_FOV) : ORBIT_FOV
+    return Math.min(1, fov / this.defaultFov())
   }
 
   /** Eases the field of view to `target` (radians) instead of snapping. */
@@ -484,7 +523,8 @@ export class CameraController {
     const start = performance.now()
     const step = (now: number) => {
       const t = Math.min(1, (now - start) / FOV_EASE_MS)
-      frustum.fov = from + (target - from) * EasingFunction.QUADRATIC_IN_OUT(t)
+      // The last frame lands on the target exactly (from + (target − from) can be off by an ulp).
+      frustum.fov = t < 1 ? from + (target - from) * EasingFunction.QUADRATIC_IN_OUT(t) : target
       this.scene.requestRender()
       this.fovRaf = t < 1 ? requestAnimationFrame(step) : null
     }
@@ -493,7 +533,7 @@ export class CameraController {
 
   private onFlyLook(e: MouseEvent): void {
     if (!this.flyMode) return
-    const sensitivity = 0.0022
+    const sensitivity = 0.0022 * this.lookScale()
     // Mouse right turns right (clockwise from above = negative about the local up axis).
     this.turn(this.localUp(), -e.movementX * sensitivity)
     const dy = (this.settings.invertFlyY ? 1 : -1) * e.movementY * sensitivity
@@ -646,7 +686,7 @@ export class CameraController {
     Cartesian3.add(cam.position, move, cam.position)
 
     // Arrow keys look around (heading around the local vertical keeps the horizon level).
-    const lookRate = (this.shift ? 120 : this.alt ? 20 : 60) * (Math.PI / 180) * dt
+    const lookRate = (this.shift ? 120 : this.alt ? 20 : 60) * (Math.PI / 180) * dt * this.lookScale()
     const yaw = k('ArrowLeft') - k('ArrowRight')
     if (yaw) this.turn(this.localUp(), yaw * lookRate)
     const pitch = k('ArrowUp') - k('ArrowDown')

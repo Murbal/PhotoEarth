@@ -140,6 +140,8 @@ export interface AppState {
   fps: number | null
   flyMode: boolean
   eyeLevel: boolean
+  /** Viewfinder mode: lens field of view and crop frame (settings.viewfinder). */
+  viewfinder: boolean
   bookmarks: Bookmark[]
   autoRange: { min: number; max: number } | null
   terrainReady: boolean
@@ -196,6 +198,7 @@ export const useAppStore = create<AppState>()(
     fps: null,
     flyMode: false,
     eyeLevel: false,
+    viewfinder: false,
     bookmarks: [],
     autoRange: null,
     terrainReady: false,

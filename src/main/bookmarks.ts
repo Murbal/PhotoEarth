@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { app } from 'electron'
-import { sanitizeCameraView } from '@shared/settings'
+import { sanitizeCameraView, sanitizeViewfinder } from '@shared/settings'
 import type { Bookmark, BookmarkTime, NewBookmark } from '@shared/types'
 import { JsonFile } from './jsonStore'
 
@@ -27,7 +27,8 @@ export function sanitizeBookmark(raw: unknown): Bookmark | null {
     createdAt: typeof b.createdAt === 'string' ? b.createdAt : new Date().toISOString(),
     camera,
     mode: b.mode === 'elevation' ? 'elevation' : 'photorealistic',
-    time: sanitizeTime(b.time)
+    time: sanitizeTime(b.time),
+    viewfinder: b.viewfinder === undefined || b.viewfinder === null ? undefined : sanitizeViewfinder(b.viewfinder)
   }
 }
 

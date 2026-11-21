@@ -856,6 +856,140 @@ input[type='color'] {
   margin-right: 4px;
 }
 
+/* ───────────── viewfinder ───────────── */
+
+/* Over the map but under every other overlay; never takes the pointer. */
+.overlay-root > .viewfinder {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* The mask and frame sit over imagery, so they don't follow the UI theme. */
+.vf-mask {
+  fill: rgba(5, 8, 12, 0.62);
+}
+
+.vf-frame {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1;
+}
+
+.vf-corners {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2.5;
+  stroke-linecap: square;
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.7));
+}
+
+.vf-guide {
+  stroke: rgba(255, 255, 255, 0.6);
+  stroke-width: 1;
+}
+
+/* A dark halo keeps the white guides readable over snow and bright sky. */
+.vf-guide-shadow {
+  stroke: rgba(0, 0, 0, 0.35);
+  stroke-width: 3;
+}
+
+.viewfinder-panel {
+  padding: 8px 12px 10px;
+}
+
+.vf-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.vf-readout {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.vf-readout > div {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vf-summary {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.vf-bearing {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.vf-bearing .k {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.vf-bearing .k:not(:first-child) {
+  margin-left: 6px;
+}
+
+.vf-focal {
+  margin-top: 8px;
+}
+
+.vf-label {
+  width: 84px;
+  flex: none;
+}
+
+.vf-focal input[type='number'] {
+  text-align: right;
+}
+
+.vf-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin: 4px 0 0 84px;
+}
+
+.vf-preset {
+  height: 24px;
+  min-width: 38px;
+  padding: 0 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.vf-preset.active {
+  background: var(--panel-active);
+  color: var(--accent);
+}
+
+.vf-keys {
+  margin-left: auto;
+}
+
+.vf-options {
+  margin-top: 8px;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+}
+
+.vf-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* ───────────── banners / toasts / misc ───────────── */
 
 .top-center {

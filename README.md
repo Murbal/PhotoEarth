@@ -61,9 +61,17 @@ They're loaded in the main process only, so they never end up in the renderer bu
 | `Ctrl+K` | Search places, paste coordinates (decimal, DMS, Google Maps URLs), bookmarks, commands |
 | `Ctrl+B` | Save a bookmark |
 | `T` / `L` / `P` | Time & sun panel / elevation styling / elevation profile |
+| `V` | Viewfinder: frame the view through a real sensor and focal length |
+| `,` / `.`, `Shift+,` / `Shift+.` | Viewfinder: previous / next focal length preset, ∓5 % |
 | `M` | Place names on / off |
 | `Space`, `[` `]`, `Shift+[` `]` | Play/pause the sun, ±15 min, ±1 day |
 | `?` | All shortcuts |
+
+### Viewfinder
+
+`V` (or the viewfinder button in the right rail, or the palette) answers "what does a 200 mm shot from this ridge look like?". Pick a sensor (full frame, APS-C, Micro Four Thirds, 1″, 44 × 33 medium format, a phone's main camera by its 35 mm-equivalent focal length, or a custom size), a focal length from 8 to 800 mm and a frame (the sensor's own ratio, 3:2, 4:3, 1:1, 4:5, 5:4, 16:9 or 65:24 panorama, landscape or portrait). The largest frame of that ratio that fits the window shows exactly the lens's angle of view; the rest of the window is dimmed. Rule-of-thirds, phi-grid, center-cross and diagonal guides can be drawn in the frame. The panel reads out the angles of view, the 35 mm-equivalent focal length, and the compass bearing and tilt the lens points at.
+
+Navigation is unchanged: the scroll wheel still moves the camera rather than zooming the lens, and `G` (eye level) plus WASD walk you to the spot. Looking around (arrow keys, fly mode) slows down in proportion to the narrower field of view. The lens settings are remembered, and a bookmark saved in viewfinder mode reopens framed with the same lens.
 
 ## Development
 

@@ -62,6 +62,14 @@ export function useShortcuts(): void {
         s.set({ shortcutsOpen: true })
         return
       }
+      // Focal length steps (viewfinder only): , / . through the presets, with Shift ±5 %.
+      if ((e.code === 'Comma' || e.code === 'Period') && s.viewfinder && !s.flyMode) {
+        e.preventDefault()
+        const longer = e.code === 'Period'
+        if (e.shiftKey) runCommand(longer ? 'focal-nudge-up' : 'focal-nudge-down')
+        else runCommand(longer ? 'focal-longer' : 'focal-shorter')
+        return
+      }
       if (e.key === ' ' && s.panels.time) {
         e.preventDefault()
         runCommand('play-pause')
@@ -80,6 +88,7 @@ export function useShortcuts(): void {
         t: 'toggle-time-panel',
         l: 'toggle-elevation-panel',
         m: 'toggle-place-labels',
+        v: 'toggle-viewfinder',
         '+': 'zoom-in',
         '=': 'zoom-in',
         '-': 'zoom-out'
