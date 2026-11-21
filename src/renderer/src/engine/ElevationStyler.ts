@@ -4,6 +4,8 @@ import { geoidUndulation, toMsl } from '../lib/geoid'
 import { hexToRgb, paletteColor, SLOPE_CLASSES } from '../lib/palettes'
 import { RECEIVER_GLSL } from './shadows/shaders'
 import { RECEIVER_UNIFORMS, type TerrainShadows } from './TerrainShadows'
+import { VIEWSHED_RECEIVER_GLSL } from './viewshed/shaders'
+import { VIEWSHED_RECEIVER_UNIFORMS, type ViewshedTool } from './ViewshedTool'
 import { toDeg } from './util'
 
 const glslVec3 = (hex: string): string => {
@@ -24,6 +26,7 @@ const SLOPE_GLSL = SLOPE_CLASSES.map(({ from, color }, i) =>
  */
 export const ELEVATION_SHADER = /* glsl */ `
 ${RECEIVER_GLSL}
+${VIEWSHED_RECEIVER_GLSL}
 void pe_over(inout vec3 color, inout float alpha, vec3 src, float srcAlpha) {
   float outAlpha = srcAlpha + alpha * (1.0 - srcAlpha);
   if (outAlpha > 0.0) {
@@ -93,6 +96,11 @@ czm_material czm_getMaterial(czm_materialInput materialInput) {
     pe_over(color, alpha, vec3(0.02, 0.03, 0.08), (1.0 - vis) * facing * shadowOpacity);
   }
 
+  vec4 vs = pe_viewshedOverlay(-materialInput.positionToEyeEC);
+  if (vs.a > 0.0) {
+    pe_over(color, alpha, vs.rgb, vs.a);
+  }
+
   if (contourOpacity > 0.0) {
     // Cesium refines terrain until its geometric error is about terrainSse pixels, so that
     // is roughly how far off the drawn heights are here (in real, unexaggerated meters).
@@ -129,6 +137,23 @@ function receiverUniforms(shadows: TerrainShadows): Record<string, unknown> {
   return out
 }
 
+/** Initial values for the viewshed receiver uniforms; ViewshedTool keeps them current. */
+function viewshedReceiverUniforms(viewshed: ViewshedTool): Record<string, unknown> {
+  const b = viewshed.binding
+  const placeholder = document.createElement('canvas')
+  placeholder.width = 1
+  placeholder.height = 1
+  const out: Record<string, unknown> = {
+    [VIEWSHED_RECEIVER_UNIFORMS.eyeToLocal]: Matrix4.toArray(Matrix4.IDENTITY),
+    [VIEWSHED_RECEIVER_UNIFORMS.params]: b.params,
+    [VIEWSHED_RECEIVER_UNIFORMS.style]: b.style,
+    [VIEWSHED_RECEIVER_UNIFORMS.exaggeration]: b.exaggeration
+  }
+  VIEWSHED_RECEIVER_UNIFORMS.masks.forEach((name) => (out[name] = placeholder))
+  VIEWSHED_RECEIVER_UNIFORMS.rects.forEach((name, k) => (out[name] = b.rects[k]))
+  return out
+}
+
 export function paletteCanvas(id: PaletteId): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
   canvas.width = 256
@@ -151,7 +176,8 @@ export class ElevationStyler {
 
   constructor(
     private readonly scene: Scene,
-    private readonly shadows: TerrainShadows
+    private readonly shadows: TerrainShadows,
+    private readonly viewshed: ViewshedTool
   ) {}
 
   private ensureMaterial(): Material {
@@ -177,32 +203,35 @@ export class ElevationStyler {
           exaggeration: 1,
           exaggerationRelativeHeight: 0,
           shadowOpacity: 0,
-          ...receiverUniforms(this.shadows)
+          ...receiverUniforms(this.shadows),
+          ...viewshedReceiverUniforms(this.viewshed)
         },
         source: ELEVATION_SHADER
       }
     })
     this.shadows.bindMaterial(this.material)
+    this.viewshed.bindMaterial(this.material)
     return this.material
   }
 
   /**
    * Applies the style; `enabled` is false outside Elevation mode. `terrainShadows` turns on
-   * the heightmap shadow layer, which needs the material even with no style layer on.
-   * `dataOverlay`: a colored data layer (light pollution, §7.5) is on the globe, so the
-   * tint and slope colors, which would bury it, pause.
+   * the heightmap shadow layer and `viewshedActive` turns on the viewshed overlay; either needs
+   * the material even with no style layer on. `dataOverlay`: a colored data layer (light
+   * pollution, §7.5) is on the globe, so the tint and slope colors, which would bury it, pause.
    */
   apply(
     style: ElevationStyleSettings,
     enabled: boolean,
     autoRange: { min: number; max: number } | null,
     terrainShadows = false,
-    dataOverlay = false
+    dataOverlay = false,
+    viewshedActive = false
   ): void {
     const tint = style.tint.enabled && !dataOverlay
     const slope = style.slope.enabled && !dataOverlay
     const anyLayer = tint || style.contours.enabled || slope || style.hillshade.enabled
-    this.active = enabled && (anyLayer || terrainShadows)
+    this.active = enabled && (anyLayer || terrainShadows || viewshedActive)
     const globe = this.scene.globe
     if (!this.active) {
       if (globe.material) globe.material = undefined as unknown as Material

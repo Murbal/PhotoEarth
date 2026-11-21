@@ -43,6 +43,7 @@ import { TilePreloader } from './TilePreloader'
 import { TilesetManager } from './TilesetManager'
 import { setUploadBudgets } from './uploadBudget'
 import { Viewfinder } from './Viewfinder'
+import { ViewshedTool } from './ViewshedTool'
 import { cameraTarget, cartographicDeg, currentView, pickSurface, surfaceHeight, toDeg } from './util'
 
 type ProviderKey = 'tiles' | 'terrain' | 'imagery' | 'labels'
@@ -80,6 +81,7 @@ export class Engine {
   readonly profile: ProfileTool
   readonly horizon: HorizonTool
   readonly alignment: AlignmentTool
+  readonly viewshed: ViewshedTool
   readonly inspector: PointInspector
   readonly spotSun: SpotSun
   readonly searchMarker: SearchMarker
@@ -157,6 +159,14 @@ export class Engine {
         this.applyStyle()
       }
     )
+    this.viewshed = new ViewshedTool(
+      this.widget,
+      () => this.terrain?.provider ?? null,
+      () => {
+        this.applyStyle()
+        this.refreshInspectViewshed()
+      }
+    )
     this.tiles = new TilesetManager(scene, {
       onError: tiles.error,
       onReady: () => {
@@ -167,7 +177,7 @@ export class Engine {
         appState().set({ pendingTiles: pending })
         if (pending === 0) this.scheduleRefresh()
       }
-    }, this.terrainShadows.binding)
+    }, this.terrainShadows.binding, this.viewshed.binding)
     this.terrain = new TerrainManager(terrain.error, () => {
       terrain.ready()
       appState().set({ terrainReady: true })
@@ -194,7 +204,7 @@ export class Engine {
     this.viewfinder = new Viewfinder(scene, this.camera)
     this.sun = new SunController(this.widget, this.tiles)
     this.moon = new MoonController(this.widget)
-    this.styler = new ElevationStyler(scene, this.terrainShadows)
+    this.styler = new ElevationStyler(scene, this.terrainShadows, this.viewshed)
     this.profile = new ProfileTool(this.widget, (points) => this.sampleProfile(points))
     this.horizon = new HorizonTool(this.widget, {
       provider: () => this.terrain.provider,
@@ -239,6 +249,7 @@ export class Engine {
     this.camera.setView(s.settings.lastCamera ?? DEFAULT_VIEW)
     this.applyQuality()
     this.camera.configure(s.settings.navigation)
+    this.viewshed.configure(s.settings.viewshed, s.settings.units)
     this.scene.verticalExaggeration = s.settings.verticalExaggeration
     this.applyMode()
     this.readouts.refresh()
@@ -268,6 +279,7 @@ export class Engine {
     this.lightPollution.destroy()
     this.labels.destroy()
     this.terrainShadows.destroy()
+    this.viewshed.destroy()
     this.preloader.destroy()
     this.markers.destroy()
     this.alignment.destroy()
@@ -409,16 +421,28 @@ export class Engine {
     )
     s.push(useAppStore.subscribe((st) => st.profile.hoverIndex, () => this.requestRender()))
     s.push(useAppStore.subscribe((st) => st.settings.horizon.peakNames, () => void this.horizon.namePeaks()))
-    // A token added while the panorama shows "needs terrain" retries it.
+    // A token added while the panorama or viewshed shows "needs terrain" retries it.
     s.push(
       useAppStore.subscribe(
         (st) => st.terrainReady,
         (ready) => {
           const h = appState().horizon
           if (ready && h.open && h.status === 'error' && this.horizon.spot) void this.horizon.open(this.horizon.spot)
+          const v = appState().viewshed
+          if (ready && v.open && v.status === 'error' && this.viewshed.targetSpot) void this.openViewshed(this.viewshed.targetSpot)
         }
       )
     )
+    s.push(
+      subscribeJson(
+        (st) => [st.settings.viewshed, st.settings.units] as const,
+        ([vs, units]) => {
+          this.viewshed.configure(vs, units)
+          this.refreshInspectViewshed()
+        }
+      )
+    )
+    s.push(useAppStore.subscribe((st) => st.inspect, () => this.refreshInspectViewshed()))
     s.push(
       subscribeJson(
         (st) => [st.viewfinder, st.settings.viewfinder] as const,
@@ -487,10 +511,11 @@ export class Engine {
     const { mode, settings, autoRange } = appState()
     this.styler.apply(
       settings.elevation,
-      mode === 'elevation' && this.terrain.available,
+      mode === 'elevation' && (this.terrain.available || this.viewshed.ready),
       autoRange,
       this.terrainShadows.ready,
-      this.lightPollution.shown
+      this.lightPollution.shown,
+      this.viewshed.ready
     )
   }
 
@@ -508,6 +533,7 @@ export class Engine {
     })
     this.tiles.setScreenSpaceError(q.maximumScreenSpaceError)
     this.terrainShadows.setResolution(q.terrainShadowResolution)
+    this.viewshed.setResolution(q.terrainShadowResolution)
     this.scene.globe.maximumScreenSpaceError = q.terrainScreenSpaceError
     this.sun.applyQuality(q)
     if (this.scene.msaaSupported) this.scene.msaaSamples = q.msaaSamples
@@ -577,6 +603,11 @@ export class Engine {
       }
       const hit = pickSurface(this.scene, p.x, p.y)
       if (!hit) return
+      // One-shot target picking for viewshed analysis.
+      if (this.viewshed.picking) {
+        void this.openViewshed(hit)
+        return
+      }
       // With the horizon panorama open, a click moves its observer.
       if (this.horizon.isOpen) void this.openHorizon(hit)
       else {
@@ -933,7 +964,62 @@ export class Engine {
   }
 
   startProfile(): void {
+    this.viewshed.setPicking(false)
     this.inspector.clear()
     this.profile.start()
+  }
+
+  /**
+   * Opens or moves the viewshed analysis to `position`, else to the inspected point, the
+   * search pin, or the view center.
+   */
+  async openViewshed(position?: Cartesian3): Promise<void> {
+    const spot = position ?? this.inspector.point ?? this.searchMarker.point ?? cameraTarget(this.scene)
+    const { mode, tilesetReady, settings } = appState()
+    this.viewshed.configure(settings.viewshed, settings.units)
+    const c = Cartographic.fromCartesian(spot)
+    const tiles = mode === 'photorealistic' && tilesetReady && this.scene.verticalExaggeration === 1
+    await this.viewshed.open(spot, tiles ? this.preciseGround(toDeg(c.longitude), toDeg(c.latitude)) : undefined)
+    this.refreshInspectViewshed()
+  }
+
+  /** Shift+V: opens viewshed at the pin or view center, or clears it when already open. */
+  toggleViewshed(): void {
+    if (this.viewshed.isOpen) this.viewshed.clear()
+    else void this.openViewshed()
+  }
+
+  /** Flies the camera back to frame the active viewshed target. */
+  async flyToViewshedTarget(): Promise<void> {
+    const target = appState().viewshed.target
+    if (!target) return
+    const range = Math.max(1500, Math.min(appState().settings.viewshed.radius * 0.45, 12000))
+    await this.camera.flyToLocation(target.latitude, target.longitude, {
+      range,
+      groundHeight: target.groundEllipsoidal
+    })
+  }
+
+  /**
+   * Stands at the inspected point at eye level, looking back toward the viewshed target.
+   * Optionally opens the viewfinder to preview focal-length framing of the target.
+   */
+  async lookAtViewshedTarget(openViewfinder = false): Promise<void> {
+    const spot = this.inspector.point
+    const check = appState().inspectViewshed
+    if (!spot || !check) return
+    if (openViewfinder) appState().set({ viewfinder: true })
+    await this.camera.goToEyeLevel(spot, {
+      heading: check.bearingToTarget,
+      pitch: Math.max(-60, Math.min(60, check.pitchToTarget))
+    })
+  }
+
+  /** Refreshes line-of-sight readout for the inspected point against the active viewshed. */
+  refreshInspectViewshed(): void {
+    const point = this.inspector?.point
+    const next = point && this.viewshed?.isOpen ? this.viewshed.checkPoint(point) : null
+    if (next === null && appState().inspectViewshed === null) return
+    appState().set({ inspectViewshed: next })
   }
 }

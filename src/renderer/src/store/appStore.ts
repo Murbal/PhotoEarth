@@ -19,6 +19,7 @@ import type { Horizon, SkylinePeak } from '../lib/panorama'
 import type { ProfileSample, ProfileStats, GeoPoint } from '../lib/profile'
 import type { BandSegment } from '../lib/sun'
 import { addDays } from '../lib/time'
+import type { ViewshedPointCheck, ViewshedStats } from '../lib/viewshed'
 import type { Forecast } from '../lib/weather'
 
 export type BannerLevel = 'error' | 'warning' | 'info'
@@ -174,6 +175,30 @@ export interface AlignmentState {
   frameOnSelect: boolean
 }
 
+export interface ViewshedTarget {
+  longitude: number
+  latitude: number
+  /** Ground/surface footing at the target (ellipsoidal), meters. */
+  groundEllipsoidal: number
+  /** Ground/surface footing at the target (above sea level), meters. */
+  groundMsl: number
+  /** Geoid undulation at the target, meters. */
+  geoid: number
+}
+
+export interface ViewshedState {
+  open: boolean
+  /** Waiting for a map click to set or move the viewshed target. */
+  picking: boolean
+  status: 'idle' | 'loading' | 'ready' | 'error'
+  /** Terrain grids loaded so far, out of `levels`. */
+  loaded: number
+  levels: number
+  target: ViewshedTarget | null
+  stats: ViewshedStats | null
+  error: string | null
+}
+
 export interface InspectInfo {
   longitude: number
   latitude: number
@@ -245,6 +270,17 @@ const emptyHorizon: HorizonState = {
   error: null
 }
 
+const emptyViewshed: ViewshedState = {
+  open: false,
+  picking: false,
+  status: 'idle',
+  loaded: 0,
+  levels: 0,
+  target: null,
+  stats: null,
+  error: null
+}
+
 const emptyProfile: ProfileState = {
   active: false,
   points: [],
@@ -310,7 +346,10 @@ export interface AppState {
   profile: ProfileState
   horizon: HorizonState
   alignment: AlignmentState
+  viewshed: ViewshedState
   inspect: InspectInfo | null
+  /** Line-of-sight status from the inspected point to the active viewshed target. */
+  inspectViewshed: ViewshedPointCheck | null
   spotSun: SpotSunInfo | null
   weather: WeatherState
   sky: SkyInfo | null
@@ -351,6 +390,8 @@ export interface AppState {
   patchAlignment: (patch: Partial<AlignmentState>) => void
   patchAlignmentFilters: (patch: Partial<AlignmentFilters>) => void
   resetAlignment: () => void
+  patchViewshed: (patch: Partial<ViewshedState>) => void
+  resetViewshed: () => void
   showToast: (message: string) => void
 }
 
@@ -388,7 +429,9 @@ export const useAppStore = create<AppState>()(
     profile: emptyProfile,
     horizon: emptyHorizon,
     alignment: emptyAlignment(todayIn().date),
+    viewshed: emptyViewshed,
     inspect: null,
+    inspectViewshed: null,
     spotSun: null,
     weather: { status: 'idle', forecast: null, error: null },
     sky: null,
@@ -437,6 +480,8 @@ export const useAppStore = create<AppState>()(
           frameOnSelect: s.alignment.frameOnSelect
         }
       })),
+    patchViewshed: (patch) => set((s) => ({ viewshed: { ...s.viewshed, ...patch } })),
+    resetViewshed: () => set({ viewshed: emptyViewshed, inspectViewshed: null }),
     showToast: (message) => {
       const id = ++toastId
       set({ toast: { id, message } })

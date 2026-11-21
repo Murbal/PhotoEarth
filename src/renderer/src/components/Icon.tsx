@@ -127,6 +127,14 @@ const PATHS: Record<string, ReactElement> = {
       <circle cx="17.5" cy="5.5" r="2" />
     </>
   ),
+  /** Sightlines fanning out from a target beacon: viewshed analysis overlay. */
+  viewshed: (
+    <>
+      <path d="M2.5 12s3.8-6.5 9.5-6.5S21.5 12 21.5 12s-3.8 6.5-9.5 6.5S2.5 12 2.5 12z" />
+      <circle cx="12" cy="12" r="2.8" />
+      <path d="M12 2.5v2M4.5 5.5l1.5 1.5M19.5 5.5 18 7" />
+    </>
+  ),
   /** An attitude indicator with a level horizon: level the horizon (remove roll). */
   horizon: (
     <>
