@@ -13,6 +13,7 @@
     "src/main/bookmarks.ts",
     "src/main/devEnv.ts",
     "src/main/jsonStore.ts",
+    "src/main/photoPicker.ts",
     "src/main/photos.ts",
     "src/main/wslGpu.ts",
     "vite/cesium.ts",

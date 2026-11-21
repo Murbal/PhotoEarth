@@ -4,12 +4,13 @@ import type { Bookmark, LocationStatus, SavedProfile } from '@shared/types'
 import { useDialogFocus } from '../hooks/useDialogFocus'
 import { formatLatLon } from '../lib/coords'
 import {
-  addPhotos,
+  addPhotoFiles,
   deleteLocation,
   defaultProfileName,
   deleteProfile,
   flyToBookmark,
   openProfile,
+  pickPhotos,
   removePhoto,
   renameProfile,
   saveCurrentView,
@@ -396,14 +397,14 @@ function TagEditor({ location: b }: { location: Bookmark }) {
 
 function PhotoGrid({ location: b }: { location: Bookmark }) {
   const set = useAppStore((s) => s.set)
-  const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [dragging, setDragging] = useState(false)
-  const add = (files: FileList | null) => {
-    if (!files?.length) return
-    const list = Array.from(files)
+  const run = (job: () => Promise<void>) => {
     setBusy(true)
-    void addPhotos(b.id, list).finally(() => setBusy(false))
+    void job().finally(() => setBusy(false))
+  }
+  const add = (files: FileList | null) => {
+    if (files?.length) run(() => addPhotoFiles(b.id, Array.from(files)))
   }
   return (
     <div
@@ -434,22 +435,10 @@ function PhotoGrid({ location: b }: { location: Bookmark }) {
           ))}
         </div>
       )}
-      <button className="btn" disabled={busy} onClick={() => input.current?.click()}>
+      <button className="btn" disabled={busy} onClick={() => run(() => pickPhotos(b.id))}>
         <Icon name="plus" size={14} /> {busy ? 'Adding…' : 'Add photos'}
       </button>
       <span className="small faint"> or drop images here</span>
-      <input
-        ref={input}
-        type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
-        multiple
-        hidden
-        data-testid="photo-input"
-        onChange={(e) => {
-          add(e.target.files)
-          e.target.value = ''
-        }}
-      />
     </div>
   )
 }

@@ -16,6 +16,8 @@ export const IPC = {
   bookmarksRemove: 'bookmarks:remove',
   bookmarksAddPhoto: 'bookmarks:add-photo',
   bookmarksRemovePhoto: 'bookmarks:remove-photo',
+  bookmarksPickPhotos: 'bookmarks:pick-photos',
+  bookmarksReadPickedPhoto: 'bookmarks:read-picked-photo',
   profilesList: 'profiles:list',
   profilesCreate: 'profiles:create',
   profilesUpdate: 'profiles:update',

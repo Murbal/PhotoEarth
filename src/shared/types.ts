@@ -250,6 +250,15 @@ export interface PhotoUpload {
 
 export type PhotoResult = { ok: true; bookmark: Bookmark } | { ok: false; error: string }
 
+/** A file chosen in the native photo picker: a one-time token, never its path. */
+export interface PickedPhoto {
+  token: string
+  name: string
+  bytes: number
+}
+
+export type PickedPhotoData = { ok: true; data: Uint8Array } | { ok: false; error: string }
+
 /** A saved elevation profile path (§7.3), on its own or attached to a location. */
 export interface SavedProfile {
   id: string
@@ -441,6 +450,10 @@ export interface PhotoEarthApi {
     /** Also deletes the location's photos and its attached profiles. */
     remove(id: string): Promise<boolean>
     addPhoto(id: string, photo: PhotoUpload): Promise<PhotoResult>
+    /** Opens the native file picker for photos to add to a location; [] when cancelled. */
+    pickPhotos(id: string): Promise<PickedPhoto[]>
+    /** Reads a file chosen in the picker (each token works once). */
+    readPickedPhoto(token: string): Promise<PickedPhotoData>
     removePhoto(id: string, photoId: string): Promise<Bookmark | null>
   }
   profiles: {

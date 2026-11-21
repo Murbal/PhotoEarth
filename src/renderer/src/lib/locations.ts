@@ -64,41 +64,79 @@ export function flyToBookmark(b: Bookmark): void {
   void getEngine()?.flyToBookmark(b)
 }
 
+/** A photo to import: its name and size up front, its bytes only when it's its turn. */
+interface PhotoSource {
+  name: string
+  size: number
+  /** The file's contents, or a message saying why it can't be read. */
+  load: () => Promise<Blob | string>
+}
+
 /**
- * Copies image files into the location: each is checked for size before it is read, given a
- * thumbnail here (the browser's decoders, EXIF orientation applied), and stored by the main process.
+ * Copies photos into the location, one at a time: each is checked for size before it is read,
+ * given a thumbnail here (the browser's decoders, EXIF orientation applied), and stored by the
+ * main process, which checks it again.
  */
-export async function addPhotos(id: string, files: Iterable<File>): Promise<void> {
+async function importPhotos(id: string, sources: Iterable<PhotoSource>): Promise<void> {
   const { showToast } = appState()
   let added = 0
   const problems: string[] = []
-  for (const file of files) {
+  for (const source of sources) {
     const current = appState().bookmarks.find((b) => b.id === id)
     if (!current) return
     if (current.photos.length >= MAX_PHOTOS_PER_LOCATION) {
       problems.push(`A location can hold at most ${MAX_PHOTOS_PER_LOCATION} photos.`)
       break
     }
-    if (file.size > MAX_PHOTO_BYTES) {
-      problems.push(`${file.name} is ${(file.size / 1048576).toFixed(0)} MB; photos can be at most ${MAX_PHOTO_BYTES / 1048576} MB.`)
+    if (source.size > MAX_PHOTO_BYTES) {
+      problems.push(`${source.name} is ${(source.size / 1048576).toFixed(0)} MB; photos can be at most ${MAX_PHOTO_BYTES / 1048576} MB.`)
       continue
     }
     try {
+      const file = await source.load()
+      if (typeof file === 'string') {
+        problems.push(`${source.name}: ${file}`)
+        continue
+      }
       const thumb = await makeThumbnail(file)
       const data = new Uint8Array(await file.arrayBuffer())
-      const res = await window.photoearth.bookmarks.addPhoto(id, { name: file.name, data, ...thumb })
+      const res = await window.photoearth.bookmarks.addPhoto(id, { name: source.name, data, ...thumb })
       if (res.ok) {
         replaceBookmark(res.bookmark)
         added++
       } else {
-        problems.push(`${file.name}: ${res.error}`)
+        problems.push(`${source.name}: ${res.error}`)
       }
     } catch {
-      problems.push(`${file.name} can't be read as an image here (JPEG, PNG, WebP, GIF or AVIF).`)
+      problems.push(`${source.name} can't be read as an image here (JPEG, PNG, WebP, GIF or AVIF).`)
     }
   }
   if (problems.length) showToast(problems.length === 1 ? problems[0] : `${problems[0]} (+${problems.length - 1} more)`)
   else if (added) showToast(added === 1 ? 'Photo added' : `${added} photos added`)
+}
+
+/** Files dropped on the editor. */
+export function addPhotoFiles(id: string, files: Iterable<File>): Promise<void> {
+  return importPhotos(
+    id,
+    Array.from(files, (file) => ({ name: file.name, size: file.size, load: async () => file }))
+  )
+}
+
+/** "Add photos": the native file picker, then the chosen files one by one. */
+export async function pickPhotos(id: string): Promise<void> {
+  const picked = await window.photoearth.bookmarks.pickPhotos(id)
+  await importPhotos(
+    id,
+    picked.map((p) => ({
+      name: p.name,
+      size: p.bytes,
+      load: async () => {
+        const res = await window.photoearth.bookmarks.readPickedPhoto(p.token)
+        return res.ok ? new Blob([res.data as Uint8Array<ArrayBuffer>]) : res.error
+      }
+    }))
+  )
 }
 
 export async function removePhoto(id: string, photoId: string): Promise<void> {

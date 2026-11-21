@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
 
@@ -1182,21 +1182,39 @@ test('saved locations: save, edit, filter, photos, profiles and map markers', as
     .poll(async () => (await page.evaluate(() => window.photoearth.bookmarks.list()))[1])
     .toMatchObject({ name: 'Sunset ridge', status: 'visited', tags: ['sunset', 'lake'], bestTime: 'Late October evenings', notes: 'Park at the upper lot.' })
 
+  // "Add photos" opens the native file picker (stubbed here: Playwright can't click OS dialogs).
   // Photos are copied into userData with a thumbnail; huge files are refused before they're read.
-  const input = panel.getByTestId('photo-input')
-  await input.setInputFiles({ name: 'ridge.png', mimeType: 'image/png', buffer: await testPng(640, 360) })
-  await expect(panel.locator('.photo-thumb img')).toHaveCount(1)
-  await expect.poll(() => panel.locator('.photo-thumb img').evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(427)
-  const photos = readdirSync(join(userData, 'photos'))
-  expect(photos.filter((f) => f.endsWith('.png'))).toHaveLength(1)
-  expect(photos.filter((f) => f.endsWith('.thumb.jpg'))).toHaveLength(1)
-  // From disk: a 41 MB buffer is too slow to send over the debugging protocol.
-  const huge = join(mkdtempSync(join(tmpdir(), 'photoearth-huge-')), 'huge.jpg')
-  writeFileSync(huge, Buffer.alloc(41 * 1024 * 1024))
-  await input.setInputFiles(huge)
-  rmSync(dirname(huge), { recursive: true, force: true })
-  await expect(page.locator('.toast')).toContainText('at most 40 MB')
-  await expect(panel.locator('.photo-thumb')).toHaveCount(1)
+  const pickDir = mkdtempSync(join(tmpdir(), 'photoearth-pick-'))
+  const ridge = join(pickDir, 'ridge.png')
+  writeFileSync(ridge, await testPng(640, 360))
+  const huge = join(pickDir, 'huge.jpg')
+  writeFileSync(huge, Buffer.alloc(41 * 1024 * 1024, 0xff))
+  const pickNext = (paths: string[]) =>
+    app.evaluate(({ dialog }, chosen) => {
+      const calls: unknown[] = []
+      ;(globalThis as { pickerCalls?: unknown[] }).pickerCalls = calls
+      dialog.showOpenDialog = (async (...args: unknown[]) => {
+        calls.push(args[args.length - 1])
+        return { canceled: false, filePaths: chosen }
+      }) as typeof dialog.showOpenDialog
+    }, paths)
+  try {
+    await pickNext([ridge])
+    await panel.getByRole('button', { name: 'Add photos' }).click()
+    await expect(panel.locator('.photo-thumb img')).toHaveCount(1)
+    const call = await app.evaluate(() => (globalThis as { pickerCalls?: Array<{ title: string; properties: string[] }> }).pickerCalls?.[0])
+    expect(call).toMatchObject({ title: 'Add photos to “Sunset ridge”', properties: ['openFile', 'multiSelections'] })
+    await expect.poll(() => panel.locator('.photo-thumb img').evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(427)
+    const photos = readdirSync(join(userData, 'photos'))
+    expect(photos.filter((f) => f.endsWith('.png'))).toHaveLength(1)
+    expect(photos.filter((f) => f.endsWith('.thumb.jpg'))).toHaveLength(1)
+    await pickNext([huge])
+    await panel.getByRole('button', { name: 'Add photos' }).click()
+    await expect(page.locator('.toast')).toContainText('at most 40 MB')
+    await expect(panel.locator('.photo-thumb')).toHaveCount(1)
+  } finally {
+    rmSync(pickDir, { recursive: true, force: true })
+  }
   // Full size in a dialog, served by photo:// (not a path on disk).
   await panel.locator('.photo-open').click()
   const viewer = page.getByRole('dialog', { name: /Sunset ridge: ridge\.png/ })
