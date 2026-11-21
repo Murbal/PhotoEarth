@@ -96,6 +96,15 @@ describe('resolveShortLink', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
+  it('parses the search-path form that shared pins redirect to', async () => {
+    // Shape of a real maps.app.goo.gl answer (November 2026); coordinates and ids made up.
+    const target =
+      'https://www.google.com/maps/search/46.557700,+7.958600/data=!18m1!1e1?entry=tts&g_ep=EgoyMDI2MTExOC4xIPu8ASoASAFQAw%3D%3D&skid=00000000-0000-4000-8000-000000000000'
+    const fetch = mockFetch({ 'https://maps.app.goo.gl/AbC123': () => redirect(target) })
+    const res = await resolveShortLink('https://maps.app.goo.gl/AbC123', { fetch })
+    expect(res).toEqual({ ok: true, data: { url: target, location: { latitude: 46.5577, longitude: 7.9586, source: 'url' } } })
+  })
+
   it('sends no headers, omits credentials and asks for manual redirects', async () => {
     const fetch = mockFetch({ 'https://maps.app.goo.gl/AbC123': () => redirect(PLACE) })
     await resolveShortLink('https://maps.app.goo.gl/AbC123', { fetch })
