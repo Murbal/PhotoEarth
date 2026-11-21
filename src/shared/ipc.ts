@@ -17,5 +17,6 @@ export const IPC = {
   placesAutocomplete: 'places:autocomplete',
   placesDetails: 'places:details',
   placesNearby: 'places:nearby',
-  placesCities: 'places:cities'
+  placesCities: 'places:cities',
+  weatherForecast: 'weather:forecast'
 } as const

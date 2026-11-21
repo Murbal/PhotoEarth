@@ -17,6 +17,7 @@ import { TopBar } from './components/TopBar'
 import { ViewfinderFrame, ViewfinderPanel } from './components/Viewfinder'
 import { runCommand } from './commands'
 import { getEngine } from './engine/instance'
+import { useForecastFeed } from './hooks/useForecastFeed'
 import { useShortcuts } from './hooks/useShortcuts'
 import { saveCurrentView } from './lib/bookmarks'
 import { appState, useAppStore } from './store/appStore'
@@ -157,6 +158,7 @@ export function App() {
   usePersistence()
   useMenuCommands()
   useShortcuts()
+  useForecastFeed()
   useOverlayLayout(overlayRef, stackRef)
 
   if (bootError) {

@@ -90,6 +90,7 @@ export function defaultSettings(): Settings {
     detailShadows: true,
     showSunIndicator: false,
     showMoonIndicator: false,
+    forecast: true,
     viewfinder: defaultViewfinder(),
     horizon: { moon: true, peakNames: true },
     bookmarkIncludeTime: true,
@@ -246,6 +247,7 @@ export function sanitizeSettings(raw: Json): Settings {
     detailShadows: bool(r.detailShadows, d.detailShadows),
     showSunIndicator: bool(r.showSunIndicator, d.showSunIndicator),
     showMoonIndicator: bool(r.showMoonIndicator, d.showMoonIndicator),
+    forecast: bool(r.forecast, d.forecast),
     viewfinder: sanitizeViewfinder(r.viewfinder),
     horizon: {
       moon: bool(horizon.moon, d.horizon.moon),

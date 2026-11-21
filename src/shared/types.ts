@@ -121,6 +121,8 @@ export interface Settings {
   showSunIndicator: boolean
   /** Moon direction line on the map, like the sun's. */
   showMoonIndicator: boolean
+  /** Open-Meteo cloud, wind and visibility forecast in the time panel (sends the view center to Open-Meteo). */
+  forecast: boolean
   viewfinder: ViewfinderSettings
   horizon: HorizonSettings
   bookmarkIncludeTime: boolean
@@ -237,6 +239,41 @@ export interface AutocompleteRequest {
   bias?: LatLng
 }
 
+/** Hourly forecast at one point (Open-Meteo). Columns line up with `time`; null where the model has no value. */
+export interface WeatherSeries {
+  /** The model grid cell the values are for. */
+  latitude: number
+  longitude: number
+  /** Meters above sea level of that cell. */
+  elevation: number | null
+  /** UTC instants (ms) on the hour. */
+  time: number[]
+  /** Cloud cover in percent: below ~2 km, ~2–6 km, above ~6 km. */
+  cloudLow: (number | null)[]
+  cloudMid: (number | null)[]
+  cloudHigh: (number | null)[]
+  /** Meters. */
+  visibility: (number | null)[]
+  /** 10 m above ground, m/s; direction it blows from, degrees. */
+  windSpeed: (number | null)[]
+  windGusts: (number | null)[]
+  windDirection: (number | null)[]
+  /** Percent; mm over the preceding hour. */
+  precipitationProbability: (number | null)[]
+  precipitation: (number | null)[]
+  /** 2 m above ground, °C, %. */
+  temperature: (number | null)[]
+  dewPoint: (number | null)[]
+  humidity: (number | null)[]
+  /** WMO weather interpretation code (45, 48: fog). */
+  weatherCode: (number | null)[]
+}
+
+export interface WeatherRequest {
+  /** 1–3 points, answered in the same order. */
+  points: LatLng[]
+}
+
 export type Result<T> = { ok: true; data: T } | { ok: false; error: ApiCheck }
 
 export interface AppInfo {
@@ -285,6 +322,10 @@ export interface PhotoEarthApi {
     /** Up to 20 places of one kind in a circle, most popular first (for map labels). */
     nearby(request: NearbyRequest): Promise<Result<NearbyPlace[]>>
     cities(request: CitiesRequest): Promise<Result<NearbyPlace[]>>
+  }
+  weather: {
+    /** Hourly forecast for the next 16 days at each point (Open-Meteo, no key). */
+    forecast(request: WeatherRequest): Promise<Result<WeatherSeries[]>>
   }
   openExternal(url: string): Promise<void>
   onMenuCommand(listener: (command: MenuCommand) => void): () => void

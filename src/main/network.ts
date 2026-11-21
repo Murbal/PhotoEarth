@@ -15,6 +15,7 @@ import {
   parsePlaceDetails,
   PLACES_ENDPOINT
 } from '@shared/places'
+import { buildForecastUrl, forecastErrorReason, parseForecast } from '@shared/weather'
 import type {
   ApiCheck,
   ApiKeys,
@@ -25,7 +26,9 @@ import type {
   PlaceDetails,
   PlaceSuggestion,
   Result,
-  ValidationResult
+  ValidationResult,
+  WeatherRequest,
+  WeatherSeries
 } from '@shared/types'
 
 /**
@@ -196,4 +199,26 @@ export async function placesNearby(key: string | null, req: NearbyRequest): Prom
   } catch {
     return { ok: false, error: { status: 'error', message: 'Unexpected response from the Places API.' } }
   }
+}
+
+/** Open-Meteo hourly forecast (free, no key; the request carries only the coordinates). */
+export async function weatherForecast(req: WeatherRequest): Promise<Result<WeatherSeries[]>> {
+  const res = await request(buildForecastUrl(req.points), {}, 15000)
+  if (!okStatus(res.status)) {
+    if (res.status === 0) {
+      return net.isOnline()
+        ? { ok: false, error: { status: 'error', message: 'Could not reach Open-Meteo. Check your connection or firewall.' } }
+        : { ok: false, error: { status: 'offline', message: 'You appear to be offline.' } }
+    }
+    if (res.status === 429) return { ok: false, error: { status: 'quota', message: 'Open-Meteo request limit reached. Try again later.' } }
+    const reason = forecastErrorReason(res.body)
+    return { ok: false, error: { status: 'error', message: `Open-Meteo error ${res.status}${reason ? `: ${reason}` : ''}` } }
+  }
+  try {
+    const series = parseForecast(JSON.parse(res.body), req.points.length)
+    if (series) return { ok: true, data: series }
+  } catch {
+    /* fall through */
+  }
+  return { ok: false, error: { status: 'error', message: 'Unexpected response from Open-Meteo.' } }
 }

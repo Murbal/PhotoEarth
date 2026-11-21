@@ -8,6 +8,7 @@ import type { MoonState } from '../lib/moon'
 import type { Horizon, SkylinePeak } from '../lib/panorama'
 import type { ProfileSample, ProfileStats, GeoPoint } from '../lib/profile'
 import type { BandSegment } from '../lib/sun'
+import type { Forecast } from '../lib/weather'
 
 export type BannerLevel = 'error' | 'warning' | 'info'
 
@@ -150,6 +151,14 @@ export interface SpotSunInfo {
   sunlitMs: number
 }
 
+/** Open-Meteo forecast for the view center (hooks/useForecastFeed). */
+export interface WeatherState {
+  status: 'idle' | 'loading' | 'ready' | 'error'
+  /** The latest forecast; it may be for a place the view has since moved away from. */
+  forecast: Forecast | null
+  error: string | null
+}
+
 /** Where the last search (place or coordinates) took the camera. */
 export interface Destination {
   name: string
@@ -212,6 +221,7 @@ export interface AppState {
   horizon: HorizonState
   inspect: InspectInfo | null
   spotSun: SpotSunInfo | null
+  weather: WeatherState
   destination: Destination | null
   pendingTiles: number
   fps: number | null
@@ -275,6 +285,7 @@ export const useAppStore = create<AppState>()(
     horizon: emptyHorizon,
     inspect: null,
     spotSun: null,
+    weather: { status: 'idle', forecast: null, error: null },
     destination: null,
     pendingTiles: 0,
     fps: null,

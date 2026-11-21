@@ -95,12 +95,23 @@ The sun-position tests compare SunCalc against [astronomy-engine](https://github
 
 The moon goes the other way round: it runs on astronomy-engine (topocentric, so parallax is included), and SunCalc's independent moon series checks it. Agreement is within 0.05° in position and a minute in rise, transit and set across six time zones (§11.3).
 
+### Weather forecast
+
+The time panel (`T`) shows the [Open-Meteo](https://open-meteo.com/) forecast for the view center, for today and the next 15 days. It needs no key.
+
+- **Cloud bands** under the time slider: high, mid and low cloud through the selected day, brighter where there's more, lined up with the hours above. High cloud is the canvas for sunrise and sunset colour; low cloud hides it.
+- **Day strip**: one chip per day with a sunrise (↑) and a sunset (↓) rating from *Poor* to *Great*, plus *fog*/*fog?* when fog is likely or possible around sunrise and *wind* when daylight gusts reach 12 m/s. Clicking ↑ or ↓ sets the date and time to that sunrise or sunset; the tooltip explains the rating.
+- **The rating** is a heuristic: colour needs mid or high cloud overhead to catch the light (scattered to broken is best, overcast is dull), little low cloud overhead, and a clear path for the light. That path is judged from the forecast 150 km toward where the sun sets (or rises), so "high cloud plus a clear western horizon" comes out as *Great*, and the same sky with a bank of low cloud to the west as *Poor*. Rain chance lowers it.
+- **At the selected hour**: high, mid and low cloud, visibility, wind and gusts (with what they mean for drones and long exposures in the tooltip), rain chance and fog risk. Open-Meteo has no fog probability, so fog is estimated: *likely* when the model forecasts fog or visibility under 1 km, *possible* in near-saturated, still air or mist. Valley radiation fog forms below the model's resolution, so treat *possible* on a calm, clear night as worth a look.
+
+Each request sends only coordinates to Open-Meteo: the view center and the two points 150 km toward the sunset and sunrise. It's made from the main process once the view settles, at most once an hour per place (forecasts are reused within 3 km). Switch it off with *Forecast* in the time panel.
+
 ## Architecture
 
 ```
 src/
   main/        Electron main: window, app:// protocol, CSP, Referer, permissions,
-               settings.json / bookmarks.json / secrets.json, Places + key validation over net.fetch
+               settings.json / bookmarks.json / secrets.json, Places, Open-Meteo + key validation over net.fetch
   preload/     contextBridge → typed window.photoearth API
   shared/      types, settings defaults + sanitization, IPC channels, API error classification
   renderer/src/
@@ -111,7 +122,7 @@ src/
     components/ React overlay UI (the canvas belongs to Cesium)
     store/     Zustand app state; React writes it, the engine subscribes to it
     lib/       pure, unit-tested logic: time zones, sun, moon, seasons, coordinates, geoid,
-               profile math, terrain-shadow ray marching, palettes, units
+               profile math, terrain-shadow ray marching, weather outlook, palettes, units
 ```
 
 Notable decisions:
@@ -155,9 +166,12 @@ Cesium's shadow maps on Google's 3D tiles miss off-screen and distant ridges, lo
 - The first time a new shader variant is needed (a new kind of tile, a setting change) Cesium compiles it synchronously, a 60–120 ms hitch with a cold GPU shader cache. Chromium's on-disk shader cache makes later sessions much faster.
 - Terrain shadows cover ±80 km around the view. Wider views (camera above ~100 km) get no cast shadows outside that area, where they'd be sub-pixel anyway. They follow Cesium World Terrain, so they're only as accurate as its heights (bare earth in most places, so forest canopy doesn't cast).
 - Place names are billed as Places API Nearby Search Pro and Text Search Pro requests: about 10 per newly explored close view and up to about 17 per newly explored wide view, at most 60 per minute (a guard against runaway requests, not a spending limit: set a daily quota on Places API (New) in Cloud Console for that). Results are cached in memory for the session only, never on disk. Switch them off with `M`. Nearby Search doesn't support neighborhoods, so cities show their town name and named hills only.
+- The forecast is Open-Meteo's "best match" blend of weather models: higher-resolution ones for the first days, coarser global ones further out, so the later days are rough and local effects (valley fog, a lake's own cloud) are missed. The sunrise/sunset rating is a heuristic from cloud cover, not a model of sky colour.
 - Google Maps short links (`maps.app.goo.gl`) can't be resolved offline; paste the full URL.
 - Linux and macOS are best effort. The macOS build (`npm run package:mac`, Apple Silicon only, must run on a Mac) is signed ad hoc, not with a Developer ID, so it isn't notarized: on first launch Gatekeeper blocks it, and you allow it under **System Settings → Privacy & Security → Open Anyway** (or run `xattr -dr com.apple.quarantine /Applications/PhotoEarth.app`).
 
 ## Attribution & terms
 
 Google imagery and 3D geometry can't be exported, cached beyond the standard HTTP cache, or bulk-downloaded. Google, Cesium ion and imagery attributions are always shown in the status bar.
+
+Weather data is by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0), credited in the time panel next to the forecast. Its free API is for non-commercial use (up to 10,000 requests a day); commercial use needs one of its API plans.
