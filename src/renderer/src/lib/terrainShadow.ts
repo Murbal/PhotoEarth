@@ -1,6 +1,5 @@
 // Heightmap terrain shadows: the geometry shared by the GPU pass (engine/shadows/shaders.ts)
-// and its CPU reference implementation here (pure, unit-tested, and compared against the GPU
-// output in the end-to-end suite). Keep the two in lockstep.
+// and its CPU reference implementation here (pure and unit-tested). Keep the two in lockstep.
 //
 // Heights live on nested square grids ("levels") in a local tangent-plane frame: x east,
 // y north, meters, origin on the ellipsoid near the view. A grid cell stores the ellipsoidal

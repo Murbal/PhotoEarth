@@ -1,6 +1,6 @@
 // Minimal typings for the Cesium renderer internals the terrain shadow pass uses. They are
 // exported at runtime by the `cesium` package but marked @private, so its typings omit them.
-// Pinned to the installed Cesium version; tests/e2e exercises every one of them.
+// Pinned to the installed Cesium version; check them when upgrading Cesium.
 import 'cesium'
 
 declare module 'cesium' {
@@ -11,7 +11,6 @@ declare module 'cesium' {
     readonly floatingPointTexture: boolean
     readonly defaultTexture: Texture
     getViewportQuadVertexArray(): unknown
-    readPixels(options: { x?: number; y?: number; width?: number; height?: number; framebuffer?: Framebuffer }): Uint8Array
   }
 
   export interface CesiumFrameState {

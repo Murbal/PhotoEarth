@@ -1,7 +1,7 @@
 import { MAP_ZOOM_RANGE } from '@shared/settings'
 
 /**
- * Math of Map mode (SPEC §5.5): a Web Mercator view (center and fractional zoom), the tiles
+ * Math of Map mode: a Web Mercator view (center and fractional zoom), the tiles
  * it needs, panning and zooming about a point, and the hand-over between the 3D camera and
  * the map in both directions. Pure, so it is unit-tested; MapMode.tsx and the engine call it.
  */

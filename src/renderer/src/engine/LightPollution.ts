@@ -23,7 +23,7 @@ async function inflate(buffer: ArrayBuffer): Promise<ArrayBuffer> {
 }
 
 /**
- * The light pollution overlay (§7.5): one imagery layer on the globe, so it shows in
+ * The light pollution overlay: one imagery layer on the globe, so it shows in
  * Elevation mode (and wherever the globe is the backdrop). It exists only while switched on,
  * so off costs nothing. Inspected points get a sky brightness estimate from the source's
  * point data, else from the color of its tile.
@@ -198,10 +198,5 @@ export class LightPollution {
     } finally {
       bitmap.close()
     }
-  }
-
-  /** Test hook: serve a data tile from memory instead of the network. */
-  debugSetDataTile(url: string, data: Int8Array): void {
-    this.data.set(url, Promise.resolve(data))
   }
 }

@@ -19,7 +19,7 @@ export interface MapSession {
 }
 
 /**
- * The 2D Tiles session of Map mode (SPEC §5.5), separate from the globe imagery's so the map
+ * The 2D Tiles session of Map mode, separate from the globe imagery's so the map
  * can show its own map type (satellite with roads and labels, road map, terrain) at 2× on
  * dense displays. Created the first time Map mode opens, renewed an hour before it expires,
  * and when its tiles start failing with 400/401/403.

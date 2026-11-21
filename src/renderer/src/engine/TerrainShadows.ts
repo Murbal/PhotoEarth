@@ -3,7 +3,6 @@ import { sunDirectionENU } from '../lib/sun'
 import {
   LEVEL_COUNT,
   LEVEL_HALF,
-  levelCell,
   levelResolutions,
   needsRecenter,
   snap,
@@ -33,7 +32,7 @@ interface Placement {
 const RETRY_MS = 10000
 
 /**
- * Heightmap terrain shadows (§8.1.1). Three nested grids of Cesium World Terrain heights
+ * Heightmap terrain shadows. Three nested grids of Cesium World Terrain heights
  * (±5 km at ~20 m, ±20 km at ~80 m, ±80 km at ~400 m with the High preset) follow the view;
  * a GPU pass ray-marches them toward the sun into per-cell shadow tops, and the 3D Tiles and
  * globe shaders shade against those. Unlike shadow maps this is independent of what the
@@ -310,35 +309,4 @@ export class TerrainShadows {
   }
 
   // ───────────────────────────── test support ─────────────────────────────
-
-  /**
-   * Replaces the terrain with synthetic levels around (lon, lat) radians and disables loading
-   * from the provider. Used by the end-to-end suite to compare the GPU pass with the CPU
-   * reference.
-   */
-  debugUseLevels(longitude: number, latitude: number, levels: ShadowLevel[]): LocalFrame {
-    this.generation++
-    this.field = null
-    this.getProvider = () => null
-    this.enabled = true
-    this.compute.setEnabled(true)
-    const frame = new LocalFrame(longitude, latitude)
-    this.frame = frame
-    this.desiredFrame = { longitude, latitude }
-    this.compute.setRadius(frame.radius)
-    this.compute.clear()
-    levels.forEach((l, k) => {
-      this.levels[k] = l
-      this.compute.setLevel(k, l)
-    })
-    this.applySun()
-    this.setStatus('ready')
-    return frame
-  }
-
-  debugReadMask(k: number): { data: Uint8Array; base: number; cell: number } | null {
-    const data = this.compute.readMask(k)
-    const l = this.levels[k]
-    return data && l ? { data, base: this.compute.encodingBase, cell: levelCell(l) } : null
-  }
 }

@@ -1,6 +1,6 @@
 import type { ImageryType } from '@shared/types'
 
-/** Google Map Tiles API: 2D tile sessions, tiles and viewport attribution (SPEC §3.1). */
+/** Google Map Tiles API: 2D tile sessions, tiles and viewport attribution. */
 export const TILES_ENDPOINT = 'https://tile.googleapis.com'
 
 /** The Google logo Cesium credits Google data with (the CSP allows assets.ion.cesium.com). */

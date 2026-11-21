@@ -31,7 +31,7 @@ function savedTime(b: Bookmark): string | null {
   return `${formatShortDate(t.date)} ${formatClock(t.minutes)}`
 }
 
-/** Saved scouting locations (§11.5): the list with its filters, or one location's editor. */
+/** Saved scouting locations: the list with its filters, or one location's editor. */
 export function LocationsPanel() {
   const open = useAppStore((s) => s.panels.bookmarks)
   const active = useAppStore((s) => s.bookmarks.find((b) => b.id === s.activeLocation) ?? null)

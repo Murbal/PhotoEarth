@@ -307,17 +307,6 @@ export class ViewshedCompute {
     Cartesian4.fromElements(minX, minY, cell, l.n, this.binding.rects[index])
   }
 
-  /** Test support: raw RGBA8 viewshed mask for a level (call after rendering). */
-  readMask(index: number): Uint8Array | null {
-    const s = this.levels[index]
-    if (!this.context || !s.framebuffer || !s.level) return null
-    return this.context.readPixels({ x: 0, y: 0, width: s.level.n, height: s.level.n, framebuffer: s.framebuffer })
-  }
-
-  get encodingBase(): number {
-    return this.base
-  }
-
   isDestroyed(): boolean {
     return this.destroyed
   }

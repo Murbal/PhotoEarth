@@ -21,14 +21,16 @@ export async function saveCurrentView(opts: { name?: string; edit?: boolean } = 
   const engine = getEngine()
   if (!engine) return null
   const { settings, destination, bookmarks, set, togglePanel, showToast } = appState()
-  // In Map mode the location is at the map's center (§5.5).
+  // In Map mode the location is at the map's center.
   const target = settings.map.open ? engine.mapView() : appState().target
   const label =
     opts.name ??
     destination?.name ??
     (target ? `View ${formatLatLon(target.latitude, target.longitude, 'decimal')}` : `View ${bookmarks.length + 1}`)
   const saved = await window.photoearth.bookmarks.create(await engine.bookmarkFromView(label, settings.bookmarkIncludeTime))
-  set({ bookmarks: [...appState().bookmarks, saved], activeLocation: opts.edit ? saved.id : appState().activeLocation })
+  // Opens on the new location, or on the list where it now is: never on another location's
+  // details left open from before.
+  set({ bookmarks: [...appState().bookmarks, saved], activeLocation: opts.edit ? saved.id : null })
   togglePanel('bookmarks', true)
   showToast('Location saved')
   return saved

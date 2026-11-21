@@ -97,7 +97,7 @@ export interface ViewfinderSettings {
 }
 
 /**
- * Where the light pollution overlay comes from (§7.5). `atlas-YYYY`: David Lorenz's Light
+ * Where the light pollution overlay comes from. `atlas-YYYY`: David Lorenz's Light
  * Pollution Atlas for that year (modeled zenith sky brightness from VIIRS); `black-marble`:
  * NASA's VIIRS Black Marble 2016 (light emitted upward, not sky brightness).
  */
@@ -116,7 +116,7 @@ export interface LightPollutionSettings {
   source: LightPollutionSourceId
 }
 
-/** Map mode (§5.5): a full-window 2D map, shown instead of the 3D view while `open`. */
+/** Map mode: a full-window 2D map, shown instead of the 3D view while `open`. */
 export interface MapModeSettings {
   open: boolean
   /** Center and fractional Web Mercator zoom of the map. */
@@ -137,7 +137,7 @@ export interface HorizonSettings {
   peakNames: boolean
 }
 
-/** Astrophotography dark-window preferences (§11.8). */
+/** Astrophotography dark-window preferences. */
 export interface AstroSettings {
   /** Minimum Galactic Core altitude (degrees) for the dark-window calculation. */
   minCoreAltitude: number
@@ -171,14 +171,14 @@ export interface Settings {
   quality: QualitySettings
   navigation: NavigationSettings
   lastCamera: CameraView | null
-  /** The last 3D mode; Map mode opens over it and returns to it (§5.5). */
+  /** The last 3D mode; Map mode opens over it and returns to it. */
   lastMode: MapMode
   map: MapModeSettings
   imagery: ImageryType
   /** Google place names on the map (a labels-only Map Tiles layer). */
   placeLabels: boolean
   elevation: ElevationStyleSettings
-  /** Artificial night sky brightness overlay (§7.5). */
+  /** Artificial night sky brightness overlay. */
   lightPollution: LightPollutionSettings
   verticalExaggeration: number
   lighting: LightingMode
@@ -309,7 +309,7 @@ export interface PickedPhoto {
 
 export type PickedPhotoData = { ok: true; data: Uint8Array } | { ok: false; error: string }
 
-/** A saved elevation profile path (§7.3), on its own or attached to a location. */
+/** A saved elevation profile path, on its own or attached to a location. */
 export interface SavedProfile {
   id: string
   name: string

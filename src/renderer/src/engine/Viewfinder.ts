@@ -4,7 +4,7 @@ import { cesiumFov, fitFrame, FRAME_INSET, lensView, type Rect } from '../lib/le
 import type { CameraController } from './CameraController'
 
 /**
- * Viewfinder mode (SPEC §11, first slice): sets the camera's field of view so that the crop
+ * Viewfinder mode (first slice): sets the camera's field of view so that the crop
  * frame drawn by the UI (`fitFrame` with the same inset) shows exactly the simulated lens's
  * angle of view. The field of view depends on the window shape, so it is recomputed whenever
  * the canvas changes size. Switching off hands the field of view back to the camera

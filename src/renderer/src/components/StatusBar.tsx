@@ -9,7 +9,7 @@ export function StatusBar({ creditRef }: { creditRef: (el: HTMLDivElement | null
   const units = useAppStore((s) => s.settings.units)
   const format = useAppStore((s) => s.settings.coordFormat)
   const patchSettings = useAppStore((s) => s.patchSettings)
-  // Map mode (§5.5): no 3D camera on screen, and no elevation under the cursor.
+  // Map mode: no 3D camera on screen, and no elevation under the cursor.
   const mapOpen = useAppStore((s) => s.settings.map.open)
   const toggleFormat = () => patchSettings((d) => void (d.coordFormat = d.coordFormat === 'decimal' ? 'dms' : 'decimal'))
   const toggleUnits = () => patchSettings((d) => void (d.units = d.units === 'metric' ? 'imperial' : 'metric'))

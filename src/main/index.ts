@@ -14,12 +14,12 @@ import { relaunchForWslGpu } from './wslGpu'
 
 const devServer = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined
 
-// Allow isolated test runs (Playwright) to use a throwaway profile.
+// Allow scripted runs (benchmarks) to use a throwaway profile.
 if (process.env.PHOTOEARTH_USER_DATA) app.setPath('userData', process.env.PHOTOEARTH_USER_DATA)
 
-// Test runs (Playwright): never show the window or activate the app, so a run doesn't pop up
+// Scripted runs: never show the window or activate the app, so a run doesn't pop up
 // over or take focus from whatever the user is doing. The page still renders at full rate
-// (no background throttling), and Playwright drives it over CDP, which needs no OS focus.
+// (no background throttling), and the script drives it over CDP, which needs no OS focus.
 const background = process.env.PHOTOEARTH_BACKGROUND === '1'
 if (background) {
   app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')

@@ -35,7 +35,7 @@ export const PLAYBACK_SPEEDS: Record<PlaybackSpeedId, { label: string; kind: 'ti
 /**
  * Drives the Cesium clock from the simulated local date/time at the camera target,
  * and with it scene lighting, sky, shadow maps and the sun readouts.
- * Rendering uses Cesium's own sun model; readouts use SunCalc (§2).
+ * Rendering uses Cesium's own sun model; readouts use SunCalc.
  */
 export class SunController {
   private readonly sunLight = new SunLight()
@@ -53,7 +53,7 @@ export class SunController {
   private detailWanted = true
   /** Heightmap terrain shadows are shading the view (the shadow map then only adds detail). */
   private terrainShadows = false
-  /** A data overlay is on the globe: don't darken it by night (§7.5). */
+  /** A data overlay is on the globe: don't darken it by night. */
   private unlitGlobe = false
   private cameraNear = true
   private cameraAgl: number | null = null

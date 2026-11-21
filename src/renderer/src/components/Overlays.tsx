@@ -18,7 +18,7 @@ export function StatusChips() {
   const horizonOpen = useAppStore((s) => s.horizon.open)
   const alignPick = useAppStore((s) => (s.alignment.open ? s.alignment.pickMode : null))
   const viewshedPicking = useAppStore((s) => s.viewshed.picking)
-  // The light pollution layer drapes on the globe, which Photorealistic mode hides (§7.5).
+  // The light pollution layer drapes on the globe, which Photorealistic mode hides.
   const lpHidden = useAppStore((s) => s.settings.lightPollution.enabled && s.mode === 'photorealistic' && s.tilesetReady)
   return (
     <div className="chip-row">
