@@ -1,4 +1,4 @@
-import { formatLatitude, formatLongitude } from '../lib/coords'
+import { formatLatitude, formatLongitude } from '@shared/coords'
 import { formatAltitude, formatElevation } from '../lib/units'
 import { useAppStore } from '../store/appStore'
 

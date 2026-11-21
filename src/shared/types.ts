@@ -1,5 +1,7 @@
 // Types shared by the main, preload and renderer processes.
 
+import type { ParsedLocation } from './coords'
+
 export type MapMode = 'photorealistic' | 'elevation'
 export type QualityPreset = 'low' | 'medium' | 'high' | 'ultra'
 export type Units = 'metric' | 'imperial'
@@ -410,6 +412,12 @@ export interface WeatherRequest {
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: ApiCheck }
 
+/** Where a Google Maps short link leads: the full URL and what it parses to. */
+export interface ResolvedMapsLink {
+  url: string
+  location: ParsedLocation
+}
+
 export interface AppInfo {
   version: string
   platform: string
@@ -474,6 +482,10 @@ export interface PhotoEarthApi {
   weather: {
     /** Hourly forecast for the next 16 days at each point (Open-Meteo, no key). */
     forecast(request: WeatherRequest): Promise<Result<WeatherSeries[]>>
+  }
+  maps: {
+    /** Follows a maps.app.goo.gl / goo.gl/maps link to its google.com/maps URL (online, no key). */
+    resolveShortLink(url: string): Promise<Result<ResolvedMapsLink>>
   }
   openExternal(url: string): Promise<void>
   onMenuCommand(listener: (command: MenuCommand) => void): () => void

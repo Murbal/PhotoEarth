@@ -27,9 +27,11 @@ import type {
   PlaceSuggestion,
   Result,
   ValidationResult,
+  ResolvedMapsLink,
   WeatherRequest,
   WeatherSeries
 } from '@shared/types'
+import { resolveShortLink, type ManualRedirectFetch } from './shortLinks'
 
 /**
  * Fixed Referer sent with every Google request (main and renderer). Keys restricted by
@@ -221,4 +223,47 @@ export async function weatherForecast(req: WeatherRequest): Promise<Result<Weath
     /* fall through */
   }
   return { ok: false, error: { status: 'error', message: 'Unexpected response from Open-Meteo.' } }
+}
+
+/**
+ * One request that stops at the first redirect, reporting it as a 3xx with its `location`.
+ * `net.fetch` can't do this (in Electron, `redirect: 'manual'` rejects with "Redirect was
+ * cancelled"), so this uses `net.request`, the same network stack. Runs in its own in-memory
+ * session: no cookies, no Referer hook, no headers of ours. Aborts as soon as the headers
+ * arrive, so no response body is ever read.
+ */
+const singleHopFetch: ManualRedirectFetch = (url, { signal }) =>
+  new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(signal.reason)
+    const req = net.request({
+      url,
+      session: session.fromPartition('photoearth-short-links'),
+      redirect: 'manual',
+      credentials: 'omit',
+      useSessionCookies: false,
+      cache: 'no-store'
+    })
+    let settled = false
+    const settle = (fn: () => void) => {
+      if (settled) return
+      settled = true
+      signal.removeEventListener('abort', onAbort)
+      fn()
+      req.abort()
+    }
+    const headers = (location: string | null) => ({ get: (name: string) => (name.toLowerCase() === 'location' ? location : null) })
+    const onAbort = () => settle(() => reject(signal.reason))
+    signal.addEventListener('abort', onAbort, { once: true })
+    req.on('redirect', (status, _method, redirectUrl) => settle(() => resolve({ status, headers: headers(redirectUrl) })))
+    req.on('response', (res) => {
+      const location = res.headers.location
+      settle(() => resolve({ status: res.statusCode, headers: headers(Array.isArray(location) ? location[0] : (location ?? null)) }))
+    })
+    req.on('error', (err) => settle(() => reject(err)))
+    req.end()
+  })
+
+/** Resolves a Google Maps short link online (see shortLinks.ts); never sends an API key. */
+export function mapsShortLink(url: string): Promise<Result<ResolvedMapsLink>> {
+  return resolveShortLink(url, { fetch: singleHopFetch, isOnline: () => net.isOnline() })
 }
