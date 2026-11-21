@@ -70,18 +70,20 @@ function KeysSection() {
 function OverrideNumber({
   label,
   field,
-  options
+  options,
+  format = String
 }: {
   label: string
-  field: 'maximumScreenSpaceError' | 'shadowMapSize' | 'msaaSamples' | 'resolutionScale' | 'terrainShadowResolution'
+  field: 'maximumScreenSpaceError' | 'shadowMapSize' | 'msaaSamples' | 'resolutionScale' | 'terrainShadowResolution' | 'detailShadowDistance'
   options: number[]
+  format?: (value: number) => string
 }) {
   const settings = useAppStore((s) => s.settings)
   const patch = useAppStore((s) => s.patchSettings)
   const value = settings.quality.overrides[field]
   const presetValue = PRESETS[settings.quality.preset][field]
   return (
-    <Field label={label} hint={`Preset: ${presetValue}`}>
+    <Field label={label} hint={`Preset: ${format(presetValue)}`}>
       <select
         className="input"
         value={value === null ? '' : String(value)}
@@ -94,7 +96,7 @@ function OverrideNumber({
         <option value="">Preset</option>
         {options.map((o) => (
           <option key={o} value={o}>
-            {o}
+            {format(o)}
           </option>
         ))}
       </select>
@@ -238,6 +240,12 @@ function SettingsContent() {
                   </select>
                 </Field>
                 <OverrideBool label="Soft shadows" field="softShadows" />
+                <OverrideNumber
+                  label="Detail shadow range"
+                  field="detailShadowDistance"
+                  options={[0, 300, 600, 1200, 2500, 5000]}
+                  format={(m) => (m === 0 ? 'Off' : `${m} m`)}
+                />
                 <OverrideNumber label="Terrain shadow resolution" field="terrainShadowResolution" options={[256, 384, 512, 768, 1024]} />
                 <OverrideNumber label="MSAA samples" field="msaaSamples" options={[1, 2, 4, 8]} />
                 <OverrideBool label="FXAA" field="fxaa" />

@@ -141,6 +141,7 @@ Point elevation readouts in Photorealistic mode come from sampling the 3D tilese
   - Shadow map size and cascades, detail shadow range, and terrain shadow grid resolution
   - MSAA / FXAA
   - Resolution scale (with an option for device-pixel-ratio-aware rendering)
+- Advanced overrides (§10.2) can replace each of these preset values individually: screen-space error, shadow map size, cascades and soft shadows, detail shadow range (0 m–5 km, 0 = off), terrain shadow grid resolution, MSAA, FXAA and resolution scale. Changes apply live, and one action resets them all to the preset.
 - An optional on-screen FPS and tile-load indicator.
 - Rendering only when needed (`requestRenderMode`) when the scene is idle, to save power. Animation (sun playback, flying) forces continuous rendering. An idle view must not keep a CPU core busy.
 - While the camera moves, steady frames come before detail: tiles may drop to a coarser level of detail (full detail returns when the camera stops), and work that can wait (tile content creation beyond one tile per frame, large GPU uploads, terrain-shadow re-centering, label ray casts) is deferred or spread over frames. Nothing on the per-frame path may read back from the GPU.
@@ -280,7 +281,7 @@ For scouting dark skies (astrophotography): where the artificial sky glow is low
 - The simulated date/time drives the Cesium clock. Scene lighting uses the **sun's actual position** for that instant and for the camera's location on Earth.
 - **Shadows** are cast by terrain and 3D tiles onto terrain and 3D tiles, with soft shadows where quality settings allow.
 - **Terrain shadows come from a heightmap** of Cesium World Terrain (resolved by the spike, §8.1.1): ray-marched toward the sun on the GPU, covering ±80 km around the view in both modes, and applied to the 3D tiles and the globe.
-- In Photorealistic mode, a **short-range shadow map** adds shadows of what the terrain model lacks (buildings, trees) near a low camera. It folds into the terrain shadow rather than darkening twice.
+- In Photorealistic mode, a **short-range shadow map** adds shadows of what the terrain model lacks (buildings, trees) near a low camera. Its range comes from the quality preset (off on Low) or the detail shadow range override (§5.3). It folds into the terrain shadow rather than darkening twice.
 - Without a Cesium ion token, shadow maps on the 3D tiles do all the shadowing, with the limits listed below.
 
 ### 8.1.1 Shadow accuracy risks (verify with an early spike)

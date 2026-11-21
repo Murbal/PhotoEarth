@@ -10,6 +10,7 @@ const OVERRIDES = {
   shadowMapSize: null,
   shadowCascades: null,
   softShadows: null,
+  detailShadowDistance: null,
   terrainShadowResolution: null,
   msaaSamples: null,
   fxaa: null,
@@ -27,6 +28,12 @@ describe('resolveQuality shadow atlas', () => {
     expect(big.shadowMapSize).toBe(4096)
     const single = resolveQuality('ultra', { ...OVERRIDES, shadowMapSize: 8192, shadowCascades: 1 }, { maxTextureSize: 16384, maxSamples: 8 })
     expect(single.shadowMapSize).toBe(8192)
+  })
+
+  it('uses the detail shadow range override, including 0 for off', () => {
+    expect(resolveQuality('high', OVERRIDES).detailShadowDistance).toBe(PRESETS.high.detailShadowDistance)
+    expect(resolveQuality('low', { ...OVERRIDES, detailShadowDistance: 800 }).detailShadowDistance).toBe(800)
+    expect(resolveQuality('ultra', { ...OVERRIDES, detailShadowDistance: 0 }).detailShadowDistance).toBe(0)
   })
 
   it('respects the device texture limit', () => {

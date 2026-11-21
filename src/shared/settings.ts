@@ -51,12 +51,18 @@ export const FOCAL_RANGE = { min: 8, max: 800 } as const
 export const SENSOR_SIZE_RANGE = { min: 1, max: 120 } as const
 export const MIN_EXAGGERATION = 1
 export const MAX_EXAGGERATION = 3
+/**
+ * Detail shadow range override, meters; 0 turns detail shadows off. Ultra uses 2500; past
+ * ~5 km one shadow map spreads too thin for buildings and the heightmap shades terrain anyway.
+ */
+export const DETAIL_SHADOW_RANGE = { min: 0, max: 5000 } as const
 
 export const EMPTY_OVERRIDES: QualityOverrides = {
   maximumScreenSpaceError: null,
   shadowMapSize: null,
   shadowCascades: null,
   softShadows: null,
+  detailShadowDistance: null,
   terrainShadowResolution: null,
   msaaSamples: null,
   fxaa: null,
@@ -211,6 +217,7 @@ export function sanitizeSettings(raw: Json): Settings {
         shadowMapSize: nullableNum(o.shadowMapSize, 512, 8192),
         shadowCascades: cascades,
         softShadows: nullableBool(o.softShadows),
+        detailShadowDistance: nullableNum(o.detailShadowDistance, DETAIL_SHADOW_RANGE.min, DETAIL_SHADOW_RANGE.max),
         terrainShadowResolution: nullableNum(o.terrainShadowResolution, 128, 1024),
         msaaSamples: nullableNum(o.msaaSamples, 1, 8),
         fxaa: nullableBool(o.fxaa),
