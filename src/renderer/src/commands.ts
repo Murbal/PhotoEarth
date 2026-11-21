@@ -145,7 +145,14 @@ export function getCommands(): Command[] {
       keywords: 'detail shadow map near',
       run: toggleSetting((d) => void (d.detailShadows = !d.detailShadows))
     },
-    { id: 'toggle-time-panel', title: 'Show / hide time & sun panel', group: 'Time & sun', keys: 'T', keywords: 'moon phase moonrise moonset', run: () => appState().togglePanel('time') },
+    {
+      id: 'toggle-forecast',
+      title: 'Weather forecast on / off (clouds, fog, wind)',
+      group: 'Time & sun',
+      keywords: 'weather clouds cloud cover fog mist wind gusts visibility rain precipitation open-meteo sunrise sunset rating twilight',
+      run: toggleSetting((d) => void (d.forecast = !d.forecast))
+    },
+    { id: 'toggle-time-panel',title: 'Show / hide time & sun panel', group: 'Time & sun', keys: 'T', keywords: 'moon phase moonrise moonset', run: () => appState().togglePanel('time') },
     { id: 'play-pause', title: 'Play / pause sun animation', group: 'Time & sun', keys: 'Space', run: () => engine()?.sun.togglePlay() },
     { id: 'time-now', title: 'Set time to now', group: 'Time & sun', run: () => engine()?.sun.setNow() },
     { id: 'time-back', title: 'Time −15 min', group: 'Time & sun', keys: '[', run: () => engine()?.sun.nudgeMinutes(-15) },
@@ -182,6 +189,13 @@ export function getCommands(): Command[] {
       run: () => appState().togglePanel('bookmarks')
     },
     {
+      id: 'toggle-bookmark-include-time',
+      title: 'Save locations with the simulated date & time on / off',
+      group: 'Tools',
+      keywords: 'bookmarks scouting include time instant',
+      run: toggleSetting((d) => void (d.bookmarkIncludeTime = !d.bookmarkIncludeTime))
+    },
+    {
       id: 'toggle-location-markers',
       title: 'Show / hide saved location markers on the map',
       group: 'View',
@@ -198,11 +212,32 @@ export function getCommands(): Command[] {
       keywords: 'skyline peakfinder photopills sunrise sunset moonrise moonset peaks mountains notch ridge',
       run: () => engine()?.toggleHorizon()
     },
+    {
+      id: 'toggle-horizon-moon',
+      title: 'Horizon panorama: moon path on / off',
+      group: 'Tools',
+      keywords: 'skyline moonrise moonset',
+      run: toggleSetting((d) => void (d.horizon.moon = !d.horizon.moon))
+    },
+    {
+      id: 'toggle-horizon-peaks',
+      title: 'Horizon panorama: peak names on / off',
+      group: 'Tools',
+      keywords: 'skyline mountains summits labels',
+      run: toggleSetting((d) => void (d.horizon.peakNames = !d.horizon.peakNames))
+    },
     { id: 'clear-marker', title: 'Clear inspection marker', group: 'Tools', keys: 'Esc', run: () => engine()?.inspector.clear() },
     { id: 'clear-search-pin', title: 'Clear search result pin', group: 'Tools', keywords: 'destination marker', run: () => engine()?.searchMarker.clear() },
     { id: 'toggle-elevation-panel', title: 'Show / hide elevation styling', group: 'Elevation', keys: 'L', run: () => appState().togglePanel('elevation') },
     { id: 'toggle-tint', title: 'Toggle hypsometric tint', group: 'Elevation', run: toggleSetting((d) => void (d.elevation.tint.enabled = !d.elevation.tint.enabled)) },
-    { id: 'toggle-contours', title: 'Toggle contour lines', group: 'Elevation', run: toggleSetting((d) => void (d.elevation.contours.enabled = !d.elevation.contours.enabled)) },
+    {
+      id: 'toggle-tint-auto-range',
+      title: 'Hypsometric tint: auto-fit range on / off',
+      group: 'Elevation',
+      keywords: 'color ramp elevation range min max',
+      run: toggleSetting((d) => void (d.elevation.tint.autoRange = !d.elevation.tint.autoRange))
+    },
+    { id: 'toggle-contours',title: 'Toggle contour lines', group: 'Elevation', run: toggleSetting((d) => void (d.elevation.contours.enabled = !d.elevation.contours.enabled)) },
     { id: 'toggle-slope', title: 'Toggle slope shading', group: 'Elevation', run: toggleSetting((d) => void (d.elevation.slope.enabled = !d.elevation.slope.enabled)) },
     { id: 'toggle-hillshade', title: 'Toggle hillshade', group: 'Elevation', run: toggleSetting((d) => void (d.elevation.hillshade.enabled = !d.elevation.hillshade.enabled)) },
     {
@@ -220,7 +255,21 @@ export function getCommands(): Command[] {
     { id: 'quality-high', title: 'Quality: High', group: 'App', run: setQuality('high') },
     { id: 'quality-ultra', title: 'Quality: Ultra', group: 'App', run: setQuality('ultra') },
     { id: 'toggle-fps', title: 'Toggle FPS indicator', group: 'App', run: toggleSetting((d) => void (d.quality.showFps = !d.quality.showFps)) },
-    { id: 'toggle-units', title: 'Switch units: metric / imperial', group: 'App', run: toggleSetting((d) => void (d.units = d.units === 'metric' ? 'imperial' : 'metric')) },
+    {
+      id: 'toggle-dpr',
+      title: 'Device-pixel-ratio rendering on / off',
+      group: 'App',
+      keywords: 'hidpi retina resolution sharp quality',
+      run: toggleSetting((d) => void (d.quality.devicePixelRatioAware = !d.quality.devicePixelRatioAware))
+    },
+    {
+      id: 'toggle-invert-fly-y',
+      title: 'Invert Y in fly mode on / off',
+      group: 'Navigation',
+      keywords: 'mouse look first-person',
+      run: toggleSetting((d) => void (d.navigation.invertFlyY = !d.navigation.invertFlyY))
+    },
+    { id: 'toggle-units',title: 'Switch units: metric / imperial', group: 'App', run: toggleSetting((d) => void (d.units = d.units === 'metric' ? 'imperial' : 'metric')) },
     { id: 'toggle-coord-format', title: 'Switch coordinates: decimal / DMS', group: 'App', run: toggleSetting((d) => void (d.coordFormat = d.coordFormat === 'decimal' ? 'dms' : 'decimal')) },
     { id: 'toggle-theme', title: 'Switch theme: dark / light', group: 'App', run: toggleSetting((d) => void (d.theme = d.theme === 'dark' ? 'light' : 'dark')) },
     { id: 'open-settings', title: 'Open settings', group: 'App', keys: shortcutLabel('Mod+,'), keywords: 'api key preferences', run: () => appState().set({ settingsOpen: true }) },
