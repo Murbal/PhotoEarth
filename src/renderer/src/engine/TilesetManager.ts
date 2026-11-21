@@ -131,11 +131,6 @@ export class TilesetManager {
     this.gate = new ContentGate(scene)
   }
 
-  /** The tileset shader (exposed for the end-to-end shader compile test). */
-  get customShader(): CustomShader {
-    return this.shader
-  }
-
   async load(key: string | null): Promise<void> {
     const generation = ++this.generation
     this.unload()

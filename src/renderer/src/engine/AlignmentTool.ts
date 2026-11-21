@@ -277,35 +277,6 @@ export class AlignmentTool {
     this.recompute(true)
   }
 
-  /**
-   * End-to-end test hook: sets Camera and Subject pins with optional synthetic LOS samples so
-   * geometry, obstructed/clear LOS rendering, and reverse Sun/Moon search can be tested offline.
-   */
-  debugSetPins(camera: AlignmentPin, subject: AlignmentPin, samples?: LineOfSightSample[]): void {
-    this.losRequest++
-    this.invalidatePins()
-    const s = appState()
-    if (s.panels.elevation) s.togglePanel('elevation', false)
-    s.patchAlignment({
-      open: true,
-      pickMode: null,
-      camera,
-      subject,
-      manualDirection: null,
-      selectedMatchId: null
-    })
-    if (samples) {
-      this.cachedSamples = samples
-      const geometry = computeAlignmentGeometry(camera, subject, s.alignment.eyeHeight)
-      const los = evaluateLineOfSight(geometry.eyeHeightEllipsoid, subject.groundHeight, geometry.horizontalDistance, samples)
-      s.patchAlignment({ geometry, los, losLoading: false, losSource: 'terrain' })
-      this.updateCartesians(camera, subject, geometry.eyeHeightEllipsoid, los.obstruction)
-      this.syncEntities()
-    } else {
-      this.recompute(true)
-    }
-  }
-
   /** Drops every pending precise-height lookup (pins cleared, replaced or swapped). */
   private invalidatePins(): void {
     this.pinRequest.camera++

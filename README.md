@@ -106,10 +106,10 @@ Navigation is unchanged: the scroll wheel still moves the camera rather than zoo
 npm run lint
 npm run typecheck   # main/preload, renderer, and tests
 npm test            # Vitest unit tests
-npm run test:e2e    # builds with VITE_PHOTOEARTH_TEST=1, then Playwright drives Electron
+npm run build:test  # a build that exposes the engine and a few Cesium classes on `window`, for scripts driving the app
 ```
 
-On Linux the E2E suite needs a display (`xvfb-run -a npm run test:e2e`). Test builds expose the engine and a few Cesium classes on `window` for assertions; normal builds don't.
+Normal builds don't expose anything on `window`.
 
 The sun-position tests compare SunCalc against [astronomy-engine](https://github.com/cosinekitty/astronomy) (VSOP87-based, sub-arcminute) as an independent reference. They cover nine locations, including Tromsø, Longyearbyen and McMurdo for polar day and night, and require ±0.5° (§8.4). Observed agreement is within 0.1° above 2° altitude. Tests run under `TZ=Pacific/Chatham` to prove results depend only on the viewed location's zone.
 
@@ -189,7 +189,7 @@ Cesium's shadow maps on Google's 3D tiles miss off-screen and distant ridges, lo
 - **Receivers**: the 3D tiles' custom shader and the Elevation-mode globe material share one GLSL receiver (`RECEIVER_GLSL`). It uses true heights under vertical exaggeration and cross-fades between levels.
 - **Detail shadows** (*Buildings & trees*, Photorealistic mode): a short-range Cesium shadow map near a low camera (600 m–2.5 km by preset; off on Low). A patch to Cesium's receive shader (`detailShadowPatch.ts`) derives normals for the normal-less tiles to remove acne, and folds the result into the terrain shadow instead of darkening twice.
 - Without an ion token, shadow maps do everything (previous behavior, with the acne fix).
-- The CPU reference in `lib/terrainShadow.ts` mirrors the GPU pass. Unit tests cover its geometry. The end-to-end suite checks that the GPU output matches it to the encoding step (0.25 m), and that a rendered surface darkens exactly where the reference predicts shadow.
+- The CPU reference in `lib/terrainShadow.ts` mirrors the GPU pass. Unit tests cover its geometry.
 
 ## Known limitations
 

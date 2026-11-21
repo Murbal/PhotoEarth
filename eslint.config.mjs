@@ -4,7 +4,7 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['out/**', 'dist/**', 'release/**', 'node_modules/**', 'test-results/**', 'playwright-report/**'] },
+  { ignores: ['out/**', 'dist/**', 'release/**', 'node_modules/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -19,11 +19,6 @@ export default tseslint.config(
   {
     files: ['src/main/**/*.ts', 'src/preload/**/*.ts', '*.config.{ts,mjs}', 'tests/**/*.ts'],
     languageOptions: { globals: globals.node }
-  },
-  {
-    // End-to-end tests reach into the engine through untyped test hooks.
-    files: ['tests/e2e/**/*.ts'],
-    rules: { '@typescript-eslint/no-explicit-any': 'off' }
   },
   {
     rules: {

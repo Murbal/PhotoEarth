@@ -3,7 +3,6 @@ import { sunDirectionENU } from '../lib/sun'
 import {
   LEVEL_COUNT,
   LEVEL_HALF,
-  levelCell,
   levelResolutions,
   needsRecenter,
   snap,
@@ -310,35 +309,4 @@ export class TerrainShadows {
   }
 
   // ───────────────────────────── test support ─────────────────────────────
-
-  /**
-   * Replaces the terrain with synthetic levels around (lon, lat) radians and disables loading
-   * from the provider. Used by the end-to-end suite to compare the GPU pass with the CPU
-   * reference.
-   */
-  debugUseLevels(longitude: number, latitude: number, levels: ShadowLevel[]): LocalFrame {
-    this.generation++
-    this.field = null
-    this.getProvider = () => null
-    this.enabled = true
-    this.compute.setEnabled(true)
-    const frame = new LocalFrame(longitude, latitude)
-    this.frame = frame
-    this.desiredFrame = { longitude, latitude }
-    this.compute.setRadius(frame.radius)
-    this.compute.clear()
-    levels.forEach((l, k) => {
-      this.levels[k] = l
-      this.compute.setLevel(k, l)
-    })
-    this.applySun()
-    this.setStatus('ready')
-    return frame
-  }
-
-  debugReadMask(k: number): { data: Uint8Array; base: number; cell: number } | null {
-    const data = this.compute.readMask(k)
-    const l = this.levels[k]
-    return data && l ? { data, base: this.compute.encodingBase, cell: levelCell(l) } : null
-  }
 }

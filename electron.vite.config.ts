@@ -13,7 +13,7 @@ applyWslGpuEnv()
 
 // Electron (45 here) has no postinstall: its binary is downloaded the first time the
 // package is required. electron-vite looks for the binary without requiring the package, so
-// on a fresh install (where nothing else, like Playwright, has required it yet) dev and
+// on a fresh install (where nothing else has required it yet) dev and
 // preview fail with "Electron uninstall". Requiring it here downloads the binary for this
 // platform if needed and hands electron-vite its path.
 process.env.ELECTRON_EXEC_PATH ||= createRequire(__filename)('electron') as string

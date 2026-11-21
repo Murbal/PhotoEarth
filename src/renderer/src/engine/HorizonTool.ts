@@ -163,39 +163,6 @@ export class HorizonTool {
     void this.namePeaks()
   }
 
-  /**
-   * End-to-end tests: opens the panorama on given grids (fine → coarse, centered on the
-   * observer) and named peaks, instead of loading terrain and querying Places.
-   */
-  debugOpen(longitude: number, latitude: number, levels: ShadowLevel[], candidates: PeakCandidate[] = []): void {
-    this.request++
-    this.peakRequest++
-    this.removeEntities()
-    const frame = (this.frame = new LocalFrame(toRad(longitude), toRad(latitude)))
-    this.levels = levels
-    const ground = heightAt(levels, 0, 0)?.height ?? 0
-    const horizon = createHorizon(ground + EYE_HEIGHT)
-    traceHorizon(horizon, levels, 0, horizon.altitude.length, { radius: frame.radius })
-    this.ground = Cartesian3.fromDegrees(longitude, latitude, ground)
-    this.eye = Cartesian3.fromDegrees(longitude, latitude, horizon.eye)
-    this.addEntities()
-    const peaks = peaksOnSkyline(horizon, levels, candidates, { radius: frame.radius }).map((p) => ({ ...p, heightMsl: p.height }))
-    appState().patchHorizon({
-      open: true,
-      status: 'ready',
-      loaded: levels.length,
-      levels: levels.length,
-      observer: { longitude, latitude, eyeMsl: horizon.eye },
-      horizon,
-      geoid: 0,
-      peaks,
-      peakStatus: 'ready',
-      hoverAzimuth: null,
-      error: null
-    })
-    this.widget.scene.requestRender()
-  }
-
   close(): void {
     this.request++
     this.peakRequest++

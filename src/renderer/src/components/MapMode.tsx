@@ -847,10 +847,7 @@ function MapModeView() {
     const renderer = new MapRenderer(root, canvasRef.current, pinsRef.current, wedgeRef.current, markerRef.current, setCopyright)
     rendererRef.current = renderer
     setMapControl(renderer)
-    const test = import.meta.env.VITE_PHOTOEARTH_TEST === '1'
-    if (test) (window as unknown as { __photoearthMap?: MapRenderer }).__photoearthMap = renderer
     return () => {
-      if (test) delete (window as unknown as { __photoearthMap?: MapRenderer }).__photoearthMap
       setMapControl(null)
       renderer.destroy()
       rendererRef.current = null

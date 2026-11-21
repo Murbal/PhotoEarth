@@ -35,7 +35,7 @@ This first spec covers the **foundation only**: the map view, 3D rendering and n
 | Sun math | **SunCalc** (or equivalent) | For human-readable readouts (azimuth, altitude, sunrise/sunset). Rendering uses Cesium's own sun model. |
 | Moon & Milky Way math | **astronomy-engine** | Topocentric moon position, phase and rise/set (§11.3, drives Cesium's rendered moon), plus Galactic Core (Sagittarius A*) and Galactic Plane arch ephemeris (§11.8). |
 | Time zones | **tz-lookup** / **geo-tz** (offline) | Maps a coordinate to an IANA time zone so time sliders show local time. |
-| Tests | **Vitest** (unit), **Playwright for Electron** (smoke/E2E) | |
+| Tests | **Vitest** (unit) | |
 | Packaging | **electron-builder** | |
 
 ### 2.1 Why CesiumJS

@@ -199,9 +199,4 @@ export class LightPollution {
       bitmap.close()
     }
   }
-
-  /** Test hook: serve a data tile from memory instead of the network. */
-  debugSetDataTile(url: string, data: Int8Array): void {
-    this.data.set(url, Promise.resolve(data))
-  }
 }

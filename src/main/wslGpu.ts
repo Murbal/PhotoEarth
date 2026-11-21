@@ -8,8 +8,8 @@ import { release } from 'node:os'
 //
 // The variable must be in Electron's environment from the start: on Linux the GPU process
 // is forked from a zygote that Chromium starts before the main script runs, so setting it
-// in the main process is too late. Hence the launchers (electron.vite.config.ts for dev and
-// preview, playwright.config.ts for tests) apply it, and a packaged build relaunches itself.
+// in the main process is too late. Hence the launcher (electron.vite.config.ts for dev and
+// preview) applies it, and a packaged build relaunches itself.
 
 /** The GPU paravirtualization device and the D3D12 runtime WSL maps in from Windows. */
 const DXG_DEVICE = '/dev/dxg'

@@ -7,7 +7,7 @@ declare global {
   }
 
   interface ImportMetaEnv {
-    /** "1" in end-to-end test builds: exposes Cesium and the engine on window. */
+    /** "1" in test builds (`npm run build:test`): exposes Cesium and the engine on window for scripts driving the app. */
     readonly VITE_PHOTOEARTH_TEST?: string
   }
 }

@@ -13,7 +13,7 @@ import {
 } from 'cesium'
 import type { Units, ViewshedSettings } from '@shared/types'
 import { geoidUndulation } from '../lib/geoid'
-import { heightAt, levelCell, type ShadowLevel } from '../lib/terrainShadow'
+import { heightAt, type ShadowLevel } from '../lib/terrainShadow'
 import {
   checkPointVisibility,
   computeViewshedProfile,
@@ -28,7 +28,7 @@ import {
 import { appState } from '../store/appStore'
 import { HeightField, LocalFrame } from './shadows/HeightField'
 import { ViewshedCompute, type ViewshedBinding } from './viewshed/ViewshedCompute'
-import { toDeg, toRad } from './util'
+import { toDeg } from './util'
 
 /** Uniform names expected by VIEWSHED_RECEIVER_GLSL in the globe material and 3D Tiles shader. */
 export const VIEWSHED_RECEIVER_UNIFORMS = {
@@ -455,61 +455,4 @@ export class ViewshedTool {
   }
 
   // ───────────────────────────── test support ─────────────────────────────
-
-  /**
-   * End-to-end tests: opens the viewshed on synthetic height levels (fine -> coarse, centered on
-   * `(longitude, latitude)` degrees) without fetching Cesium World Terrain.
-   */
-  debugOpen(
-    longitude: number,
-    latitude: number,
-    levels: ShadowLevel[],
-    opts: { radius?: number; targetOffset?: number; viewerOffset?: number } = {}
-  ): LocalFrame {
-    this.request++
-    this.getProvider = () => null
-    const radius = opts.radius ?? this.settings.radius
-    const targetOffset = opts.targetOffset ?? this.settings.targetOffset
-    const viewerOffset = opts.viewerOffset ?? this.settings.viewerOffset
-    this.settings = { ...this.settings, radius, targetOffset, viewerOffset }
-
-    const frame = (this.frame = new LocalFrame(toRad(longitude), toRad(latitude)))
-    this.levels = [levels[0] ?? null, levels[1] ?? null, levels[2] ?? null]
-    const ground = heightAt(this.levels, 0, 0)?.height ?? levels[0]?.minHeight ?? 0
-    this.targetGroundEllipsoidal = ground
-    this.spot = Cartesian3.fromDegrees(longitude, latitude, ground)
-    this.loadedRadius = radius
-    this.loadedResolution = levels[0]?.n ?? this.resolution
-
-    this.compute.setEarthRadius(frame.radius)
-    this.compute.setEnabled(true)
-    this.applyStyleUniforms()
-    this.compute.setTarget(this.targetHeight, radius)
-    this.compute.clear()
-    this.levels.forEach((l, k) => {
-      if (l) this.compute.setLevel(k, l)
-    })
-    this.addEntities()
-    this.updateTargetMarker()
-    this.recomputeStats()
-
-    appState().patchViewshed({
-      open: true,
-      picking: false,
-      status: 'ready',
-      loaded: this.levels.filter(Boolean).length,
-      levels: VIEWSHED_LEVEL_COUNT,
-      target: { longitude, latitude, groundEllipsoidal: ground, groundMsl: ground, geoid: 0 },
-      error: null
-    })
-    this.onVisibilityChange()
-    this.widget.scene.requestRender()
-    return frame
-  }
-
-  debugReadMask(k: number): { data: Uint8Array; base: number; cell: number } | null {
-    const data = this.compute.readMask(k)
-    const l = this.levels[k]
-    return data && l ? { data, base: this.compute.encodingBase, cell: levelCell(l) } : null
-  }
 }
