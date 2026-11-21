@@ -835,6 +835,49 @@ input[type='color'] {
   font-size: 11px;
 }
 
+.light-windows {
+  display: grid;
+  grid-template-columns: auto repeat(5, auto);
+  justify-content: start;
+  gap: 3px 18px;
+  margin-top: 10px;
+  font-size: 12px;
+  overflow-x: auto;
+}
+
+.light-windows .k {
+  color: var(--text-faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.light-windows .mono {
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.light-windows .span {
+  align-self: center;
+}
+
+.light-windows .now {
+  color: var(--text);
+}
+
+.light-windows .k.now {
+  font-weight: 600;
+}
+
+.band-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  vertical-align: -1px;
+  border-radius: 2px;
+  border: 1px solid var(--panel-border);
+}
+
 /* profile */
 .profile-panel {
   padding: 8px 12px 10px;

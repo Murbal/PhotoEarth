@@ -4,6 +4,7 @@ import { defaultSettings } from '@shared/settings'
 import type { ApiKeys, Bookmark, MapMode, SecretsStatus, Settings } from '@shared/types'
 import type { SunlitSpan } from '../lib/horizon'
 import type { ProfileSample, ProfileStats, GeoPoint } from '../lib/profile'
+import type { BandSegment } from '../lib/sun'
 
 export type BannerLevel = 'error' | 'warning' | 'info'
 
@@ -66,8 +67,8 @@ export interface SunInfo {
   noonAltitude: number
   offsetMinutes: number
   zoneName: string
-  /** Altitudes sampled across the local day (for slider shading). */
-  profile: number[]
+  /** The local day split into sky bands (slider shading, golden/blue hour and twilight times). */
+  bands: BandSegment[]
 }
 
 export type Panel = 'time' | 'elevation' | 'bookmarks'
