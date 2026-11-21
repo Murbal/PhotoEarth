@@ -11,7 +11,9 @@ import type {
   ScrollGesture,
   SensorId,
   Settings,
-  ViewfinderSettings
+  ViewfinderSettings,
+  ViewshedColorMode,
+  ViewshedSettings
 } from './types'
 
 /** Bernese Oberland, looking north-east across the Lauterbrunnen valley towards the Jungfrau. */
@@ -49,6 +51,11 @@ export const COMPOSITION_GUIDES: readonly CompositionGuide[] = ['none', 'thirds'
 export const FOCAL_RANGE = { min: 8, max: 800 } as const
 /** Custom sensor dimension range, mm. */
 export const SENSOR_SIZE_RANGE = { min: 1, max: 120 } as const
+export const VIEWSHED_COLOR_MODES: readonly ViewshedColorMode[] = ['distance', 'solid']
+/** Viewshed analysis radius range, meters (1 km – 100 km). */
+export const VIEWSHED_RADIUS_RANGE = { min: 1000, max: 100000 } as const
+/** Viewshed target / viewer height offset range above ground, meters. */
+export const VIEWSHED_OFFSET_RANGE = { min: 0, max: 500 } as const
 export const MIN_EXAGGERATION = 1
 export const MAX_EXAGGERATION = 3
 /** Minimum Galactic Core altitude range for the astro dark-window setting, degrees. */
@@ -73,6 +80,10 @@ export const EMPTY_OVERRIDES: QualityOverrides = {
 
 export function defaultViewfinder(): ViewfinderSettings {
   return { sensor: 'ff', customSensor: { width: 36, height: 24 }, focalLength: 50, aspect: 'native', portrait: false, guide: 'thirds' }
+}
+
+export function defaultViewshed(): ViewshedSettings {
+  return { radius: 15000, targetOffset: 1.7, viewerOffset: 1.7, opacity: 0.45, colorMode: 'distance', showRings: true }
 }
 
 export function defaultSettings(): Settings {
@@ -116,6 +127,7 @@ export function defaultSettings(): Settings {
     astro: { minCoreAltitude: 5, allowLowMoon: false },
     viewfinder: defaultViewfinder(),
     horizon: { moon: true, milkyWay: true, peakNames: true },
+    viewshed: defaultViewshed(),
     bookmarkIncludeTime: true,
     showLocationMarkers: true,
     onboardingComplete: false
@@ -203,6 +215,7 @@ export function sanitizeSettings(raw: Json): Settings {
   const hill = isObject(e.hillshade) ? e.hillshade : {}
   const horizon = isObject(r.horizon) ? r.horizon : {}
   const astro = isObject(r.astro) ? r.astro : {}
+  const vs = isObject(r.viewshed) ? r.viewshed : {}
   const lp = isObject(r.lightPollution) ? r.lightPollution : {}
   const modes: readonly MapMode[] = ['photorealistic', 'elevation']
   const cascades = o.shadowCascades === 1 || o.shadowCascades === 4 ? o.shadowCascades : null
@@ -290,6 +303,14 @@ export function sanitizeSettings(raw: Json): Settings {
       moon: bool(horizon.moon, d.horizon.moon),
       milkyWay: bool(horizon.milkyWay, d.horizon.milkyWay),
       peakNames: bool(horizon.peakNames, d.horizon.peakNames)
+    },
+    viewshed: {
+      radius: num(vs.radius, d.viewshed.radius, VIEWSHED_RADIUS_RANGE.min, VIEWSHED_RADIUS_RANGE.max),
+      targetOffset: num(vs.targetOffset, d.viewshed.targetOffset, VIEWSHED_OFFSET_RANGE.min, VIEWSHED_OFFSET_RANGE.max),
+      viewerOffset: num(vs.viewerOffset, d.viewshed.viewerOffset, VIEWSHED_OFFSET_RANGE.min, VIEWSHED_OFFSET_RANGE.max),
+      opacity: num(vs.opacity, d.viewshed.opacity, 0, 1),
+      colorMode: oneOf(vs.colorMode, VIEWSHED_COLOR_MODES, d.viewshed.colorMode),
+      showRings: bool(vs.showRings, d.viewshed.showRings)
     },
     bookmarkIncludeTime: bool(r.bookmarkIncludeTime, d.bookmarkIncludeTime),
     showLocationMarkers: bool(r.showLocationMarkers, d.showLocationMarkers),

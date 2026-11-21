@@ -126,12 +126,30 @@ export interface HorizonSettings {
   peakNames: boolean
 }
 
-/** Astrophotography dark-window preferences (§11.6). */
+/** Astrophotography dark-window preferences (§11.8). */
 export interface AstroSettings {
   /** Minimum Galactic Core altitude (degrees) for the dark-window calculation. */
   minCoreAltitude: number
   /** Allow a thin crescent moon (≤ 10 % illuminated) in the dark window. */
   allowLowMoon: boolean
+}
+
+export type ViewshedColorMode = 'distance' | 'solid'
+
+/** Viewshed analysis overlay: line-of-sight visibility from a selected target point. */
+export interface ViewshedSettings {
+  /** Analysis radius, meters. */
+  radius: number
+  /** Target height offset above ground, meters (e.g. 1.7 m eye height, 0 m peak, 50 m tower/drone). */
+  targetOffset: number
+  /** Surrounding viewer height offset above ground, meters (e.g. 1.7 m standing photographer). */
+  viewerOffset: number
+  /** Overlay opacity (0–1). */
+  opacity: number
+  /** Distance-tinted visibility ('distance') or uniform tint ('solid'). */
+  colorMode: ViewshedColorMode
+  /** Draw concentric distance rings within the analysis radius. */
+  showRings: boolean
 }
 
 export interface Settings {
@@ -165,6 +183,7 @@ export interface Settings {
   astro: AstroSettings
   viewfinder: ViewfinderSettings
   horizon: HorizonSettings
+  viewshed: ViewshedSettings
   bookmarkIncludeTime: boolean
   /** Markers for the saved locations on the map. */
   showLocationMarkers: boolean

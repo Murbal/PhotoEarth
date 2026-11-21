@@ -16,6 +16,9 @@ import { RECEIVER_GLSL } from './shadows/shaders'
 import type { ShadowBinding } from './shadows/ShadowCompute'
 import { ContentGate } from './ContentGate'
 import { RECEIVER_UNIFORMS } from './TerrainShadows'
+import { VIEWSHED_RECEIVER_GLSL } from './viewshed/shaders'
+import type { ViewshedBinding } from './viewshed/ViewshedCompute'
+import { VIEWSHED_RECEIVER_UNIFORMS } from './ViewshedTool'
 import { httpStatusOf, responseTextOf } from './util'
 
 /** Shadowed surfaces keep this much of their color: a cool skylight tint. */
@@ -24,10 +27,11 @@ export const SHADOW_TINT = new Cartesian3(0.4, 0.44, 0.54)
 /**
  * The tileset's shader. Google's tiles are unlit (lighting is baked into the photos), so
  * this applies the simulated sun itself: heightmap terrain shadows (RECEIVER_GLSL) and
- * night/twilight dimming. It publishes the factor it applied (pe_F0 + (pe_F1 − pe_F0)·vis)
- * so the patched shadow-map receive shader can fold detail shadows into it.
+ * night/twilight dimming, plus the viewshed visibility overlay (VIEWSHED_RECEIVER_GLSL).
+ * It publishes the factor it applied (pe_F0 + (pe_F1 − pe_F0)·vis) so the patched
+ * shadow-map receive shader can fold detail shadows into it.
  */
-function createTilesetShader(binding: ShadowBinding): CustomShader {
+function createTilesetShader(binding: ShadowBinding, viewshed: ViewshedBinding): CustomShader {
   const dummy = new TextureUniform({ typedArray: new Uint8Array(4), width: 1, height: 1 })
   const shader = new CustomShader({
     lightingModel: LightingModel.UNLIT,
@@ -43,10 +47,21 @@ function createTilesetShader(binding: ShadowBinding): CustomShader {
       u_peRect2: { type: UniformType.VEC4, value: binding.rects[2] },
       u_peParams: { type: UniformType.VEC4, value: binding.params },
       u_peEyeToLocal: { type: UniformType.MAT4, value: Matrix4.clone(Matrix4.IDENTITY) },
-      u_peExaggeration: { type: UniformType.VEC2, value: binding.exaggeration }
+      u_peExaggeration: { type: UniformType.VEC2, value: binding.exaggeration },
+      u_vsMask0: { type: UniformType.SAMPLER_2D, value: dummy },
+      u_vsMask1: { type: UniformType.SAMPLER_2D, value: dummy },
+      u_vsMask2: { type: UniformType.SAMPLER_2D, value: dummy },
+      u_vsRect0: { type: UniformType.VEC4, value: viewshed.rects[0] },
+      u_vsRect1: { type: UniformType.VEC4, value: viewshed.rects[1] },
+      u_vsRect2: { type: UniformType.VEC4, value: viewshed.rects[2] },
+      u_vsParams: { type: UniformType.VEC4, value: viewshed.params },
+      u_vsStyle: { type: UniformType.VEC4, value: viewshed.style },
+      u_vsEyeToLocal: { type: UniformType.MAT4, value: Matrix4.clone(Matrix4.IDENTITY) },
+      u_vsExaggeration: { type: UniformType.VEC2, value: viewshed.exaggeration }
     },
     fragmentShaderText: /* glsl */ `
       ${RECEIVER_GLSL}
+      ${VIEWSHED_RECEIVER_GLSL}
       vec3 pe_F0 = vec3(1.0);
       vec3 pe_F1 = vec3(1.0);
       float pe_terrainVis = 1.0;
@@ -57,10 +72,14 @@ function createTilesetShader(binding: ShadowBinding): CustomShader {
         pe_F1 = mix(night, vec3(1.0), u_daylight);
         pe_terrainVis = vis;
         material.diffuse *= pe_F0 + (pe_F1 - pe_F0) * vis;
+        vec4 vs = pe_viewshedOverlay(fsInput.attributes.positionEC);
+        if (vs.a > 0.0) {
+          material.diffuse = mix(material.diffuse, vs.rgb, vs.a);
+        }
       }
     `
   })
-  // The receiver uniforms read the live binding. Models copy uniformMap when they build their
+  // The receiver uniforms read the live bindings. Models copy uniformMap when they build their
   // draw commands, so this must happen before the shader is assigned to the tileset.
   const map = (shader as unknown as { uniformMap: Record<string, () => unknown> }).uniformMap
   const fallback = () => (shader as unknown as { _defaultTexture: unknown })._defaultTexture
@@ -69,6 +88,12 @@ function createTilesetShader(binding: ShadowBinding): CustomShader {
   map[RECEIVER_UNIFORMS.params] = () => binding.params
   map[RECEIVER_UNIFORMS.eyeToLocal] = () => binding.eyeToLocal
   map[RECEIVER_UNIFORMS.exaggeration] = () => binding.exaggeration
+  VIEWSHED_RECEIVER_UNIFORMS.masks.forEach((name, k) => (map[name] = () => viewshed.masks[k] ?? fallback()))
+  VIEWSHED_RECEIVER_UNIFORMS.rects.forEach((name, k) => (map[name] = () => viewshed.rects[k]))
+  map[VIEWSHED_RECEIVER_UNIFORMS.params] = () => viewshed.params
+  map[VIEWSHED_RECEIVER_UNIFORMS.style] = () => viewshed.style
+  map[VIEWSHED_RECEIVER_UNIFORMS.eyeToLocal] = () => viewshed.eyeToLocal
+  map[VIEWSHED_RECEIVER_UNIFORMS.exaggeration] = () => viewshed.exaggeration
   return shader
 }
 
@@ -99,9 +124,10 @@ export class TilesetManager {
   constructor(
     private readonly scene: Scene,
     private readonly events: TilesetEvents,
-    binding: ShadowBinding
+    binding: ShadowBinding,
+    viewshedBinding: ViewshedBinding
   ) {
-    this.shader = createTilesetShader(binding)
+    this.shader = createTilesetShader(binding, viewshedBinding)
     this.gate = new ContentGate(scene)
   }
 

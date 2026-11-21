@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { AlignmentPanel } from './components/AlignmentPanel'
 import { Banners } from './components/Banners'
 import { CommandPalette } from './components/CommandPalette'
 import { ElevationPanel } from './components/ElevationPanel'
@@ -15,6 +16,7 @@ import { StatusBar } from './components/StatusBar'
 import { TimePanel } from './components/TimePanel'
 import { TopBar } from './components/TopBar'
 import { ViewfinderFrame, ViewfinderPanel } from './components/Viewfinder'
+import { ViewshedPanel } from './components/ViewshedPanel'
 import { runCommand } from './commands'
 import { getEngine } from './engine/instance'
 import { useForecastFeed } from './hooks/useForecastFeed'
@@ -101,6 +103,7 @@ function useMenuCommands(): void {
 
 const EDGE = 70
 const SIDE_PANEL = 300
+const ALIGN_PANEL = 340
 const GAP = 12
 /** Right side panels sit left of the 60 px tool rail. */
 const RIGHT_PANEL_INSET = 60
@@ -110,13 +113,14 @@ const STATUS_CLEARANCE = 44
 
 /**
  * Keeps the bottom stack (profile, time & sun) and the side panels (bookmarks, elevation
- * styling) from covering each other. The stack narrows to the space between open side
- * panels; only when that space is too small does it span the width, and the side panels
- * then end above it instead.
+ * styling, shot alignment) from covering each other. The stack narrows to the space between
+ * open side panels; only when that space is too small does it span the width, and the side
+ * panels then end above it instead.
  */
 function useOverlayLayout(root: RefObject<HTMLDivElement | null>, stack: RefObject<HTMLDivElement | null>): void {
   const left = useAppStore((s) => s.panels.bookmarks)
-  const right = useAppStore((s) => s.panels.elevation)
+  const rightElevation = useAppStore((s) => s.panels.elevation)
+  const rightAlignment = useAppStore((s) => s.alignment.open)
   useLayoutEffect(() => {
     const rootEl = root.current
     const stackEl = stack.current
@@ -124,13 +128,16 @@ function useOverlayLayout(root: RefObject<HTMLDivElement | null>, stack: RefObje
     const apply = () => {
       const width = rootEl.clientWidth
       const leftInset = left ? GAP + SIDE_PANEL + GAP : EDGE
-      const rightInset = right ? RIGHT_PANEL_INSET + SIDE_PANEL + GAP : EDGE
+      let rightInset = EDGE
+      if (rightElevation && rightAlignment) rightInset = RIGHT_PANEL_INSET + SIDE_PANEL + GAP + ALIGN_PANEL + GAP
+      else if (rightAlignment) rightInset = RIGHT_PANEL_INSET + ALIGN_PANEL + GAP
+      else if (rightElevation) rightInset = RIGHT_PANEL_INSET + SIDE_PANEL + GAP
       const besidePanels = width - leftInset - rightInset >= MIN_STACK_WIDTH
       const style = rootEl.style
       style.setProperty('--stack-left', `${besidePanels ? leftInset : EDGE}px`)
       style.setProperty('--stack-right', `${besidePanels ? rightInset : EDGE}px`)
       // Keep the bottom stack clear of top-center chips (and side panels when they sit above it).
-      const sideAbove = !besidePanels && (left || right)
+      const sideAbove = !besidePanels && (left || rightElevation || rightAlignment)
       const topClearance = sideAbove ? 60 + 160 + GAP : 112
       style.setProperty('--stack-max-height', `calc(100% - ${topClearance + STACK_BOTTOM}px)`)
       const stackHeight = stackEl.offsetHeight
@@ -143,7 +150,7 @@ function useOverlayLayout(root: RefObject<HTMLDivElement | null>, stack: RefObje
     observer.observe(rootEl)
     observer.observe(stackEl)
     return () => observer.disconnect()
-  }, [root, stack, left, right])
+  }, [root, stack, left, rightElevation, rightAlignment])
 }
 
 export function App() {
@@ -193,11 +200,13 @@ export function App() {
         <RightRail />
         <LocationsPanel />
         <ElevationPanel />
+        <AlignmentPanel />
         <InspectCard />
         <Crosshair />
         <div ref={stackRef} className="bottom-stack">
           <ProfilePanel />
           <HorizonPanel />
+          <ViewshedPanel />
           <ViewfinderPanel />
           <TimePanel />
         </div>

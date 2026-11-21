@@ -276,6 +276,78 @@ export function getCommands(): Command[] {
       keywords: 'skyline mountains summits labels',
       run: toggleSetting((d) => void (d.horizon.peakNames = !d.horizon.peakNames))
     },
+    {
+      id: 'viewshed-toggle',
+      title: 'Viewshed analysis on / off (at the pin or view center)',
+      group: 'Tools',
+      keys: shortcutLabel('Shift+V'),
+      keywords: 'viewshed visibility line of sight los vantage point peak landmark sightline coverage',
+      run: () => engine()?.toggleViewshed()
+    },
+    {
+      id: 'viewshed-pick',
+      title: 'Viewshed: pick target on map',
+      group: 'Tools',
+      keywords: 'viewshed visibility line of sight los target move',
+      run: () => engine()?.viewshed.setPicking(true)
+    },
+    {
+      id: 'viewshed-clear',
+      title: 'Clear viewshed overlay',
+      group: 'Tools',
+      keywords: 'viewshed visibility line of sight hide off',
+      run: () => engine()?.viewshed.clear()
+    },
+    {
+      id: 'viewshed-rings',
+      title: 'Viewshed: distance rings on / off',
+      group: 'Tools',
+      keywords: 'viewshed range circles focal length',
+      run: toggleSetting((d) => void (d.viewshed.showRings = !d.viewshed.showRings))
+    },
+    {
+      id: 'viewshed-color-mode',
+      title: 'Viewshed: switch color mode (distance tint / uniform)',
+      group: 'Tools',
+      keywords: 'viewshed palette gradient green',
+      run: toggleSetting((d) => void (d.viewshed.colorMode = d.viewshed.colorMode === 'distance' ? 'solid' : 'distance'))
+    },
+    {
+      id: 'toggle-alignment',
+      title: 'Shot alignment: camera → subject & sun/moon date finder',
+      group: 'Tools',
+      keys: 'X',
+      keywords: 'align alignment sun moon date finder reverse ephemeris camera subject line of sight los bearing azimuth elevation landmark',
+      run: () => engine()?.toggleAlignment()
+    },
+    {
+      id: 'alignment-pick-camera',
+      title: 'Shot alignment: pick camera pin on map',
+      group: 'Tools',
+      keywords: 'align observer tripod position',
+      run: () => engine()?.alignment.open('camera')
+    },
+    {
+      id: 'alignment-pick-subject',
+      title: 'Shot alignment: pick subject pin on map',
+      group: 'Tools',
+      keywords: 'align target landmark peak building',
+      run: () => engine()?.alignment.open('subject')
+    },
+    {
+      id: 'alignment-look',
+      title: 'Shot alignment: look from camera toward subject',
+      group: 'Tools',
+      keywords: 'align frame shot eye level viewfinder',
+      run: () => void engine()?.lookAlongAlignment()
+    },
+    {
+      id: 'alignment-clear',
+      title: 'Shot alignment: clear pins',
+      group: 'Tools',
+      keywords: 'align reset remove',
+      run: () => engine()?.alignment.clearPins()
+    },
     { id: 'clear-marker', title: 'Clear inspection marker', group: 'Tools', keys: 'Esc', run: () => engine()?.inspector.clear() },
     { id: 'clear-search-pin', title: 'Clear search result pin', group: 'Tools', keywords: 'destination marker', run: () => engine()?.searchMarker.clear() },
     { id: 'toggle-elevation-panel', title: 'Show / hide elevation styling', group: 'Elevation', keys: 'L', run: () => appState().togglePanel('elevation') },
