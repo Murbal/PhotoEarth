@@ -844,6 +844,7 @@ export class Engine {
     const view = this.mapView()
     const entry = this.mapEntry
     this.mapEntry = null
+    let moved = false
     if (place && (!entry || !sameView(view, entry))) {
       // Sampled while the map still shows, so the 3D view never shows a half-placed camera.
       const ground = await this.groundHeight(view.longitude, view.latitude)
@@ -851,6 +852,7 @@ export class Engine {
       const cam = appState().camera
       const look = { heading: cam?.heading ?? 0, pitch: cam?.pitch ?? -35, fov: cam?.fov ?? 60 }
       this.camera.setView(cameraForView(view, look, this.scene.canvas.clientWidth || window.innerWidth, ground))
+      moved = true
     }
     appState().patchSettings((d) => {
       d.map.open = false
@@ -859,9 +861,28 @@ export class Engine {
       d.map.zoom = view.zoom
     })
     this.widget.useDefaultRenderLoop = true
+    // The depth buffer still holds the 3D view from before the map opened, so a command run
+    // right after this (U, N, a tilt) would pick its pivot there and fling the camera away.
+    // Wait for one frame drawn from the new position.
+    const drawn = moved ? this.nextFrame() : null
     this.requestRender()
     // The status bar's readouts (scale bar) are the 3D view's again.
     this.scheduleRefresh()
+    await drawn
+  }
+
+  /** Resolves after the next frame has been drawn, or after `timeoutMs` (a hidden window draws nothing). */
+  private nextFrame(timeoutMs = 500): Promise<void> {
+    if (this.destroyed) return Promise.resolve()
+    return new Promise((resolve) => {
+      const finish = () => {
+        clearTimeout(timer)
+        remove()
+        resolve()
+      }
+      const remove = this.scene.postRender.addEventListener(finish)
+      const timer = setTimeout(finish, timeoutMs)
+    })
   }
 
   /** Centers the map on a place, zoomed so `range` meters fit the window (search in Map mode). */

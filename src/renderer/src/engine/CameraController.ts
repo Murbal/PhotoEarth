@@ -990,6 +990,9 @@ export class CameraController {
   }
 
   setView(view: CameraView): void {
+    // A flight or eased move still running would carry on from where it was and undo this.
+    this.scene.camera.cancelFlight()
+    this.animationToken++
     this.endFollow()
     this.scene.camera.setView({
       destination: Cartesian3.fromDegrees(view.longitude, view.latitude, view.height),

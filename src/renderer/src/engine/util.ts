@@ -3,10 +3,12 @@ import {
   Cartesian3,
   Cartographic,
   Cesium3DTileset,
+  EllipsoidTerrainProvider,
   HeightReference,
+  IntersectionTests,
   Math as CesiumMath,
+  Ray,
   RequestErrorEvent,
-  type Ray,
   type Scene
 } from 'cesium'
 import type { CameraView } from '@shared/types'
@@ -48,10 +50,23 @@ export function pickSurface(scene: Scene, x: number, y: number): Cartesian3 | un
   }
   const ray = scene.camera.getPickRay(p)
   if (ray && scene.globe.show) {
-    const g = scene.globe.pick(ray, scene)
+    const g = pickGlobe(scene, ray)
     if (g) return g
   }
   return scene.camera.pickEllipsoid(p, scene.ellipsoid) ?? undefined
+}
+
+/**
+ * A ray's hit on the globe. Without real terrain the globe is the bare ellipsoid, but its
+ * coarse, not-yet-refined tiles are flat facets that sag hundreds of meters (kilometers at
+ * low levels) below it, so the ray is intersected with the ellipsoid itself.
+ */
+function pickGlobe(scene: Scene, ray: Ray): Cartesian3 | undefined {
+  if (scene.globe.terrainProvider instanceof EllipsoidTerrainProvider) {
+    const hit = IntersectionTests.rayEllipsoid(ray, scene.ellipsoid)
+    return hit ? Ray.getPoint(ray, hit.start, new Cartesian3()) : undefined
+  }
+  return scene.globe.pick(ray, scene)
 }
 
 /**
@@ -83,7 +98,7 @@ export function raycastSurface(scene: Scene, ray: Ray): Cartesian3 | undefined {
     const primitive: unknown = primitives.get(i)
     if (primitive instanceof Cesium3DTileset && primitive.show) consider(primitive.pick(ray, scene.frameState, new Cartesian3()))
   }
-  if (scene.globe.show) consider(scene.globe.pick(ray, scene))
+  if (scene.globe.show) consider(pickGlobe(scene, ray))
   return best
 }
 
