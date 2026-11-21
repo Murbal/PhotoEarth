@@ -327,9 +327,9 @@ These will get their own spec later:
 
 - **Camera / lens simulation**: place a virtual camera, choose sensor and focal length, and preview the framing and field-of-view frustum on the map. *First slice done: the viewfinder (§11.1).*
 - **Shot planning**: lines from a camera position to a subject, alignment with the sun or moon azimuth, and line-of-sight / visibility checks.
-- **Moon simulation**: position, phase, rise and set.
+- **Moon simulation**: position, phase, rise and set. *First slice done: the moon's path and skyline rise/set in the horizon panorama (§11.2).*
 - **Milky Way / galactic core** position.
-- **Viewshed analysis**: what is visible from a point.
+- **Viewshed analysis**: what is visible from a point. *First slice done: the skyline seen from a point (§11.2).*
 - Saved scouting locations with notes, photos, and tags. KML/GPX import and export.
 - Weather / cloud cover overlays.
 - Screenshot / export of views, within the licensing limits.
@@ -346,6 +346,16 @@ The first slice of the camera simulation frames the current view through a real 
 - **Persistence**: the lens settings are part of `settings.json`; bookmarks saved in viewfinder mode store them and reopen framed.
 
 Level of detail follows from the narrower frustum by itself (Cesium's screen-space error uses the frustum's vertical field of view), so distant terrain seen through a long lens streams in at the detail its on-screen size needs.
+
+### 11.2 Horizon panorama (implemented)
+
+The PhotoPills / PeakFinder view: does the sun set *into* a notch or *behind* a peak, and when?
+
+- **Skyline**: five grids of Cesium World Terrain heights centered on the observer (±2 km at 12.5 m, ±8 km at 50 m, ±32 km at 200 m, ±128 km at 800 m, ±300 km at 2.5 km), loaded and rasterized by the terrain-shadow `HeightField`, coarse first so a rough skyline shows at once and sharpens as finer grids arrive. Every 0.25° of azimuth a ray is marched outward from 40 m (nearer ground is heightmap noise) through the finest grid covering each point; ground of height H at distance d appears at `atan((H − e)/d − (1 − k)·d/2R)` (earth curvature with refraction k = 0.13, as in §8.1.1). Past the data the ground is assumed to continue at the coarsest grid's lowest height. The full trace takes tens of milliseconds.
+- **Observer**: the clicked point, eye height 1.7 m above the clicked surface (a roof or tower counts when it is above the terrain and heights aren't exaggerated). Opened from the inspect card, `H`, the rail or the palette (at the inspected point, else the search pin, else the view center); while it is open a map click moves the observer.
+- **Sun and moon**: their paths for the observer's local date (in the observer's own time zone), sampled every 4 min with hourly marks, solid above the skyline and dashed behind it. Rise and set over the terrain are when the upper limb meets the skyline, found every minute and refined to a second; the readout compares them with a flat horizon and totals the direct sun. The bodies at the current time are drawn at their true angular size. Clicking a path sets the time to that instant.
+- **Peaks**: Places API Nearby Search for `mountain_peak` in up to ten cells (the observer's and those of the most prominent skyline summits, sized by distance, cached per session) plus the peaks the map labels already know. A named peak is labeled when the highest ground within a few hundred meters of its pin rises out of its surroundings and reaches the skyline in its direction (it isn't hidden behind nearer ground).
+- **Chart**: altitude against azimuth, zoomed with the wheel and turned by dragging, with sunrise / sunset close-ups; vertical scale fitted to the skyline (the exaggeration is shown) or 1:1. Ridges are drawn fainter with distance. Hovering reads out the skyline's direction, altitude, distance and height and draws the line of sight on the map; *Look* stands at the observer at eye level facing the selected direction.
 
 The architecture should not rule any of these out. In particular, `SunController` should be general enough to model other celestial bodies later.
 

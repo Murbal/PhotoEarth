@@ -62,10 +62,17 @@ They're loaded in the main process only, so they never end up in the renderer bu
 | `Ctrl+B` | Save a bookmark |
 | `T` / `L` / `P` | Time & sun panel / elevation styling / elevation profile |
 | `V` | Viewfinder: frame the view through a real sensor and focal length |
+| `H` | Horizon panorama: the skyline with the sun and moon paths |
 | `,` / `.`, `Shift+,` / `Shift+.` | Viewfinder: previous / next focal length preset, ∓5 % |
 | `M` | Place names on / off |
 | `Space`, `[` `]`, `Shift+[` `]` | Play/pause the sun, ±15 min, ±1 day |
 | `?` | All shortcuts |
+
+### Horizon panorama
+
+`H` (or the panorama button on the inspect card, the right rail or the palette) answers "does the sun set into that notch or behind the peak, and when?". From the inspected point (else the search pin or the view center) it traces the terrain skyline through 360° out to ~300 km on Cesium World Terrain, and draws it as a strip chart of altitude against compass direction. Over it go the sun's and the moon's paths for the chosen date, marked hourly, solid where they are above the skyline and dashed behind it, with the times they clear and drop behind the terrain (compared with a flat-horizon sunrise and sunset) and the hours of direct sun. Named peaks on the skyline are labeled from Google Places.
+
+Scroll to zoom, drag to turn, or jump to the sunrise or sunset close-up; *1:1* shows true angles instead of the stretched skyline. Hovering shows the direction, altitude, distance and height of the skyline and draws the line of sight on the map. Clicking the sun or moon path sets the time to that moment, and *Look* stands you at the observer at eye level, facing the selected direction. While the panorama is open, clicking the map moves the observer. It needs the Cesium ion token; peak names need the Google key.
 
 ### Viewfinder
 

@@ -119,6 +119,14 @@ const PATHS: Record<string, ReactElement> = {
   chevronLeft: <path d="m15 6-6 6 6 6" />,
   chevronRight: <path d="m9 6 6 6-6 6" />,
   undo: <path d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3" />,
+  /** A skyline with the sun setting behind it: the horizon panorama. */
+  panorama: (
+    <>
+      <path d="M2.5 19.5h19" />
+      <path d="m2.5 16 4.5-5.5 3.5 3.5 4-6 7 8" />
+      <circle cx="17.5" cy="5.5" r="2" />
+    </>
+  ),
   /** An attitude indicator with a level horizon: level the horizon (remove roll). */
   horizon: (
     <>

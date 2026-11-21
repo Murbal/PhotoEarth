@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { defaultSettings } from '@shared/settings'
 import type { ApiKeys, Bookmark, MapMode, SecretsStatus, Settings } from '@shared/types'
 import type { SunlitSpan } from '../lib/horizon'
+import type { Horizon, SkylinePeak } from '../lib/panorama'
 import type { ProfileSample, ProfileStats, GeoPoint } from '../lib/profile'
 import type { BandSegment } from '../lib/sun'
 
@@ -84,6 +85,35 @@ export interface ProfileState {
   error: string | null
 }
 
+export interface HorizonObserver {
+  longitude: number
+  latitude: number
+  /** Eye height above sea level, meters. */
+  eyeMsl: number
+}
+
+/** A named summit on the skyline, with its height above sea level. */
+export interface HorizonPeak extends SkylinePeak {
+  heightMsl: number
+}
+
+export interface HorizonState {
+  open: boolean
+  status: 'idle' | 'loading' | 'ready' | 'error'
+  /** Terrain grids loaded so far, out of `levels`. */
+  loaded: number
+  levels: number
+  observer: HorizonObserver | null
+  /** Replaced (never mutated) whenever a finer grid arrives. */
+  horizon: Horizon | null
+  /** Ellipsoid → sea level offset at the observer (geoid undulation), meters. */
+  geoid: number
+  peaks: HorizonPeak[]
+  peakStatus: 'off' | 'loading' | 'ready' | 'unavailable'
+  hoverAzimuth: number | null
+  error: string | null
+}
+
 export interface InspectInfo {
   longitude: number
   latitude: number
@@ -124,6 +154,20 @@ export interface Toast {
   message: string
 }
 
+const emptyHorizon: HorizonState = {
+  open: false,
+  status: 'idle',
+  loaded: 0,
+  levels: 0,
+  observer: null,
+  horizon: null,
+  geoid: 0,
+  peaks: [],
+  peakStatus: 'off',
+  hoverAzimuth: null,
+  error: null
+}
+
 const emptyProfile: ProfileState = {
   active: false,
   points: [],
@@ -154,6 +198,7 @@ export interface AppState {
   settingsOpen: boolean
   onboardingOpen: boolean
   profile: ProfileState
+  horizon: HorizonState
   inspect: InspectInfo | null
   spotSun: SpotSunInfo | null
   destination: Destination | null
@@ -179,6 +224,8 @@ export interface AppState {
   patchSim: (patch: Partial<SimState>) => void
   patchProfile: (patch: Partial<ProfileState>) => void
   resetProfile: () => void
+  patchHorizon: (patch: Partial<HorizonState>) => void
+  resetHorizon: () => void
   showToast: (message: string) => void
 }
 
@@ -213,6 +260,7 @@ export const useAppStore = create<AppState>()(
     settingsOpen: false,
     onboardingOpen: false,
     profile: emptyProfile,
+    horizon: emptyHorizon,
     inspect: null,
     spotSun: null,
     destination: null,
@@ -242,6 +290,8 @@ export const useAppStore = create<AppState>()(
     patchSim: (patch) => set((s) => ({ sim: { ...s.sim, ...patch } })),
     patchProfile: (patch) => set((s) => ({ profile: { ...s.profile, ...patch } })),
     resetProfile: () => set({ profile: emptyProfile }),
+    patchHorizon: (patch) => set((s) => ({ horizon: { ...s.horizon, ...patch } })),
+    resetHorizon: () => set({ horizon: emptyHorizon }),
     showToast: (message) => {
       const id = ++toastId
       set({ toast: { id, message } })

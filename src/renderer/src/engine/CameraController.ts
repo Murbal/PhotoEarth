@@ -879,9 +879,9 @@ export class CameraController {
   /**
    * Drops the camera to standing height and levels the horizon — "what would I see from
    * here". Stands at `spot` when given (a dropped pin), else at the point under the cursor
-   * (or screen center).
+   * (or screen center). `look` (degrees) faces a given direction instead of keeping the heading.
    */
-  async goToEyeLevel(spot?: Cartesian3): Promise<void> {
+  async goToEyeLevel(spot?: Cartesian3, look?: { heading: number; pitch: number }): Promise<void> {
     this.endFollow()
     let hit = spot
     if (!hit) {
@@ -916,7 +916,7 @@ export class CameraController {
     const arrived = await new Promise<boolean>((resolve) => {
       cam.flyTo({
         destination: Cartesian3.fromRadians(c.longitude, c.latitude, ground + EYE_HEIGHT),
-        orientation: { heading: cam.heading, pitch: 0, roll: 0 },
+        orientation: look ? { heading: toRad(look.heading), pitch: toRad(look.pitch), roll: 0 } : { heading: cam.heading, pitch: 0, roll: 0 },
         duration: 1.6,
         complete: () => resolve(true),
         cancel: () => resolve(false)

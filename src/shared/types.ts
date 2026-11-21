@@ -92,6 +92,14 @@ export interface ViewfinderSettings {
   guide: CompositionGuide
 }
 
+/** Horizon panorama: what the strip chart draws over the skyline. */
+export interface HorizonSettings {
+  /** The moon's path for the same date. */
+  moon: boolean
+  /** Names of the peaks on the skyline (Places API Nearby Search). */
+  peakNames: boolean
+}
+
 export interface Settings {
   version: 1
   units: Units
@@ -112,6 +120,7 @@ export interface Settings {
   detailShadows: boolean
   showSunIndicator: boolean
   viewfinder: ViewfinderSettings
+  horizon: HorizonSettings
   bookmarkIncludeTime: boolean
   onboardingComplete: boolean
 }

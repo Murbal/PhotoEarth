@@ -841,6 +841,75 @@ async function checkViewfinder(originalFov: number): Promise<void> {
   await expect.poll(async () => (await page.evaluate(() => window.photoearth.settings.get())).viewfinder.guide).toBe('diagonals')
 }
 
+test('the horizon panorama draws the skyline, the sun path and named peaks', async () => {
+  await page.evaluate(() => {
+    const w = window as unknown as { __photoearth: any }
+    const e = w.__photoearth
+    const DEG = Math.PI / 180
+    // A ridge in the west-south-west with a notch, foothills elsewhere (x east, y north).
+    const mountains = [
+      [235, 14000, 2300, 1400],
+      [252, 15000, 2200, 1300],
+      [244, 30000, 1500, 5000],
+      [60, 6000, 600, 900],
+      [150, 40000, 2800, 4000]
+    ].map(([az, d, h, sigma]) => [Math.sin(az * DEG) * d, Math.cos(az * DEG) * d, h, sigma])
+    const height = (x: number, y: number) => {
+      let h = 250 + 40 * Math.sin(x / 2000) * Math.cos(y / 1700)
+      for (const [px, py, ph, sigma] of mountains) h += ph * Math.exp(-((x - px) ** 2 + (y - py) ** 2) / (2 * sigma * sigma))
+      return h
+    }
+    const levels = [
+      [2000, 160],
+      [8000, 160],
+      [32000, 200],
+      [128000, 200]
+    ].map(([half, n]) => {
+      const heights = new Float32Array(n * n)
+      const cell = (2 * half) / n
+      let min = Infinity
+      let max = -Infinity
+      for (let j = 0; j < n; j++)
+        for (let i = 0; i < n; i++) {
+          const v = height(-half + (i + 0.5) * cell, -half + (j + 0.5) * cell)
+          heights[j * n + i] = v
+          min = Math.min(min, v)
+          max = Math.max(max, v)
+        }
+      return { cx: 0, cy: 0, half, n, heights, minHeight: min, maxHeight: max }
+    })
+    const [x0, y0] = mountains[0]
+    const [x1, y1] = mountains[1]
+    e.horizon.debugOpen(-118.25, 34.05, levels, [
+      { id: 'p0', name: 'Notch West', x: x0 + 80, y: y0 - 60 },
+      { id: 'p1', name: 'Notch East', x: x1, y: y1 },
+      { id: 'hidden', name: 'Hidden', x: mountains[2][0], y: mountains[2][1] }
+    ])
+    // 15:30 in Los Angeles: the sun is low in the south-west.
+    e.sun.setInstant(Date.parse('2026-11-21T23:30:00Z'))
+  })
+  const panel = page.locator('.horizon-panel')
+  await expect(panel).toBeVisible()
+  await expect(panel.locator('svg.horizon-chart')).toBeVisible()
+  await expect(panel.locator('.horizon-peak')).toHaveCount(2)
+  await expect(panel).toContainText('Notch West')
+  await expect(panel).not.toContainText('Hidden')
+  // The sun drops behind the ridge before it would set over a flat horizon.
+  await expect(panel.locator('.horizon-stats')).toContainText('Sun over terrain')
+  await expect(panel.locator('.horizon-stats')).toContainText('vs flat horizon')
+  await page.getByRole('button', { name: 'Sunset' }).click()
+  await panel.screenshot({ path: test.info().outputPath('horizon-sunset.png') })
+  await page.getByRole('button', { name: '360°' }).click()
+  await panel.screenshot({ path: test.info().outputPath('horizon-360.png') })
+  // Hovering the chart reads out the skyline in that direction.
+  const box = (await panel.locator('svg.horizon-chart').boundingBox())!
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5)
+  await expect(panel.locator('.horizon-hover')).toContainText('skyline')
+  await page.mouse.move(box.x + box.width / 2, box.y - 60)
+  await page.keyboard.press('Escape')
+  await expect(panel).toBeHidden()
+})
+
 test('time zone follows the viewed location', async () => {
   await page.keyboard.press('t')
   await expect(page.locator('.time-panel')).toContainText('America/Los_Angeles', { timeout: 10_000 })

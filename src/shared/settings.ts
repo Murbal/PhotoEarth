@@ -90,6 +90,7 @@ export function defaultSettings(): Settings {
     detailShadows: true,
     showSunIndicator: false,
     viewfinder: defaultViewfinder(),
+    horizon: { moon: true, peakNames: true },
     bookmarkIncludeTime: true,
     onboardingComplete: false
   }
@@ -174,6 +175,7 @@ export function sanitizeSettings(raw: Json): Settings {
   const contours = isObject(e.contours) ? e.contours : {}
   const slope = isObject(e.slope) ? e.slope : {}
   const hill = isObject(e.hillshade) ? e.hillshade : {}
+  const horizon = isObject(r.horizon) ? r.horizon : {}
   const modes: readonly MapMode[] = ['photorealistic', 'elevation']
   const cascades = o.shadowCascades === 1 || o.shadowCascades === 4 ? o.shadowCascades : null
 
@@ -243,6 +245,10 @@ export function sanitizeSettings(raw: Json): Settings {
     detailShadows: bool(r.detailShadows, d.detailShadows),
     showSunIndicator: bool(r.showSunIndicator, d.showSunIndicator),
     viewfinder: sanitizeViewfinder(r.viewfinder),
+    horizon: {
+      moon: bool(horizon.moon, d.horizon.moon),
+      peakNames: bool(horizon.peakNames, d.horizon.peakNames)
+    },
     bookmarkIncludeTime: bool(r.bookmarkIncludeTime, d.bookmarkIncludeTime),
     onboardingComplete: bool(r.onboardingComplete, d.onboardingComplete)
   }
