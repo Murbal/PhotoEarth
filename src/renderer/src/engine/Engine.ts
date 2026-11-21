@@ -167,7 +167,10 @@ export class Engine {
       appState().set({ terrainReady: true })
     })
     this.imagery = new GoogleImagery(scene, this.widget.creditDisplay, imagery.error, imagery.ready)
-    this.lightPollution = new LightPollution(scene, (shown) => this.sun?.setUnlitGlobe(shown))
+    this.lightPollution = new LightPollution(scene, (shown) => {
+      this.sun?.setUnlitGlobe(shown)
+      this.applyStyle()
+    })
     this.labels = new PlaceLabels(scene, { onError: labels.error, onReady: labels.ready }, {
       nearby: (req) => window.photoearth.places.nearby(req),
       cities: (req) => window.photoearth.places.cities(req)
@@ -450,7 +453,13 @@ export class Engine {
     // Called from the terrain-shadow status callback, which can fire during construction.
     if (!this.styler || !this.terrain) return
     const { mode, settings, autoRange } = appState()
-    this.styler.apply(settings.elevation, mode === 'elevation' && this.terrain.available, autoRange, this.terrainShadows.ready)
+    this.styler.apply(
+      settings.elevation,
+      mode === 'elevation' && this.terrain.available,
+      autoRange,
+      this.terrainShadows.ready,
+      this.lightPollution.shown
+    )
   }
 
   private applyLighting(): void {
@@ -473,6 +482,8 @@ export class Engine {
     this.scene.postProcessStages.fxaa.enabled = q.fxaa
     this.widget.useBrowserRecommendedResolution = !quality.devicePixelRatioAware
     this.widget.resolutionScale = q.resolutionScale
+    // Contours fade with the terrain's screen-space error.
+    this.applyStyle()
     this.requestRender()
   }
 

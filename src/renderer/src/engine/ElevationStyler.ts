@@ -37,14 +37,16 @@ ${SLOPE_GLSL}
   return c;
 }
 
-float pe_line(float value, float spacing, float widthPx) {
+float pe_line(float value, float spacing, float widthPx, float heightError) {
   float v = value / spacing;
   float fw = max(fwidth(v), 1e-6);
   float dist = abs(fract(v + 0.5) - 0.5) / fw;
   float halfWidth = 0.5 * widthPx * czm_pixelRatio;
   float line = 1.0 - smoothstep(halfWidth - 0.6, halfWidth + 0.6, dist);
-  // Fade out where lines would be packed tighter than a few pixels.
-  return line * (1.0 - smoothstep(0.12, 0.35, fw));
+  // Fade out where lines would be packed tighter than a few pixels, and where the terrain
+  // drawn here is too coarse for the interval: contours of its flat triangles are
+  // straight-edged rings and stars, not the real terrain.
+  return line * (1.0 - smoothstep(0.12, 0.35, fw)) * (1.0 - smoothstep(0.25, 0.5, heightError / spacing));
 }
 
 czm_material czm_getMaterial(czm_materialInput materialInput) {
@@ -92,8 +94,12 @@ czm_material czm_getMaterial(czm_materialInput materialInput) {
   }
 
   if (contourOpacity > 0.0) {
-    float minor = pe_line(h, contourInterval, contourWidth);
-    float major = pe_line(h, contourInterval * 5.0, contourWidth * 2.0);
+    // Cesium refines terrain until its geometric error is about terrainSse pixels, so that
+    // is roughly how far off the drawn heights are here (in real, unexaggerated meters).
+    float heightError = terrainSse * czm_metersPerPixel(vec4(-materialInput.positionToEyeEC, 1.0), czm_pixelRatio)
+      / max(exaggeration, 1.0);
+    float minor = pe_line(h, contourInterval, contourWidth, heightError);
+    float major = pe_line(h, contourInterval * 5.0, contourWidth * 2.0, heightError);
     pe_over(color, alpha, contourColor.rgb, max(minor * 0.7, major) * contourOpacity);
   }
 
@@ -166,6 +172,7 @@ export class ElevationStyler {
           contourWidth: 1.2,
           contourColor: Color.WHITE,
           contourOpacity: 0,
+          terrainSse: 2,
           heightOffset: 0,
           exaggeration: 1,
           exaggerationRelativeHeight: 0,
@@ -182,9 +189,19 @@ export class ElevationStyler {
   /**
    * Applies the style; `enabled` is false outside Elevation mode. `terrainShadows` turns on
    * the heightmap shadow layer, which needs the material even with no style layer on.
+   * `dataOverlay`: a colored data layer (light pollution, §7.5) is on the globe, so the
+   * tint and slope colors, which would bury it, pause.
    */
-  apply(style: ElevationStyleSettings, enabled: boolean, autoRange: { min: number; max: number } | null, terrainShadows = false): void {
-    const anyLayer = style.tint.enabled || style.contours.enabled || style.slope.enabled || style.hillshade.enabled
+  apply(
+    style: ElevationStyleSettings,
+    enabled: boolean,
+    autoRange: { min: number; max: number } | null,
+    terrainShadows = false,
+    dataOverlay = false
+  ): void {
+    const tint = style.tint.enabled && !dataOverlay
+    const slope = style.slope.enabled && !dataOverlay
+    const anyLayer = tint || style.contours.enabled || slope || style.hillshade.enabled
     this.active = enabled && (anyLayer || terrainShadows)
     const globe = this.scene.globe
     if (!this.active) {
@@ -202,8 +219,8 @@ export class ElevationStyler {
     this.range = range
     u.tintMin = range.min
     u.tintMax = range.max
-    u.tintOpacity = style.tint.enabled ? style.tint.opacity : 0
-    u.slopeOpacity = style.slope.enabled ? style.slope.opacity : 0
+    u.tintOpacity = tint ? style.tint.opacity : 0
+    u.slopeOpacity = slope ? style.slope.opacity : 0
     u.hillshadeOpacity = style.hillshade.enabled ? style.hillshade.opacity : 0
     u.hillshadeFollowSun = style.hillshade.followSun ? 1 : 0
     u.contourInterval = Math.max(1, style.contours.interval)
@@ -211,6 +228,7 @@ export class ElevationStyler {
     u.contourColor = Color.fromCssColorString(style.contours.color)
     u.contourOpacity = style.contours.enabled ? style.contours.opacity : 0
     u.shadowOpacity = terrainShadows ? SHADOW_OPACITY : 0
+    u.terrainSse = globe.maximumScreenSpaceError
     u.exaggeration = this.scene.verticalExaggeration
     u.exaggerationRelativeHeight = this.scene.verticalExaggerationRelativeHeight
     if (globe.material !== m) globe.material = m

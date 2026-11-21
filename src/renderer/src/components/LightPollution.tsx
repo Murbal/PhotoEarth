@@ -103,7 +103,7 @@ export function LightPollutionSection() {
       )}
       {lp.enabled && elevationMode && covered && (
         <div className="small faint" style={{ margin: '4px 0' }}>
-          Hypsometric tint and slope shading draw over this layer; turn them off to read its colors.
+          Hypsometric tint and slope shading are paused while this layer shows, so its colors read as the legend.
         </div>
       )}
       {lp.enabled &&

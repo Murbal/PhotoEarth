@@ -224,7 +224,7 @@ All movement has **inertia** with a configurable damping and an "Off" option.
 These can be toggled and combined:
 
 - **Hypsometric tint**: a color ramp by height. The range is auto-fit to the visible area or set manually, and there are several palettes.
-- **Contour lines**: configurable interval (e.g. 10 / 20 / 50 / 100 m), line width, and color. Every 5th line is a highlighted index contour.
+- **Contour lines**: configurable interval (e.g. 10 / 20 / 50 / 100 m), line width, and color. Every 5th line is a highlighted index contour. Lines fade out where they would pack tighter than a few pixels, and where the interval is finer than the drawn terrain's accuracy (its screen-space error × meters per pixel): at a regional zoom the terrain is coarse, and contours of its flat triangles would be straight-edged rings and stars. Zooming in brings back the index lines first, then the rest.
 - **Slope shading**: color by slope angle. Useful for reading ridges, cliffs, and gullies.
 - **Hillshade**: relief shading that **follows the simulated sun by default** (§8): light comes from the current sun azimuth and altitude, so scrubbing time re-lights the relief live. A toggle switches to a fixed classic light (from the northwest, 45° altitude) for reading terrain shape regardless of time.
   - When the sun is below the horizon, hillshade fades to flat night shading rather than lighting the terrain from below.
@@ -258,7 +258,7 @@ For scouting dark skies (astrophotography): where the artificial sky glow is low
   - In Photorealistic mode a status chip says where the map shows and offers to switch.
   - The layer exists only while the overlay is on, so off costs nothing; nothing of it runs per frame.
   - While it is drawn, the globe isn't shaded by day and night, so its colors match the legend at a night-time simulation.
-  - The hypsometric tint and slope shading of §7.2 draw over it, and the panel says so.
+  - The hypsometric tint and slope shading of §7.2 pause while it is drawn, since two color ramps on top of each other can't be read. Hillshade and contours stay, and the panel says so.
 - **Controls**: an on/off switch, an opacity slider and the source (atlas year or Black Marble) in the Elevation panel. Also the rail button, `K`, and the command palette.
   - **Legend**: the 15 zones (0, 1a … 7b) as color chips, with total zenith brightness (mag/arcsec²) marked at 22.00, 21.25 (artificial = natural), 19.50 and 17.80. Each chip's tooltip gives its range, ratio and Bortle estimate. Black Marble gets a dark-to-bright ramp and a note that it isn't sky brightness.
   - Settings: `settings.lightPollution` (`enabled`, `opacity`, `source`).
