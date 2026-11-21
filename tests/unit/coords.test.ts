@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   coordinateProblem,
   formatLatLon,
+  formatPointForClipboard,
   isShortMapsLink,
   parseCoordinatePair,
   parseGoogleMapsUrl,
@@ -128,5 +129,19 @@ describe('coordinate problems', () => {
     expect(coordinateProblem('Vienna')).toBeNull()
     expect(coordinateProblem('Paris 75001')).toBeNull()
     expect(coordinateProblem('')).toBeNull()
+  })
+})
+
+describe('formatPointForClipboard', () => {
+  it('keeps plain decimal coordinates and uses the chosen units for elevation', () => {
+    expect(formatPointForClipboard(46.5577, 7.9586, 3967.4, 'metric')).toBe('46.557700, 7.958600, 3967 m')
+    expect(formatPointForClipboard(46.5577, 7.9586, 3967.4, 'imperial')).toBe('46.557700, 7.958600, 13016 ft')
+  })
+
+  it('leaves out an unknown elevation and appends extra readouts', () => {
+    expect(formatPointForClipboard(-33.9, 18.4, null, 'imperial')).toBe('-33.900000, 18.400000')
+    expect(formatPointForClipboard(46.5577, 7.9586, 1234, 'metric', ['21.10 mag/arcsec² (Bortle ≈ 4, estimate)'])).toBe(
+      '46.557700, 7.958600, 1234 m, 21.10 mag/arcsec² (Bortle ≈ 4, estimate)'
+    )
   })
 })

@@ -2,11 +2,14 @@ import type { Units } from '@shared/types'
 
 export const FEET_PER_METER = 3.280839895
 
-export function formatElevation(meters: number | null | undefined, units: Units): string {
+/**
+ * Whole meters or feet: "1,234 m", "4,049 ft". `grouping: false` drops the thousands
+ * separator ("1234 m") for text that is itself comma-separated, like the clipboard.
+ */
+export function formatElevation(meters: number | null | undefined, units: Units, { grouping = true } = {}): string {
   if (meters === null || meters === undefined || !Number.isFinite(meters)) return '—'
-  return units === 'imperial'
-    ? `${Math.round(meters * FEET_PER_METER).toLocaleString('en-US')} ft`
-    : `${Math.round(meters).toLocaleString('en-US')} m`
+  const value = Math.round(units === 'imperial' ? meters * FEET_PER_METER : meters)
+  return `${value.toLocaleString('en-US', { useGrouping: grouping })} ${units === 'imperial' ? 'ft' : 'm'}`
 }
 
 export function formatDistance(meters: number, units: Units): string {
