@@ -27,6 +27,7 @@ import {
 } from '../lib/time'
 import { compassPoint } from '../lib/units'
 import { useAppStore, type MoonInfo, type PlaybackSpeedId } from '../store/appStore'
+import { CloudLanes, ForecastSection, useViewForecast } from './Forecast'
 import { Icon } from './Icon'
 import { MoonDisc } from './MoonDisc'
 import { TrackSlider, type SliderMarker } from './Slider'
@@ -175,6 +176,7 @@ export function TimePanel() {
   const target = useAppStore((s) => s.target)
   const spotSun = useAppStore((s) => s.spotSun)
   const inspect = useAppStore((s) => s.inspect)
+  const { usable: forecast } = useViewForecast()
 
   const { year } = parseDate(sim.date)
   const yearDays = daysInYear(year)
@@ -328,6 +330,7 @@ export function TimePanel() {
           background={spotSlider?.background ?? dayBackground}
           markers={spotSlider?.markers ?? dayTimes.markers}
         />
+        {forecast && <CloudLanes forecast={forecast} date={sim.date} timeZone={sim.timeZone} />}
         <div className="slider-ticks">
           {['00', '03', '06', '09', '12', '15', '18', '21', '24'].map((t) => (
             <span key={t}>{t}</span>
@@ -423,6 +426,16 @@ export function TimePanel() {
 
       <LightWindowsTable bands={bands} minutes={sim.minutes} />
 
+      {settings.forecast && (
+        <ForecastSection
+          date={sim.date}
+          minutes={sim.minutes}
+          timeZone={sim.timeZone}
+          units={settings.units}
+          onPick={(utc) => engine?.sun.setInstant(utc)}
+        />
+      )}
+
       <div className="row" style={{ marginTop: 10, gap: 14, flexWrap: 'wrap' }}>
         <div className="segmented">
           <button className={simulated ? 'active' : ''} onClick={() => patchSettings((d) => void (d.lighting = 'sun'))}>
@@ -452,6 +465,10 @@ export function TimePanel() {
             onChange={(e) => patchSettings((d) => void (d.showMoonIndicator = e.target.checked))}
           />
           Moon direction
+        </label>
+        <label className="switch" title="Cloud, visibility, wind and fog forecast for the view center from Open-Meteo (sends its coordinates)">
+          <input type="checkbox" checked={settings.forecast} onChange={(e) => patchSettings((d) => void (d.forecast = e.target.checked))} />
+          Forecast
         </label>
         <label
           className="switch"

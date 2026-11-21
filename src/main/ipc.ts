@@ -2,10 +2,11 @@ import { app, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { IPC } from '@shared/ipc'
 import { ALL_NEARBY_KINDS, CITIES_MAX_SPAN_DEG } from '@shared/places'
 import { sanitizeSettings } from '@shared/settings'
-import type { ApiKeys, AppInfo, AutocompleteRequest, CitiesRequest, NearbyRequest, NewBookmark, Settings } from '@shared/types'
+import type { ApiKeys, AppInfo, AutocompleteRequest, CitiesRequest, NearbyRequest, NewBookmark, Settings, WeatherRequest } from '@shared/types'
+import { MAX_FORECAST_POINTS } from '@shared/weather'
 import type { BookmarkStore } from './bookmarks'
 import type { JsonFile } from './jsonStore'
-import { GOOGLE_REFERER, placeDetails, placesAutocomplete, placesCities, placesNearby, validateKeys } from './network'
+import { GOOGLE_REFERER, placeDetails, placesAutocomplete, placesCities, placesNearby, validateKeys, weatherForecast } from './network'
 import type { SecretStore } from './secrets'
 import { openExternalSafely } from './security'
 
@@ -113,6 +114,27 @@ export function registerIpc({ settings, secrets, bookmarks, isTrustedSender, onK
       west: lon(west as number),
       north: lat(north as number),
       east: lon(east as number)
+    })
+  })
+  handle(IPC.weatherForecast, (req: unknown) => {
+    const points = ((req ?? {}) as Partial<WeatherRequest>).points
+    if (
+      !Array.isArray(points) ||
+      points.length === 0 ||
+      points.length > MAX_FORECAST_POINTS ||
+      !points.every((p: unknown) => {
+        const q = (p ?? {}) as Partial<{ latitude: unknown; longitude: unknown }>
+        return Number.isFinite(q.latitude) && Number.isFinite(q.longitude)
+      })
+    ) {
+      return { ok: false, error: { status: 'error', message: 'Invalid forecast request.' } }
+    }
+    return weatherForecast({
+      points: points.map((p: { latitude: number; longitude: number }) => ({
+        latitude: Math.max(-90, Math.min(90, p.latitude)),
+        // Open-Meteo wants −180…180.
+        longitude: ((((p.longitude + 180) % 360) + 360) % 360) - 180
+      }))
     })
   })
 }

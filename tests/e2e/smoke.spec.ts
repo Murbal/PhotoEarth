@@ -14,10 +14,50 @@ const errors: string[] = []
 /** A throwaway profile, and a hidden window that never takes focus from the desktop (see src/main/index.ts). */
 const launchEnv = () => ({ ...process.env, PHOTOEARTH_USER_DATA: userData, PHOTOEARTH_BACKGROUND: '1' })
 
+/**
+ * Answers forecast requests in the main process with a fixed 17-day forecast instead of calling
+ * Open-Meteo: broken high cloud over the view center, clear toward the sun. Requests are kept
+ * in `globalThis.forecastRequests`.
+ */
+async function mockForecast(electronApp: ElectronApplication): Promise<void> {
+  await electronApp.evaluate(({ ipcMain }) => {
+    const g = globalThis as unknown as { forecastRequests: unknown[] }
+    g.forecastRequests = []
+    ipcMain.removeHandler('weather:forecast')
+    ipcMain.handle('weather:forecast', (_event, req: { points: Array<{ latitude: number; longitude: number }> }) => {
+      g.forecastRequests.push(req)
+      const day = 86_400_000
+      const start = Math.floor(Date.now() / day) * day - day
+      const col = (f: (i: number) => number) => Array.from({ length: 17 * 24 }, (_, i) => f(i))
+      const data = req.points.map((p, k) => ({
+        latitude: p.latitude,
+        longitude: p.longitude,
+        elevation: 0,
+        time: col((i) => start + i * 3_600_000),
+        cloudLow: col(() => 0),
+        cloudMid: col(() => 10),
+        cloudHigh: col(() => (k === 0 ? 50 : 0)),
+        visibility: col(() => 30_000),
+        windSpeed: col(() => 2.5),
+        windGusts: col(() => 5),
+        windDirection: col(() => 270),
+        precipitationProbability: col(() => 0),
+        precipitation: col(() => 0),
+        temperature: col(() => 10),
+        dewPoint: col(() => 2),
+        humidity: col(() => 60),
+        weatherCode: col(() => 2)
+      }))
+      return { ok: true, data }
+    })
+  })
+}
+
 test.beforeAll(async () => {
   userData = mkdtempSync(join(tmpdir(), 'photoearth-e2e-'))
   app = await electron.launch({ args: ['.'], env: launchEnv() })
   page = await app.firstWindow()
+  await mockForecast(app)
   page.on('pageerror', (e) => errors.push(e.message))
   page.on('console', (m) => {
     if (m.type() === 'error' && !/GPU stall|WebGL/.test(m.text())) errors.push(m.text())
@@ -951,6 +991,42 @@ test('moon: readouts, direction line, and the rendered moon where the readouts p
   })
   expect(offset.distanceKm).toBeGreaterThan(356_000)
   expect(offset.km).toBeLessThan(1) // < 0.0002°
+})
+
+test('weather forecast: cloud bands, sunrise and sunset outlook, jumping to a sunset', async () => {
+  const panel = page.locator('.time-panel')
+  if (!(await panel.isVisible())) {
+    // Out of any text field, so the shortcut reaches the app.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+    await page.keyboard.press('t')
+  }
+  await expect(panel).toBeVisible()
+  await panel.getByRole('button', { name: 'Now' }).click()
+  await expect(panel.locator('.cloud-lanes .cloud-lane')).toHaveCount(3, { timeout: 10_000 })
+  expect(await panel.locator('.forecast-day').count()).toBeGreaterThanOrEqual(15)
+  await expect(panel.locator('.forecast')).toContainText('Open-Meteo')
+  // One request: the view center, and the sky 150 km toward the sunset and the sunrise.
+  const requests = await app.evaluate(() => (globalThis as unknown as { forecastRequests: Array<{ points: unknown[] }> }).forecastRequests)
+  expect(requests.length).toBeGreaterThanOrEqual(1)
+  expect(requests.at(-1)!.points).toHaveLength(3)
+  // Broken high cloud overhead and a clear path for the light.
+  await expect(panel.locator('.forecast-detail')).toContainText('Great')
+  await expect(panel.locator('.forecast-hour')).toContainText('Visibility')
+
+  // A day's sunset button sets the date and time to that sunset.
+  await panel.locator('.forecast-day').nth(2).getByRole('button', { name: /^Sunset/ }).click()
+  await expect(panel.locator('.forecast-day').nth(2)).toHaveClass(/selected/)
+  const clock = await panel.locator('.time-big').innerText()
+  await expect(panel.locator('.forecast-detail')).toContainText(`Sunset ${clock}`)
+
+  // Out of range, and off.
+  await panel.getByLabel('Date').fill('2030-06-01')
+  await expect(panel.locator('.forecast')).toContainText('No forecast for Jun 1')
+  await panel.getByText('Forecast', { exact: true }).click()
+  await expect(panel.locator('.forecast')).toHaveCount(0)
+  await expect(panel.locator('.cloud-lanes')).toHaveCount(0)
+  await panel.getByText('Forecast', { exact: true }).click()
+  await panel.getByRole('button', { name: 'Now' }).click()
 })
 
 test('bookmarks persist across a restart', async () => {

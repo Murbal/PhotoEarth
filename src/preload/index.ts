@@ -28,6 +28,9 @@ const api: PhotoEarthApi = {
     nearby: (request) => ipcRenderer.invoke(IPC.placesNearby, request),
     cities: (request) => ipcRenderer.invoke(IPC.placesCities, request)
   },
+  weather: {
+    forecast: (request) => ipcRenderer.invoke(IPC.weatherForecast, request)
+  },
   openExternal: (url) => ipcRenderer.invoke(IPC.openExternal, url),
   onMenuCommand: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, command: MenuCommand) => listener(command)

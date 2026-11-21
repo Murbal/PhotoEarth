@@ -65,3 +65,9 @@ export function compassPoint(azimuth: number): string {
   const i = Math.round((((azimuth % 360) + 360) % 360) / 22.5) % 16
   return COMPASS[i]
 }
+
+/** Wind speed from m/s: km/h (metric) or mph (imperial), whole numbers. */
+export function formatSpeed(metersPerSecond: number | null, units: Units): string {
+  if (metersPerSecond === null || !Number.isFinite(metersPerSecond)) return '—'
+  return units === 'imperial' ? `${Math.round(metersPerSecond * 2.236936)} mph` : `${Math.round(metersPerSecond * 3.6)} km/h`
+}

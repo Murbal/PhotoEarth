@@ -299,6 +299,7 @@ The main use case is mountains casting long shadows when the sun is low. Real-ti
 - Follow the **Google Map Tiles API** policies: attribution display, no scraping or bulk download, and no persistent caching beyond what the terms allow. The standard HTTP cache is fine.
 - No exporting of Google imagery or 3D geometry in this spec.
 - Cesium ion and other terrain sources: follow their attribution requirements as well.
+- **Open-Meteo** (§11.4): credit "Weather data by Open-Meteo.com" (CC BY 4.0) wherever forecast data is shown. The free API is non-commercial only.
 
 ## 10. Onboarding & Settings
 
@@ -333,7 +334,7 @@ These will get their own spec later:
 - **Milky Way / galactic core** position.
 - **Viewshed analysis**: what is visible from a point. *First slice done: the skyline seen from a point (§11.2).*
 - Saved scouting locations with notes, photos, and tags. KML/GPX import and export.
-- Weather / cloud cover overlays.
+- Weather / cloud cover overlays. *First slice done: the forecast in the time panel (§11.4).*
 - Screenshot / export of views, within the licensing limits.
 
 ### 11.1 Viewfinder (implemented)
@@ -368,6 +369,17 @@ The moon follows the same simulated instant and view center as the sun (§8.2, �
 - **Phase**: named after the principal phase within ±6.1° of elongation (~±12 h of the instant), otherwise crescent or gibbous, waxing or waning. A small disc shows the lit shape **as it looks in the sky from the view center**: the lit limb points towards the sun along the great circle, measured clockwise from the zenith, so a northern evening crescent is lit on the right and a southern one from below.
 - **Rendered moon**: Cesium's `scene.moon` (lit by the sun only, so it shows the phase; drawn behind terrain and buildings, so a rising moon clears a ridge where it really does). Its position is replaced with astronomy-engine's Earth-fixed position (`engine/cesiumMoon.ts`). Cesium's own series is ~0.03° off, and ~0.36° until its ICRF data loads, which a long lens shows. An end-to-end test checks the drawn moon against the readout model to within 1 km.
 - **Moon direction indicator**: the sun indicator's ground arrow and dashed ray, in the moon's color, toggled independently (time panel, command palette, `settings.showMoonIndicator`). It doesn't depend on the lighting mode: the moon doesn't light the scene.
+
+### 11.4 Weather forecast (implemented)
+
+Cloud, visibility, wind and fog for sunrise and sunset planning, in the time panel:
+
+- **Source**: Open-Meteo `/v1/forecast` (no key), hourly, 16 days, UTC Unix times, wind in m/s: low / mid / high cloud cover, visibility, 10 m wind speed, gusts and direction, precipitation probability and amount, 2 m temperature, dew point and humidity, WMO weather code. One request carries three points: the view center, and the points 150 km toward where the sun sets and rises midway through the forecast. Fetched in the main process over `net.fetch` (`weather:forecast` IPC, at most three finite points), so the CSP is unchanged. The renderer requests once the view center settles (1.2 s), reuses a forecast within 3 km for an hour, and only while the time panel is open and the forecast is on (`settings.forecast`, default on).
+- **Cloud bands**: high, mid and low cover under the time-of-day slider for the selected local date, each hour's value at its local time and blended between hours; DST days have 23 or 25 hours.
+- **Twilight rating** (`lib/weather.ts`, unit-tested): at the flat-horizon sunrise and sunset instant, interpolated between hours. Canvas *C* = max(high, 0.85 · mid) scores 0.15 at 0 %, rising to 1 at 30–70 %, and falling to 0.55 at 100 %. It's multiplied by a low-cloud factor (overhead low cloud above 25 %), a path factor from max(low, 0.6 · mid) at the sun-side point (above 10 %), and a rain factor. The result is 0–100: *Poor* < 25 ≤ *Fair* < 50 ≤ *Good* < 75 ≤ *Great*. Light colouring cloud overhead at sunset skims the ground ~200–300 km away (√(2Rh) for cloud 4–8 km up), so 150 km samples the middle of its path.
+- **Fog risk**: Open-Meteo has no fog probability. *Likely*: weather code 45/48 or visibility < 1 km. *Possible*: temperature within 1 °C of the dew point (or humidity ≥ 97 %) with wind < 3 m/s, or visibility < 5 km with humidity ≥ 90 %. The day strip shows the worst risk within 2 h of sunrise.
+- **Wind**: *calm* (< 2 m/s, gusts < 4: reflections, long exposures), *light*, *breezy* (gusts ≥ 8 or wind ≥ 5), *strong* (gusts ≥ 12 or wind ≥ 9: too windy for most camera drones). Shown in km/h or mph by the unit setting.
+- **Interaction**: a day's ↑ / ↓ sets the simulated instant to that sunrise / sunset. Dates outside the forecast say so. A forecast more than 25 km from the view center is hidden while the new one loads.
 
 The architecture should not rule any of these out. In particular, `SunController` should be general enough to model other celestial bodies later.
 
