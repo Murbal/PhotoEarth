@@ -52,6 +52,8 @@ export class TerrainShadows {
   private sun: { azimuth: number; altitude: number; longitude: number; latitude: number } | null = null
   private status: TerrainShadowStatus = 'off'
   private pumping = false
+  /** The camera is moving: hold off re-centering (loading and rasterizing on this thread). */
+  private moving = false
   private failedAt = 0
   private generation = 0
   private readonly materials = new Set<Material>()
@@ -183,6 +185,17 @@ export class TerrainShadows {
     return !!this.frame && !!df && this.frame.longitude === df.longitude && this.frame.latitude === df.latitude
   }
 
+  /**
+   * While the camera moves, grids aren't re-centered (each level is loaded and rasterized on
+   * the main thread, which costs frames). They catch up once it stops. Nothing shaded yet
+   * still loads right away.
+   */
+  setMoving(moving: boolean): void {
+    if (moving === this.moving) return
+    this.moving = moving
+    if (!moving) void this.pump()
+  }
+
   /** Loads whatever differs from the desired placement, coarse first, one level at a time. */
   private async pump(): Promise<void> {
     if (this.pumping || !this.enabled || !this.desiredFrame) return
@@ -198,6 +211,7 @@ export class TerrainShadows {
     const generation = this.generation
     try {
       while (this.enabled && generation === this.generation && field === this.field) {
+        if (this.moving && this.compute.hasMasks) break
         const switchFrame = !this.frameIsDesired()
         const df = this.desiredFrame!
         const frame = switchFrame ? new LocalFrame(df.longitude, df.latitude) : this.frame!

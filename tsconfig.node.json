@@ -12,6 +12,7 @@
   },
   "include": [
     "electron.vite.config.ts",
+    "vite/**/*",
     "vitest.config.ts",
     "playwright.config.ts",
     "src/main/**/*",

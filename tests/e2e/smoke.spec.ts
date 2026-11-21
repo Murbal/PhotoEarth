@@ -899,7 +899,7 @@ test('the horizon panorama draws the skyline, the sun path and named peaks', asy
   await expect(panel.locator('.horizon-stats')).toContainText('vs flat horizon')
   await page.getByRole('button', { name: 'Sunset' }).click()
   await panel.screenshot({ path: test.info().outputPath('horizon-sunset.png') })
-  await page.getByRole('button', { name: '360°' }).click()
+  await page.getByRole('button', { name: '360°', exact: true }).click()
   await panel.screenshot({ path: test.info().outputPath('horizon-360.png') })
   // Hovering the chart reads out the skyline in that direction.
   const box = (await panel.locator('svg.horizon-chart').boundingBox())!

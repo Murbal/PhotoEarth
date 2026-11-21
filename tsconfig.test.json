@@ -12,6 +12,7 @@
     "src/shared/**/*",
     "src/main/devEnv.ts",
     "src/main/wslGpu.ts",
+    "vite/cesium.ts",
     "tests/unit/**/*"
   ]
 }

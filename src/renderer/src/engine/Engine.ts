@@ -36,6 +36,7 @@ import { TerrainManager } from './TerrainManager'
 import { TerrainShadows } from './TerrainShadows'
 import { TilePreloader } from './TilePreloader'
 import { TilesetManager } from './TilesetManager'
+import { setUploadBudgets } from './uploadBudget'
 import { Viewfinder } from './Viewfinder'
 import { cameraTarget, cartographicDeg, currentView, pickSurface, surfaceHeight, toDeg } from './util'
 
@@ -200,6 +201,7 @@ export class Engine {
 
     this.handler = new ScreenSpaceEventHandler(scene.canvas)
     this.wireMouse()
+    scene.camera.moveStart.addEventListener(() => this.onMoveStart())
     scene.camera.moveEnd.addEventListener(() => this.onMoveEnd())
     scene.postRender.addEventListener(() => this.inspector.updateScreen())
     globe.tileLoadProgressEvent.addEventListener((queued: number) => {
@@ -549,7 +551,17 @@ export class Engine {
     if (t) this.styler.setGeoidOffset(t.latitude, t.longitude)
   }
 
+  /** The camera started moving: trade a little detail for steady frames until it stops. */
+  private onMoveStart(): void {
+    this.tiles.setMoving(true)
+    this.terrainShadows.setMoving(true)
+    setUploadBudgets(this.scene, true)
+  }
+
   private onMoveEnd(): void {
+    this.tiles.setMoving(false)
+    this.terrainShadows.setMoving(false)
+    setUploadBudgets(this.scene, false)
     this.readouts.refresh()
     this.imagery.updateAttribution()
     this.labels.onMoveEnd()

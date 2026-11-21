@@ -5,6 +5,7 @@ import { defineConfig } from 'electron-vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { applyWslGpuEnv } from './src/main/wslGpu'
+import { cesiumOptimizations } from './vite/cesium'
 
 // Under WSL, Electron (started by electron-vite with this process's environment) renders on
 // the GPU through Mesa d3d12 instead of software OpenGL. See src/main/wslGpu.ts.
@@ -84,11 +85,14 @@ export default defineConfig({
       // Absolute path so it resolves both on the dev server and on the app:// protocol.
       CESIUM_BASE_URL: JSON.stringify('/cesium/')
     },
-    plugins: [react(), cesiumAssets()],
+    plugins: [react(), cesiumAssets(), cesiumOptimizations()],
+    // The dev server pre-bundles Cesium; give it the same changes as the production build.
+    optimizeDeps: { rolldownOptions: { plugins: [cesiumOptimizations()] } },
     build: {
       outDir: resolve(__dirname, 'out/renderer'),
       chunkSizeWarningLimit: 8000,
-      minify: true,
+      // PHOTOEARTH_PROFILE=1: unminified, so CPU profiles name Cesium's and the app's functions.
+      minify: process.env.PHOTOEARTH_PROFILE !== '1',
       rollupOptions: {
         input: resolve(__dirname, 'src/renderer/index.html')
       }
