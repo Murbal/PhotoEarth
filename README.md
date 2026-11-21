@@ -2,7 +2,7 @@
 
 # PhotoEarth
 
-A desktop 3D globe for photography location scouting: explore photorealistic terrain, read elevation, and simulate the sun, moon and Milky Way for any date and time to see where light and shadow fall, when the moon rises, and when the Galactic Core clears the skyline in dark skies. See [SPEC.md](SPEC.md) for the full specification.
+A desktop 3D globe for photography location scouting: explore photorealistic terrain, read elevation, and simulate the sun, moon and Milky Way for any date and time to see where light and shadow fall, when the moon rises, and when the Galactic Core clears the skyline in dark skies.
 
 ## Getting started
 
@@ -111,9 +111,9 @@ npm run build:test  # a build that exposes the engine and a few Cesium classes o
 
 Normal builds don't expose anything on `window`.
 
-The sun-position tests compare SunCalc against [astronomy-engine](https://github.com/cosinekitty/astronomy) (VSOP87-based, sub-arcminute) as an independent reference. They cover nine locations, including Tromsø, Longyearbyen and McMurdo for polar day and night, and require ±0.5° (§8.4). Observed agreement is within 0.1° above 2° altitude. Tests run under `TZ=Pacific/Chatham` to prove results depend only on the viewed location's zone.
+The sun-position tests compare SunCalc against [astronomy-engine](https://github.com/cosinekitty/astronomy) (VSOP87-based, sub-arcminute) as an independent reference. They cover nine locations, including Tromsø, Longyearbyen and McMurdo for polar day and night, and require ±0.5°. Observed agreement is within 0.1° above 2° altitude. Tests run under `TZ=Pacific/Chatham` to prove results depend only on the viewed location's zone.
 
-The moon goes the other way round: it runs on astronomy-engine (topocentric, so parallax is included), and SunCalc's independent moon series checks it. Agreement is within 0.05° in position and a minute in rise, transit and set across six time zones (§11.3).
+The moon goes the other way round: it runs on astronomy-engine (topocentric, so parallax is included), and SunCalc's independent moon series checks it. Agreement is within 0.05° in position and a minute in rise, transit and set across six time zones.
 
 ### Weather forecast
 
@@ -144,7 +144,7 @@ src/
   preload/     contextBridge → typed window.photoearth API
   shared/      types, settings and location sanitization + migration, IPC channels, API error classification
   renderer/src/
-    engine/    Engine (owns the CesiumWidget) and the managers from SPEC §4:
+    engine/    Engine (owns the CesiumWidget) and its managers:
                TilesetManager, TerrainManager, GoogleImagery, CameraController,
                SunController, MoonController, MilkyWayController, ElevationStyler, ProfileTool, HorizonTool,
                ViewshedTool, AlignmentTool, PointInspector, Readouts, LocationMarkers,
@@ -180,7 +180,7 @@ Panning, orbiting and tilting over Google's 3D tiles hold 60 fps and more on the
 
 To profile: `PHOTOEARTH_PROFILE=1 npm run build` keeps the renderer bundle unminified, so CPU profiles name Cesium's and the app's functions.
 
-## Shadows (§8.1.1)
+## Shadows
 
 Cesium's shadow maps on Google's 3D tiles miss off-screen and distant ridges, lose detail with range, and (because the tiles have no normals) show acne stripes at low sun. So terrain shadows come from a heightmap instead, and shadow maps only add near detail:
 

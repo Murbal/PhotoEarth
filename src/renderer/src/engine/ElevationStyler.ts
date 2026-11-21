@@ -218,7 +218,7 @@ export class ElevationStyler {
    * Applies the style; `enabled` is false outside Elevation mode. `terrainShadows` turns on
    * the heightmap shadow layer and `viewshedActive` turns on the viewshed overlay; either needs
    * the material even with no style layer on. `dataOverlay`: a colored data layer (light
-   * pollution, §7.5) is on the globe, so the tint and slope colors, which would bury it, pause.
+   * pollution) is on the globe, so the tint and slope colors, which would bury it, pause.
    */
   apply(
     style: ElevationStyleSettings,

@@ -172,7 +172,7 @@ export function RightRail() {
   const patchSettings = useAppStore((s) => s.patchSettings)
   const mapOpen = useAppStore((s) => s.settings.map.open)
 
-  // Map mode (§5.5): the 3D tools and camera widgets would act on the hidden 3D view.
+  // Map mode: the 3D tools and camera widgets would act on the hidden 3D view.
   if (mapOpen) {
     return (
       <div className="right-rail">

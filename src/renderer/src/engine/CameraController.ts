@@ -95,7 +95,7 @@ const scratchMatrix = new Matrix3()
 const scratchQuat = new Quaternion()
 
 /**
- * Navigation per spec §6: Cesium's ScreenSpaceCameraController handles grab-pan, orbit and
+ * Navigation: Cesium's ScreenSpaceCameraController handles grab-pan, orbit and
  * cursor-anchored zoom (remapped to the Orbit scheme); this class adds heading rotation around
  * the cursor point, keyboard / fly mode, eye-level mode, ground clearance and smooth resets.
  */
@@ -151,7 +151,7 @@ export class CameraController {
     private readonly callbacks: CameraCallbacks
   ) {
     const c = scene.screenSpaceCameraController
-    // Orbit scheme (§6.1). LEFT_DRAG on the globe in 3D keeps the grabbed point under the cursor.
+    // Orbit scheme. LEFT_DRAG on the globe in 3D keeps the grabbed point under the cursor.
     c.rotateEventTypes = CameraEventType.LEFT_DRAG
     c.tiltEventTypes = [CameraEventType.RIGHT_DRAG, { eventType: CameraEventType.LEFT_DRAG, modifier: KeyboardEventModifier.CTRL }]
     // Chromium reports trackpad pinch as ctrl+wheel.
@@ -304,7 +304,7 @@ export class CameraController {
   // ───────────────────────────── wheel / trackpad ─────────────────────────────
 
   /**
-   * Mouse wheel: Cesium zooms toward the cursor. Trackpad (§6.1): two-finger scroll pans
+   * Mouse wheel: Cesium zooms toward the cursor. Trackpad: two-finger scroll pans
    * (looks around at eye level), pinch zooms toward the cursor and Alt/⌥ + scroll orbits.
    */
   private onWheel(e: WheelEvent): void {
@@ -1000,7 +1000,7 @@ export class CameraController {
     })
   }
 
-  /** Flies to a geographic location with an eased arc (§6.4). */
+  /** Flies to a geographic location with an eased arc. */
   flyToLocation(latitude: number, longitude: number, opts: FlyToLocationOptions = {}): Promise<void> {
     this.endFollow()
     this.setEyeLevel(false)

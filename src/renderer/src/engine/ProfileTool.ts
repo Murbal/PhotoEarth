@@ -88,7 +88,7 @@ export class ProfileTool {
   }
 
   /**
-   * Reopens a saved path (§7.3): draws it finished and samples its profile again. Returns the
+   * Reopens a saved path: draws it finished and samples its profile again. Returns the
    * vertices, so the caller can frame them.
    */
   load(points: GeoPosition[], savedId: string | null = null): Cartesian3[] {

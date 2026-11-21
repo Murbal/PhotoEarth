@@ -21,7 +21,7 @@ export async function saveCurrentView(opts: { name?: string; edit?: boolean } = 
   const engine = getEngine()
   if (!engine) return null
   const { settings, destination, bookmarks, set, togglePanel, showToast } = appState()
-  // In Map mode the location is at the map's center (§5.5).
+  // In Map mode the location is at the map's center.
   const target = settings.map.open ? engine.mapView() : appState().target
   const label =
     opts.name ??

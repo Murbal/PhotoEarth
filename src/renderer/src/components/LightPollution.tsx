@@ -62,7 +62,7 @@ function Opacity({ value, onChange, disabled }: { value: number; onChange: (v: n
   )
 }
 
-/** The overlay's toggle, opacity, source and legend, in the Elevation panel (§7.5). */
+/** The overlay's toggle, opacity, source and legend, in the Elevation panel. */
 export function LightPollutionSection() {
   const lp = useAppStore((s) => s.settings.lightPollution)
   const elevationMode = useAppStore((s) => s.mode === 'elevation')

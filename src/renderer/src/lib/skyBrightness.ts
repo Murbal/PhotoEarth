@@ -1,5 +1,5 @@
 /**
- * Artificial night sky brightness (§7.5): the Light Pollution Atlas's data and color scales,
+ * Artificial night sky brightness: the Light Pollution Atlas's data and color scales,
  * conversions to magnitudes per square arcsecond, and a Bortle class estimate.
  *
  * All brightness here is at the zenith. The atlas models artificial light scattered back down

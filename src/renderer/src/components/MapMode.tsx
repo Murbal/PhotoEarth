@@ -117,7 +117,7 @@ function isTyping(target: EventTarget | null): boolean {
 const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2)
 
 /**
- * The map's drawing and input, outside React (SPEC §5.5). Decoded tile images are drawn into
+ * The map's drawing and input, outside React. Decoded tile images are drawn into
  * one 2D canvas the size of the window: a frame clears it and draws a few dozen images, and
  * frames run only while something moves. One canvas means one compositor surface whatever
  * the zoom or the levels kept underneath (CSS-scaled layers of <img> tiles each became a
@@ -821,7 +821,7 @@ function interpolate(a: MapView, b: MapView, t: number): MapView {
 }
 
 /**
- * Map mode (SPEC §5.5): a full-window 2D map for getting around. It covers the 3D view, which
+ * Map mode: a full-window 2D map for getting around. It covers the 3D view, which
  * is paused meanwhile; switching back opens the 3D view at the map's center.
  */
 export function MapMode() {

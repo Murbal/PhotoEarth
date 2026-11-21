@@ -1,7 +1,7 @@
 import type { LightPollutionSourceId } from '@shared/types'
 
 /**
- * Tile sources for the light pollution overlay (§7.5). Each is a Web Mercator XYZ tile set
+ * Tile sources for the light pollution overlay. Each is a Web Mercator XYZ tile set
  * plus, where available, point data for the inspect readout. Adding a source means adding
  * an entry here (and its id to `LIGHT_POLLUTION_SOURCES`, and its origin to the CSP).
  */

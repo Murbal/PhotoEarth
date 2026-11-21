@@ -10,7 +10,7 @@ function isTyping(target: EventTarget | null): boolean {
   return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable
 }
 
-/** App-wide keyboard shortcuts (§6.2). WASD / arrows are handled by the camera controller. */
+/** App-wide keyboard shortcuts. WASD / arrows are handled by the camera controller. */
 export function useShortcuts(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

@@ -1,4 +1,4 @@
-// Camera / lens math for the viewfinder (SPEC §11, first slice): angle of view from a sensor
+// Camera / lens math for the viewfinder (first slice): angle of view from a sensor
 // and focal length, the crop frame on screen, and the Cesium field of view that makes that
 // frame (not the whole window) show exactly the lens's angle of view. Pure, unit-tested.
 

@@ -32,7 +32,7 @@ interface Placement {
 const RETRY_MS = 10000
 
 /**
- * Heightmap terrain shadows (§8.1.1). Three nested grids of Cesium World Terrain heights
+ * Heightmap terrain shadows. Three nested grids of Cesium World Terrain heights
  * (±5 km at ~20 m, ±20 km at ~80 m, ±80 km at ~400 m with the High preset) follow the view;
  * a GPU pass ray-marches them toward the sun into per-cell shadow tops, and the 3D Tiles and
  * globe shaders shade against those. Unlike shadow maps this is independent of what the

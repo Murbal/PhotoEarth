@@ -68,7 +68,7 @@ function zoom(steps: number): () => void {
 
 /**
  * Commands that act on the 3D view. In Map mode they first leave the map (the 3D view opens
- * at the map's center, §5.5), then run.
+ * at the map's center), then run.
  */
 const NEEDS_3D = new Set([
   'toggle-place-labels',

@@ -39,7 +39,7 @@ const INSTANTS = [
   '2030-07-04T20:10:00Z'
 ].map((s) => Date.parse(s))
 
-describe('sun position (§8.4: within ±0.5° of a reference)', () => {
+describe('sun position (within ±0.5° of a reference)', () => {
   for (const loc of LOCATIONS) {
     it(`matches the reference at ${loc.name}`, () => {
       for (const t of INSTANTS) {

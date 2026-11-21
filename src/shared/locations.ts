@@ -37,7 +37,7 @@ export const MAX_PHOTOS_PER_LOCATION = 40
 export const MAX_PROFILE_POINTS = 500
 /** Thumbnails are this tall (two device pixels per CSS pixel of the largest display). */
 export const THUMB_HEIGHT = 240
-/** A panorama wider than 4:1 is capped at this width; its thumbnail is shorter instead (§11.5). */
+/** A panorama wider than 4:1 is capped at this width; its thumbnail is shorter instead. */
 export const THUMB_MAX_WIDTH = THUMB_HEIGHT * 4
 
 /** Stored photo names: `<uuid>.<ext>` and `<uuid>.thumb.jpg`. Nothing else is ever served. */

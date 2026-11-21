@@ -3,7 +3,7 @@ import { toMsl } from '../lib/geoid'
 import { appState } from '../store/appStore'
 import { toDeg } from './util'
 
-/** Click a point to drop a temporary marker with its coordinates and elevation (§7.4). */
+/** Click a point to drop a temporary marker with its coordinates and elevation. */
 export class PointInspector {
   private marker: Entity | null = null
   private position: Cartesian3 | null = null

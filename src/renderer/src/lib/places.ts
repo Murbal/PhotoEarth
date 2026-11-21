@@ -3,7 +3,7 @@ import type { LatLng, PlaceDetails, PlaceSuggestion, Result } from '@shared/type
 
 /**
  * One search session = one session token: every autocomplete keystroke plus the final
- * Place Details call is billed as a single search (§3.3). Requests go through the main
+ * Place Details call is billed as a single search. Requests go through the main
  * process so the key stays out of renderer network logs and CORS doesn't apply.
  */
 export class PlacesSession {

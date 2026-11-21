@@ -14,7 +14,7 @@ import {
 } from '@renderer/lib/time'
 import { lookupTimeZone } from '@renderer/lib/timezone'
 
-describe('time zone resolution (§8.4)', () => {
+describe('time zone resolution', () => {
   const cases: Array<[string, number, number, string]> = [
     ['Zurich', 47.3769, 8.5417, 'Europe/Zurich'],
     ['Lauterbrunnen', 46.5935, 7.9091, 'Europe/Zurich'],

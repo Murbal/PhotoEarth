@@ -863,7 +863,7 @@ input[type='color'] {
   margin-bottom: 2px;
 }
 
-/* Light pollution zones (§7.5): a chip per zone, brightness ticks under the boundaries. */
+/* Light pollution zones: a chip per zone, brightness ticks under the boundaries. */
 .lp-legend {
   margin-top: 6px;
 }
@@ -2371,7 +2371,7 @@ input[type='color'] {
   background: color-mix(in srgb, var(--cloud) 70%, transparent);
 }
 
-/* ───────────── Map mode (§5.5) ───────────── */
+/* ───────────── Map mode ───────────── */
 
 /* Over the (paused) 3D canvas, under the overlay UI. */
 .map-mode {
@@ -2541,7 +2541,7 @@ input[type='color'] {
   pointer-events: none;
 }
 
-/* Google's logo and the copyright of what the map shows stay on screen (§3.1, §9). */
+/* Google's logo and the copyright of what the map shows stay on screen. */
 .map-attribution {
   position: absolute;
   left: 12px;

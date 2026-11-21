@@ -242,7 +242,7 @@ export interface WeatherState {
   error: string | null
 }
 
-/** Estimated night sky brightness at the inspected point (§7.5), while the overlay is on. */
+/** Estimated night sky brightness at the inspected point, while the overlay is on. */
 export interface SkyInfo {
   /** `outside`: beyond the data (65° S – 75° N). */
   status: 'loading' | 'ready' | 'outside' | 'unavailable'
@@ -370,7 +370,7 @@ export interface AppState {
   eyeLevel: boolean
   /** Viewfinder mode: lens field of view and crop frame (settings.viewfinder). */
   viewfinder: boolean
-  /** Saved scouting locations (§11.5). */
+  /** Saved scouting locations. */
   bookmarks: Bookmark[]
   /** Saved elevation profile paths. */
   profiles: SavedProfile[]
@@ -383,9 +383,9 @@ export interface AppState {
   autoRange: { min: number; max: number } | null
   terrainReady: boolean
   tilesetReady: boolean
-  /** Map mode's Google 2D Tiles session (§5.5). */
+  /** Map mode's Google 2D Tiles session. */
   mapSession: MapSession | null
-  /** Heightmap terrain shadows (§8.1.1). */
+  /** Heightmap terrain shadows. */
   terrainShadows: 'off' | 'loading' | 'ready' | 'unavailable'
   toast: Toast | null
 

@@ -67,7 +67,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 }
 
 /**
- * Owns the Cesium widget and the managers from the architecture diagram (§4). React never
+ * Owns the Cesium widget and the managers from the architecture diagram. React never
  * touches Cesium directly: it updates the store, and the engine reacts to store changes.
  */
 export class Engine {
@@ -95,7 +95,7 @@ export class Engine {
   readonly preloader: TilePreloader
   readonly viewfinder: Viewfinder
   readonly markers: LocationMarkers
-  /** Map mode's own 2D Tiles session (§5.5). */
+  /** Map mode's own 2D Tiles session. */
   readonly mapTiles: MapTiles
   /** The map view Map mode opened at from the 3D view; unmoved, leaving restores that view. */
   private mapEntry: MapView | null = null
@@ -117,7 +117,7 @@ export class Engine {
       baseLayer: false,
       terrainProvider: new EllipsoidTerrainProvider(),
       scene3DOnly: true,
-      // Render only when something changes; animation forces continuous frames (§5.3).
+      // Render only when something changes; animation forces continuous frames.
       requestRenderMode: true,
       maximumRenderTimeChange: Number.POSITIVE_INFINITY,
       creditContainer,
@@ -790,7 +790,7 @@ export class Engine {
     })
   }
 
-  // ───────────────────────────── Map mode (§5.5) ─────────────────────────────
+  // ───────────────────────────── Map mode ─────────────────────────────
 
   /** The map view now: the live one while a gesture runs, else the committed one. */
   mapView(): MapView {
@@ -827,7 +827,7 @@ export class Engine {
 
   /**
    * While the map is open the 3D view is covered: Cesium's render loop stops, so it draws,
-   * streams and uploads nothing (§5.3).
+   * streams and uploads nothing.
    */
   private pauseForMap(): void {
     this.scene.camera.cancelFlight()

@@ -11,7 +11,7 @@ As PhotoEarth evolves into a complete **photography planning and brainstorming s
 ### Design Goals
 1. **The 3D Globe remains first-class and instant.** Switching between Projects, Moodboards, and the Globe must not reload Cesium, lose the camera pose, or trigger shader recompilation hitches.
 2. **Project-centric workflow, not siloed tools.** Modules share data cleanly: a Project links Globe locations and Moodboards; the Globe can snapshot its Viewfinder directly onto a Moodboard; a Moodboard card can jump straight back to a Globe location.
-3. **Preserve PhotoEarth's existing engineering standards.** Strict TypeScript, `contextIsolation` + `sandbox`, main-process-only persistence and third-party API calls, versioned JSON files with automatic migration, and zero regressions to existing unit/E2E tests.
+3. **Preserve PhotoEarth's existing engineering standards.** Strict TypeScript, `contextIsolation` + `sandbox`, main-process-only persistence and third-party API calls, versioned JSON files with automatic migration, and zero regressions to existing unit tests.
 4. **Incremental migration.** The modular shell can be introduced first with the Globe as the sole module, followed by Projects Hub and Moodboards without a "big bang" rewrite.
 
 ---
@@ -101,7 +101,7 @@ All stores remain plain Zustand stores so non-React code (like `Engine` and `com
 ## 5. Persistence, Assets & Security
 
 ### 5.1 `userData` Directory Layout
-Extend the existing layout from [`SPEC.md §4.2`](../SPEC.md):
+Extend the existing `userData` layout:
 
 ```
 <userData>/
@@ -170,7 +170,7 @@ src/
    - Scope Globe keyboard shortcuts to `activeModule === 'globe'`.
    - Add `engine.setSuspended(boolean)` and keep-alive hiding.
    - Promote `PhotoStore` to a shared main-process service.
-   - Verify all existing Vitest unit tests and Playwright E2E smoke tests pass unchanged.
+   - Verify all existing Vitest unit tests pass unchanged.
 2. **Phase 2 — Projects Hub Module:**
    - Implement `ProjectStore` + IPC + `projectsStore` + Projects Hub UI.
    - Add active-project filtering and "Save to Project" integration inside the Globe module.
