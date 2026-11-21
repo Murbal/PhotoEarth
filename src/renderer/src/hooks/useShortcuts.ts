@@ -76,6 +76,7 @@ export function useShortcuts(): void {
         p: 'profile-start',
         t: 'toggle-time-panel',
         l: 'toggle-elevation-panel',
+        m: 'toggle-place-labels',
         '+': 'zoom-in',
         '=': 'zoom-in',
         '-': 'zoom-out'

@@ -1,10 +1,11 @@
 import { app, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { IPC } from '@shared/ipc'
+import { ALL_NEARBY_KINDS, CITIES_MAX_SPAN_DEG } from '@shared/places'
 import { sanitizeSettings } from '@shared/settings'
-import type { ApiKeys, AppInfo, AutocompleteRequest, NewBookmark, Settings } from '@shared/types'
+import type { ApiKeys, AppInfo, AutocompleteRequest, CitiesRequest, NearbyRequest, NewBookmark, Settings } from '@shared/types'
 import type { BookmarkStore } from './bookmarks'
 import type { JsonFile } from './jsonStore'
-import { GOOGLE_REFERER, placeDetails, placesAutocomplete, validateKeys } from './network'
+import { GOOGLE_REFERER, placeDetails, placesAutocomplete, placesCities, placesNearby, validateKeys } from './network'
 import type { SecretStore } from './secrets'
 import { openExternalSafely } from './security'
 
@@ -75,4 +76,43 @@ export function registerIpc({ settings, secrets, bookmarks, isTrustedSender, onK
   handle(IPC.placesDetails, (placeId: unknown, token: unknown) =>
     placeDetails(secrets.get().googleApiKey, str(placeId, 300), str(token, 100))
   )
+  handle(IPC.placesNearby, (req: unknown) => {
+    const r = (req ?? {}) as Partial<NearbyRequest>
+    const { latitude, longitude } = r.center ?? {}
+    if (
+      !ALL_NEARBY_KINDS.includes(r.kind as NearbyRequest['kind']) ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      !Number.isFinite(r.radius)
+    ) {
+      return { ok: false, error: { status: 'error', message: 'Invalid nearby request.' } }
+    }
+    return placesNearby(secrets.get().googleApiKey, {
+      kind: r.kind as NearbyRequest['kind'],
+      center: { latitude: Math.max(-90, Math.min(90, latitude as number)), longitude: Math.max(-180, Math.min(180, longitude as number)) },
+      radius: r.radius as number
+    })
+  })
+  handle(IPC.placesCities, (req: unknown) => {
+    const r = (req ?? {}) as Partial<CitiesRequest>
+    const { south, west, north, east } = r
+    if (
+      ![south, west, north, east].every(Number.isFinite) ||
+      (south as number) >= (north as number) ||
+      (west as number) >= (east as number) ||
+      (north as number) - (south as number) > CITIES_MAX_SPAN_DEG ||
+      // Longitude degrees shrink toward the poles, so cells span more of them there.
+      (east as number) - (west as number) > 60
+    ) {
+      return { ok: false, error: { status: 'error', message: 'Invalid cities request.' } }
+    }
+    const lat = (v: number) => Math.max(-90, Math.min(90, v))
+    const lon = (v: number) => Math.max(-180, Math.min(180, v))
+    return placesCities(secrets.get().googleApiKey, {
+      south: lat(south as number),
+      west: lon(west as number),
+      north: lat(north as number),
+      east: lon(east as number)
+    })
+  })
 }

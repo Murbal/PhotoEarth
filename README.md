@@ -24,7 +24,7 @@ On first launch PhotoEarth asks for two keys, validates them with a test request
 
 | Key | Used for | Where |
 |---|---|---|
-| Google Maps Platform API key | Photorealistic 3D Tiles, 2D satellite/terrain imagery (Map Tiles API), place search (Places API (New)) | [Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials). Enable **Map Tiles API** and **Places API (New)**. |
+| Google Maps Platform API key | Photorealistic 3D Tiles, 2D satellite/terrain imagery (Map Tiles API), place search and the place names on the map (Places API (New)) | [Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials). Enable **Map Tiles API** and **Places API (New)**. |
 | Cesium ion access token | Cesium World Terrain: Elevation mode, profiles, long-range terrain shadows | [ion.cesium.com/tokens](https://ion.cesium.com/tokens) |
 
 Both work on their free tiers. Either can be skipped and added later in **Settings → API keys**.
@@ -61,6 +61,7 @@ They're loaded in the main process only, so they never end up in the renderer bu
 | `Ctrl+K` | Search places, paste coordinates (decimal, DMS, Google Maps URLs), bookmarks, commands |
 | `Ctrl+B` | Save a bookmark |
 | `T` / `L` / `P` | Time & sun panel / elevation styling / elevation profile |
+| `M` | Place names on / off |
 | `Space`, `[` `]`, `Shift+[` `]` | Play/pause the sun, ±15 min, ±1 day |
 | `?` | All shortcuts |
 
@@ -100,6 +101,7 @@ Notable decisions:
 
 - **`app://photoearth/` protocol** instead of `file://`, so Cesium's module workers and wasm load from a real origin, and the strict CSP (no `unsafe-eval`) has a `'self'`. The window runs with `contextIsolation`, `sandbox`, `nodeIntegration: false`; navigation and new windows are blocked (external links open in the browser).
 - **Places API calls and key validation run in the main process.** One autocomplete session token covers a whole search. Input is debounced at 250 ms with a 3-character minimum, and the field masks request only location fields.
+- **Place names come from Places API (New) Nearby Search** (towns and mountain peaks), queried in the main process for grid cells around the view once the camera settles. Labels stay upright, anchored on the ground (clamped to the 3D tiles or terrain), and are hidden as a whole when a CPU ray cast finds a ridge or building in the line of sight. They fade with distance and are decluttered on screen. Nearby Search has no population or prominence for towns, and its "popularity" order mostly follows distance from the query's center. So towns named like their district or state (Interlaken, Thun, San Francisco), or that a nearby town is named after ("Matten bei Interlaken"), win the space on screen and stay visible from farther away. From high up, small cells would only find whatever lies nearest their centers, so wide views also ask Text Search for the region's most relevant attractions, train stations and city halls, grouped by the city in their address (New York, Philadelphia; Zürich, Bern, Luzern). States/cantons and countries come from Nearby Search too, and fade in as the camera rises.
 - **Heights are shown above mean sea level.** Google tiles and Cesium terrain report ellipsoidal heights; readouts, profiles and contours are corrected with the EGM96 geoid (loaded lazily).
 - **One custom globe material** composites hypsometric tint, slope classes, hillshade and contours (every 5th an index line). Hillshade follows the simulated sun (fading to flat shading at night) or uses the classic NW 45° light. It corrects for vertical exaggeration.
 - **Local time follows the camera target.** The time slider is wall-clock time in the target's IANA zone, resolved offline. Crossing into another zone keeps the local time, so "07:30" means 07:30 wherever you look.
@@ -122,6 +124,7 @@ Cesium's shadow maps on Google's 3D tiles miss off-screen and distant ridges, lo
 
 - Visual behavior with live Google and Cesium data, the 60 fps target, and the shadow spike must be checked on Windows with real keys. The automated suite runs without keys.
 - Terrain shadows cover ±80 km around the view. Wider views (camera above ~100 km) get no cast shadows outside that area, where they'd be sub-pixel anyway. They follow Cesium World Terrain, so they're only as accurate as its heights (bare earth in most places, so forest canopy doesn't cast).
+- Place names are billed as Places API Nearby Search Pro and Text Search Pro requests: about 10 per newly explored close view and up to about 17 per newly explored wide view, at most 60 per minute (a guard against runaway requests, not a spending limit: set a daily quota on Places API (New) in Cloud Console for that). Results are cached in memory for the session only, never on disk. Switch them off with `M`. Nearby Search doesn't support neighborhoods, so cities show their town name and named hills only.
 - Google Maps short links (`maps.app.goo.gl`) can't be resolved offline; paste the full URL.
 - Linux and macOS are best effort. The macOS build (`npm run package:mac`, Apple Silicon only, must run on a Mac) is signed ad hoc, not with a Developer ID, so it isn't notarized: on first launch Gatekeeper blocks it, and you allow it under **System Settings → Privacy & Security → Open Anyway** (or run `xattr -dr com.apple.quarantine /Applications/PhotoEarth.app`).
 

@@ -15,5 +15,7 @@ export const IPC = {
   bookmarksUpdate: 'bookmarks:update',
   bookmarksRemove: 'bookmarks:remove',
   placesAutocomplete: 'places:autocomplete',
-  placesDetails: 'places:details'
+  placesDetails: 'places:details',
+  placesNearby: 'places:nearby',
+  placesCities: 'places:cities'
 } as const

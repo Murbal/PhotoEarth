@@ -86,6 +86,8 @@ export interface Settings {
   lastCamera: CameraView | null
   lastMode: MapMode
   imagery: ImageryType
+  /** Google place names on the map (a labels-only Map Tiles layer). */
+  placeLabels: boolean
   elevation: ElevationStyleSettings
   verticalExaggeration: number
   lighting: LightingMode
@@ -171,6 +173,34 @@ export interface PlaceDetails {
   viewport?: { low: LatLng; high: LatLng }
 }
 
+/** Place kinds shown as map labels (Places API (New) Nearby Search types). */
+export type NearbyKind = 'locality' | 'mountain_peak' | 'administrative_area_level_1' | 'country'
+
+export interface NearbyRequest {
+  kind: NearbyKind
+  center: LatLng
+  /** Meters, at most 50 km. */
+  radius: number
+}
+
+export interface NearbyPlace {
+  id: string
+  name: string
+  location: LatLng
+  /** 2: named like its state or canton, 1: like its county or district, 0: neither. */
+  seat: 0 | 1 | 2
+  /** Cities only: how many of the region's top stations and attractions are in it. */
+  fame?: number
+}
+
+/** A region to find the main cities of (degrees). */
+export interface CitiesRequest {
+  south: number
+  west: number
+  north: number
+  east: number
+}
+
 export interface AutocompleteRequest {
   input: string
   sessionToken: string
@@ -221,6 +251,9 @@ export interface PhotoEarthApi {
   places: {
     autocomplete(request: AutocompleteRequest): Promise<Result<PlaceSuggestion[]>>
     details(placeId: string, sessionToken: string): Promise<Result<PlaceDetails>>
+    /** Up to 20 places of one kind in a circle, most popular first (for map labels). */
+    nearby(request: NearbyRequest): Promise<Result<NearbyPlace[]>>
+    cities(request: CitiesRequest): Promise<Result<NearbyPlace[]>>
   }
   openExternal(url: string): Promise<void>
   onMenuCommand(listener: (command: MenuCommand) => void): () => void

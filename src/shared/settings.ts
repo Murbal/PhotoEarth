@@ -62,6 +62,7 @@ export function defaultSettings(): Settings {
     lastCamera: null,
     lastMode: 'photorealistic',
     imagery: 'satellite',
+    placeLabels: true,
     elevation: {
       tint: { enabled: true, opacity: 0.55, palette: 'terrain', autoRange: true, min: 0, max: 4500 },
       contours: { enabled: true, interval: 50, width: 1.2, color: '#ffffff', opacity: 0.75 },
@@ -178,6 +179,7 @@ export function sanitizeSettings(raw: Json): Settings {
     lastCamera: sanitizeCameraView(r.lastCamera),
     lastMode: oneOf(r.lastMode, modes, d.lastMode),
     imagery: oneOf(r.imagery, IMAGERY_TYPES, d.imagery),
+    placeLabels: bool(r.placeLabels, d.placeLabels),
     elevation: {
       tint: {
         enabled: bool(tint.enabled, d.elevation.tint.enabled),

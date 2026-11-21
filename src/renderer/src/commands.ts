@@ -39,6 +39,14 @@ export function getCommands(): Command[] {
   return [
     { id: 'mode-photorealistic', title: 'Photorealistic mode', group: 'View', keys: '1', keywords: '3d tiles google', run: () => engine()?.setMode('photorealistic') },
     { id: 'mode-elevation', title: 'Elevation mode', group: 'View', keys: '2', keywords: 'terrain contours', run: () => engine()?.setMode('elevation') },
+    {
+      id: 'toggle-place-labels',
+      title: 'Show / hide place names',
+      group: 'View',
+      keys: 'M',
+      keywords: 'labels map names cities towns peaks',
+      run: toggleSetting((d) => void (d.placeLabels = !d.placeLabels))
+    },
     { id: 'toggle-shadows', title: 'Toggle shadows', group: 'Time & sun', run: toggleSetting((d) => void (d.shadows = !d.shadows)) },
     {
       id: 'toggle-lighting',

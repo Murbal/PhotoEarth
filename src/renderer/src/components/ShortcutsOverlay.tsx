@@ -34,7 +34,8 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
       ['N', 'Face north'],
       ['U', 'Top-down view'],
       ['R', 'Level the horizon'],
-      ['1 / 2', 'Photorealistic / Elevation mode']
+      ['1 / 2', 'Photorealistic / Elevation mode'],
+      ['M', 'Place names on / off']
     ]
   ],
   [

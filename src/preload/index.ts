@@ -24,7 +24,9 @@ const api: PhotoEarthApi = {
   },
   places: {
     autocomplete: (request) => ipcRenderer.invoke(IPC.placesAutocomplete, request),
-    details: (placeId, sessionToken) => ipcRenderer.invoke(IPC.placesDetails, placeId, sessionToken)
+    details: (placeId, sessionToken) => ipcRenderer.invoke(IPC.placesDetails, placeId, sessionToken),
+    nearby: (request) => ipcRenderer.invoke(IPC.placesNearby, request),
+    cities: (request) => ipcRenderer.invoke(IPC.placesCities, request)
   },
   openExternal: (url) => ipcRenderer.invoke(IPC.openExternal, url),
   onMenuCommand: (listener) => {

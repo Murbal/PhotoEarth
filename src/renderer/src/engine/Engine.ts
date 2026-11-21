@@ -21,6 +21,7 @@ import { appState, useAppStore, type AppState } from '../store/appStore'
 import { CameraController } from './CameraController'
 import { ElevationStyler } from './ElevationStyler'
 import { GoogleImagery } from './GoogleImagery'
+import { PlaceLabels } from './PlaceLabels'
 import { PointInspector } from './PointInspector'
 import { ProfileTool } from './ProfileTool'
 import { resolveQuality } from './quality'
@@ -32,6 +33,8 @@ import { TerrainShadows } from './TerrainShadows'
 import { TilePreloader } from './TilePreloader'
 import { TilesetManager } from './TilesetManager'
 import { cartographicDeg, currentView, pickSurface, surfaceHeight } from './util'
+
+type ProviderKey = 'tiles' | 'terrain' | 'imagery' | 'labels'
 
 function subscribeJson<T>(selector: (s: AppState) => T, listener: (value: T) => void): () => void {
   return useAppStore.subscribe(selector, listener, {
@@ -53,6 +56,7 @@ export class Engine {
   readonly tiles: TilesetManager
   readonly terrain: TerrainManager
   readonly imagery: GoogleImagery
+  readonly labels: PlaceLabels
   readonly camera: CameraController
   readonly sun: SunController
   readonly styler: ElevationStyler
@@ -71,7 +75,7 @@ export class Engine {
   private pendingMove: Cartesian2 | null = null
   private terrainOnGlobe: unknown = null
   private keys: ApiKeys = { googleApiKey: null, cesiumIonToken: null }
-  private failed = { tiles: false, terrain: false, imagery: false }
+  private failed = { tiles: false, terrain: false, imagery: false, labels: false }
   private destroyed = false
 
   constructor(container: HTMLElement, creditContainer: HTMLElement) {
@@ -111,13 +115,14 @@ export class Engine {
     if (scene.skyAtmosphere) scene.skyAtmosphere.show = true
     scene.postProcessStages.fxaa.enabled = false
 
-    const status = (key: 'tiles' | 'terrain' | 'imagery', title: string) => ({
+    const status = (key: ProviderKey, title: string) => ({
       error: (check: ApiCheck) => this.reportFailure(key, title, check),
       ready: () => this.reportReady(key)
     })
     const tiles = status('tiles', 'Photorealistic 3D Tiles unavailable')
     const terrain = status('terrain', 'Cesium World Terrain unavailable')
     const imagery = status('imagery', 'Google 2D imagery unavailable')
+    const labels = status('labels', 'Google place names unavailable')
 
     installDetailShadowPatch()
     this.terrainShadows = new TerrainShadows(
@@ -145,6 +150,10 @@ export class Engine {
       appState().set({ terrainReady: true })
     })
     this.imagery = new GoogleImagery(scene, this.widget.creditDisplay, imagery.error, imagery.ready)
+    this.labels = new PlaceLabels(scene, { onError: labels.error, onReady: labels.ready }, {
+      nearby: (req) => window.photoearth.places.nearby(req),
+      cities: (req) => window.photoearth.places.cities(req)
+    })
     this.camera = new CameraController(scene, {
       onFlyModeChange: (flyMode) => appState().set({ flyMode }),
       onEyeLevelChange: (eyeLevel) => appState().set({ eyeLevel }),
@@ -209,6 +218,7 @@ export class Engine {
     this.sun.destroy()
     this.readouts.destroy()
     this.imagery.destroy()
+    this.labels.destroy()
     this.terrainShadows.destroy()
     this.preloader.destroy()
     this.widget.destroy()
@@ -219,7 +229,7 @@ export class Engine {
   }
 
   private onOnline = (): void => {
-    if (this.failed.tiles || this.failed.terrain || this.failed.imagery) void this.retryProviders()
+    if (Object.values(this.failed).some(Boolean)) void this.retryProviders()
   }
 
   async setKeys(keys: ApiKeys): Promise<void> {
@@ -250,6 +260,11 @@ export class Engine {
       dismissBanner('imagery')
       jobs.push(this.imagery.configure(keys.googleApiKey, appState().settings.imagery).then(() => this.applyMode()))
     }
+    if (changed.google || this.failed.labels) {
+      dismissBanner('labels')
+      this.labels.configure(keys.googleApiKey, appState().settings.placeLabels, this.failed.labels)
+      this.failed.labels = false
+    }
     if (changed.ion || this.failed.terrain) {
       this.failed.terrain = false
       dismissBanner('terrain')
@@ -260,11 +275,11 @@ export class Engine {
   }
 
   retryProviders(): Promise<void> {
-    this.failed = { tiles: true, terrain: true, imagery: true }
+    this.failed = { tiles: true, terrain: true, imagery: true, labels: true }
     return this.setKeys(this.keys)
   }
 
-  private reportFailure(key: 'tiles' | 'terrain' | 'imagery', title: string, check: ApiCheck): void {
+  private reportFailure(key: ProviderKey, title: string, check: ApiCheck): void {
     this.failed[key] = true
     if (key === 'tiles') appState().set({ tilesetReady: false })
     appState().postBanner({
@@ -280,7 +295,7 @@ export class Engine {
     this.applyMode()
   }
 
-  private reportReady(key: 'tiles' | 'terrain' | 'imagery'): void {
+  private reportReady(key: ProviderKey): void {
     this.failed[key] = false
     appState().dismissBanner(key)
   }
@@ -315,6 +330,12 @@ export class Engine {
     )
     s.push(
       subscribeJson(
+        (st) => st.settings.placeLabels,
+        (on) => this.labels.configure(this.keys.googleApiKey, on)
+      )
+    )
+    s.push(
+      subscribeJson(
         (st) => [st.settings.shadows, st.settings.lighting, st.terrainReady],
         () => this.applyTerrainShadows()
       )
@@ -339,6 +360,7 @@ export class Engine {
       this.scene.terrainProvider = terrain
     }
     this.imagery.setVisible(globe.show)
+    this.labels.refresh()
     if (!photo && !this.terrain.available) {
       appState().postBanner({
         id: 'elevation-terrain',
@@ -469,6 +491,7 @@ export class Engine {
   private onMoveEnd(): void {
     this.readouts.refresh()
     this.imagery.updateAttribution()
+    this.labels.onMoveEnd()
     this.scheduleAutoRange()
     if (this.saveTimer !== null) window.clearTimeout(this.saveTimer)
     this.saveTimer = window.setTimeout(() => {
@@ -484,7 +507,9 @@ export class Engine {
     if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer)
     this.refreshTimer = window.setTimeout(() => {
       this.refreshTimer = null
-      if (!this.destroyed) this.readouts.refresh()
+      if (this.destroyed) return
+      this.readouts.refresh()
+      this.labels.refresh()
     }, 300)
   }
 

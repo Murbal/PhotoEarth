@@ -1,10 +1,17 @@
 import { net, session } from 'electron'
 import { classifyGoogleError, classifyIonError, MISSING, OK } from '@shared/apiErrors'
 import {
+  aggregateCities,
   AUTOCOMPLETE_FIELD_MASK,
   buildAutocompleteBody,
+  buildCitiesBody,
+  buildNearbyBody,
+  CITIES_FIELD_MASK,
+  CITY_QUERIES,
   DETAILS_FIELD_MASK,
+  NEARBY_FIELD_MASK,
   parseAutocomplete,
+  parseNearby,
   parsePlaceDetails,
   PLACES_ENDPOINT
 } from '@shared/places'
@@ -12,6 +19,9 @@ import type {
   ApiCheck,
   ApiKeys,
   AutocompleteRequest,
+  CitiesRequest,
+  NearbyPlace,
+  NearbyRequest,
   PlaceDetails,
   PlaceSuggestion,
   Result,
@@ -145,6 +155,44 @@ export async function placeDetails(
     return details
       ? { ok: true, data: details }
       : { ok: false, error: { status: 'error', message: 'The place has no location.' } }
+  } catch {
+    return { ok: false, error: { status: 'error', message: 'Unexpected response from the Places API.' } }
+  }
+}
+
+/** The main cities of a region, from Text Search (see CITY_QUERIES). */
+export async function placesCities(key: string | null, req: CitiesRequest): Promise<Result<NearbyPlace[]>> {
+  if (!key) return { ok: false, error: MISSING }
+  const responses = await Promise.all(
+    CITY_QUERIES.map((query) =>
+      request(`${PLACES_ENDPOINT}/places:searchText`, {
+        method: 'POST',
+        headers: googleHeaders(key, CITIES_FIELD_MASK),
+        body: JSON.stringify(buildCitiesBody(query, req))
+      })
+    )
+  )
+  const failed = responses.find((res) => !okStatus(res.status))
+  if (failed) return { ok: false, error: classifyGoogleError('Places API (New)', failed.status, failed.body, net.isOnline()) }
+  try {
+    return { ok: true, data: aggregateCities(responses.map((res) => JSON.parse(res.body) as unknown)) }
+  } catch {
+    return { ok: false, error: { status: 'error', message: 'Unexpected response from the Places API.' } }
+  }
+}
+
+export async function placesNearby(key: string | null, req: NearbyRequest): Promise<Result<NearbyPlace[]>> {
+  if (!key) return { ok: false, error: MISSING }
+  const res = await request(`${PLACES_ENDPOINT}/places:searchNearby`, {
+    method: 'POST',
+    headers: googleHeaders(key, NEARBY_FIELD_MASK),
+    body: JSON.stringify(buildNearbyBody(req))
+  })
+  if (!okStatus(res.status)) {
+    return { ok: false, error: classifyGoogleError('Places API (New)', res.status, res.body, net.isOnline()) }
+  }
+  try {
+    return { ok: true, data: parseNearby(JSON.parse(res.body)) }
   } catch {
     return { ok: false, error: { status: 'error', message: 'Unexpected response from the Places API.' } }
   }

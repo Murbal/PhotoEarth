@@ -26,6 +26,12 @@ const PATHS: Record<string, ReactElement> = {
     </>
   ),
   bookmark: <path d="M6 3h12v18l-6-4-6 4z" />,
+  labels: (
+    <>
+      <path d="M3 7h11.5l5.5 5-5.5 5H3z" />
+      <path d="M7 12h5" />
+    </>
+  ),
   settings: (
     <>
       <circle cx="12" cy="12" r="3" />

@@ -102,6 +102,8 @@ export function RightRail() {
   const profileOn = useAppStore((s) => s.profile.active || s.profile.samples.length > 0)
   const eyeLevel = useAppStore((s) => s.eyeLevel)
   const flyMode = useAppStore((s) => s.flyMode)
+  const placeLabels = useAppStore((s) => s.settings.placeLabels)
+  const patchSettings = useAppStore((s) => s.patchSettings)
 
   return (
     <div className="right-rail">
@@ -123,6 +125,14 @@ export function RightRail() {
           }}
         >
           <Icon name="profile" />
+        </button>
+        <button
+          className={`icon-btn ${placeLabels ? 'active' : ''}`}
+          title="Place names (M)"
+          aria-pressed={placeLabels}
+          onClick={() => patchSettings((d) => void (d.placeLabels = !d.placeLabels))}
+        >
+          <Icon name="labels" />
         </button>
         <button className={`icon-btn ${panels.bookmarks ? 'active' : ''}`} title="Bookmarks" onClick={() => togglePanel('bookmarks')}>
           <Icon name="bookmark" />
