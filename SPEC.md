@@ -84,7 +84,7 @@ Point elevation readouts in Photorealistic mode come from sampling the 3D tilese
 │ • Window lifecycle, menus, global shortcuts                           │
 │ • Settings store (JSON in userData)                                   │
 │ • Secrets: API keys encrypted with electron.safeStorage               │
-│ • IPC handlers: getKeys/setKeys, settings, bookmarks CRUD             │
+│ • IPC handlers: keys, settings, saved locations, profiles, photos     │
 └───────────────────────────────▲───────────────────────────────────────┘
                                 │ typed IPC (contextBridge)
 ┌───────────────────────────────┴──── preload ──────────────────────────┐
@@ -108,12 +108,14 @@ Point elevation readouts in Photorealistic mode come from sampling the 3D tilese
 - `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`.
 - A strict Content Security Policy that allows only the required Google / Cesium / terrain origins, plus the light pollution tile hosts (§7.5).
 - API keys are never written in plaintext. They are encrypted with `safeStorage` in the main process and sent to the renderer only when needed. Tile requests necessarily include the key, so the user should **restrict the key by API** (Map Tiles API, Places, etc.) in Google Cloud Console.
+- Reference photos of saved locations (§11.5) reach the renderer only through a read-only `photo://` scheme that serves the photo store's own file names; the CSP allows `img-src photo:` and nothing else from it.
 - Google API keys restricted by HTTP referrer don't work from `file://`. Either document using API restrictions instead, or set a fixed `Referer` header with `session.webRequest.onBeforeSendHeaders` for Google origins and document the referrer to allow.
 
 ### 4.2 Persistence (userData)
 
 - `settings.json`: UI preferences, quality settings, last camera position, last mode.
-- `bookmarks.json`: saved views (name, camera position/orientation, optional date/time).
+- `bookmarks.json`: saved scouting locations and saved elevation profiles (format version 2, §11.5). Version-1 files (views only) are migrated when read; the original is kept as `bookmarks.v1.backup.json`.
+- `photos/`: reference photos of saved locations and their thumbnails, copied in on import (§11.5).
 - `secrets`: encrypted API keys.
 
 ## 5. Map View & Rendering
@@ -181,7 +183,7 @@ All movement has **inertia** with a configurable damping and an "Off" option.
 | `U` | Reset tilt to top-down. |
 | `R` | Reset to a level horizon view (tilt to eye-level at the current position). |
 | `Ctrl/Cmd+K` | Open the search / command palette. |
-| `Ctrl/Cmd+B` | Save a bookmark of the current view. |
+| `Ctrl/Cmd+B` | Save the current view as a location (§11.5). |
 | `1` / `2` | Switch Photorealistic / Elevation mode. |
 | `Space` | Play / pause sun animation (when the time panel is open). |
 | `?` | Show the shortcuts overlay. |
@@ -202,7 +204,7 @@ All movement has **inertia** with a configurable damping and an "Off" option.
 - A command palette (`Ctrl/Cmd+K`) that combines:
   - Place search (geocoding, §3.3) with autocomplete
   - Coordinate entry
-  - Bookmarks
+  - Saved locations (by name, tags, best time or notes) and saved profiles
   - App commands (switch mode, toggle shadows, open settings, etc.)
 - Choosing a result **flies** the camera there with a smooth eased arc. The duration scales with distance and can be interrupted by any user input.
 
@@ -211,6 +213,7 @@ All movement has **inertia** with a configurable damping and an "Off" option.
 - Save, rename, delete, and fly to saved views.
 - A bookmark stores the camera position, heading, pitch, roll, the mode, and optionally the simulated date/time.
 - Bookmarks are listed in a collapsible side panel and in the command palette.
+- Bookmarks have since grown into **saved scouting locations** (§11.5): every bookmark is a location, and the side panel is the locations panel.
 
 ## 7. Elevation Features
 
@@ -236,7 +239,7 @@ These can be toggled and combined:
 - Click two or more points to draw a path across the terrain.
 - A bottom panel shows a profile chart (distance vs. elevation) with min, max, total ascent and descent, and distance.
 - Hovering the chart highlights the matching point on the map, and the other way around.
-- Profiles are temporary in this spec. Saving them is future work.
+- **Saving**: a finished path can be saved (profile panel, *Save path*; named "Path 3.2 km" by default) on its own or with a saved location (§11.5); the location editor can also save the drawn path to that location. A saved profile keeps its clicked vertices with their surface heights. Reopening it (from the location editor, the locations list or the command palette) redraws the path, samples the profile again from the current elevation source, and frames it; the panel shows its name. Saved profiles can be renamed and deleted, and a location's profiles are deleted with it.
 
 ### 7.4 Peak / point inspection
 
@@ -360,7 +363,7 @@ These will get their own spec later:
 - **Moon simulation**: position, phase, rise and set. *Done (§11.3); the horizon panorama also draws its path and skyline rise/set (§11.2).*
 - **Milky Way / galactic core** position.
 - **Viewshed analysis**: what is visible from a point. *First slice done: the skyline seen from a point (§11.2).*
-- Saved scouting locations with notes, photos, and tags. KML/GPX import and export.
+- Saved scouting locations with notes, photos, and tags. *Done (§11.5).* KML/GPX import and export remain.
 - Weather / cloud cover overlays. *First slice done: the forecast in the time panel (§11.4).*
 - Screenshot / export of views, within the licensing limits.
 
@@ -407,6 +410,17 @@ Cloud, visibility, wind and fog for sunrise and sunset planning, in the time pan
 - **Fog risk**: Open-Meteo has no fog probability. *Likely*: weather code 45/48 or visibility < 1 km. *Possible*: temperature within 1 °C of the dew point (or humidity ≥ 97 %) with wind < 3 m/s, or visibility < 5 km with humidity ≥ 90 %. The day strip shows the worst risk within 2 h of sunrise.
 - **Wind**: *calm* (< 2 m/s, gusts < 4: reflections, long exposures), *light*, *breezy* (gusts ≥ 8 or wind ≥ 5), *strong* (gusts ≥ 12 or wind ≥ 9: too windy for most camera drones). Shown in km/h or mph by the unit setting.
 - **Interaction**: a day's ↑ / ↓ sets the simulated instant to that sunrise / sunset. Dates outside the forecast say so. A forecast more than 25 km from the view center is hidden while the new one loads.
+
+### 11.5 Saved scouting locations (implemented)
+
+The view bookmarks (§6.5) grew into scouting locations: one model, one file, one panel. A bookmark is a location with nothing filled in.
+
+- **A location** stores its name; the camera view and mode, the viewfinder lens when saved framed (§11.1), and optionally the simulated instant with its zone, as bookmarks did; its **position**, the ground point it is about (the inspect marker, else the search pin, else the surface at the view center), with its ellipsoidal height; a **status**, *to visit* or *visited*; **tags** (lowercase, unique, at most 24); free-text **notes**; a free-text **best time** ("sunrise, late October, after snow"); **reference photos**; and its **saved elevation profiles** (§7.3).
+- **Saving**: `Ctrl/Cmd+B` saves the current view and opens the list, keeping the keyboard on the map; the panel's button also opens the new location in the editor. A location is named after the search result when there is one. *Use current view* replaces a location's view, lens, time and position with the current ones.
+- **Panel** (the left side panel): the list, newest first, shows status, tags, the saved time and the first photo. It filters by status (all / to visit / visited) and by tag (a location must carry every selected tag); general (unattached) profiles are listed below. Clicking a location flies there and restores its mode, lens and time. The editor changes every field in place: text saves on blur, and also about a second after typing stops. Deleting asks first and takes the photos and attached profiles with it.
+- **Map markers**: a pin for each location the filter shows (blue to visit, green visited; the open one larger), with its name within 250 km of the camera. They are one billboard and one label collection, rebuilt only when the list, filter or selection changes: no entities, no ground clamping and no per-frame work, so camera motion is unaffected (§5.3). Locations whose height is unknown are placed with one batched terrain sample. A click is hit-tested on the CPU against the projected pins (no GPU pick) and opens the location as a list click does (the editor opens too). The palette toggles them (`settings.showLocationMarkers`).
+- **Photos** are added with the operating system's own file picker (*Add photos*: Electron's `dialog.showOpenDialog`, opened by the main process on the app window, multi-select, image types only, starting in the last folder used) or dropped on the editor. The page never learns a picked file's path: it gets a one-time token per file and reads the files one at a time through the main process, which checks each size on disk before reading it. Each photo is checked before it's read (at most 40 MB, at most 40 per location). The renderer makes a 240 px high JPEG thumbnail with `createImageBitmap` (decoded off the main thread, EXIF orientation applied; a file the browser can't decode is refused). The main process checks the type from the file's first bytes (JPEG, PNG, WebP, GIF, AVIF), then copies the original and thumbnail into `userData/photos/` as `<uuid>.<ext>` and `<uuid>.thumb.jpg`. Originals are never referenced by their path. The page loads them only from `photo://local/<file>`, which serves names of exactly that form and nothing else. Lists show thumbnails only; clicking one opens the original in a dialog (arrow keys step through the location's photos). Photo files no location refers to (left by a crash between writing a photo and saving its location) are removed at start.
+- **Storage**: `bookmarks.json` (it kept its name), format version 2: `{ version: 2, bookmarks, profiles }`. A version-1 file (`{ version: 1, bookmarks }`, views only) is migrated when read and written back. Each bookmark becomes a location *to visit* with empty notes, tags and photos, and a position estimated where the camera's view ray meets a sea-level sphere (at most 60 km away, else the point below the camera), with its height unknown. The next time it is opened, once its tiles have loaded, the surface at the view center replaces the estimate. The original file is kept once as `bookmarks.v1.backup.json`. Everything arriving over IPC is sanitized in the main process (`shared/locations.ts`); ids, dates and photo lists sent by the renderer are ignored.
 
 The architecture should not rule any of these out. In particular, `SunController` should be general enough to model other celestial bodies later.
 

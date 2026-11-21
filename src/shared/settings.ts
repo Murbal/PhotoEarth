@@ -107,6 +107,7 @@ export function defaultSettings(): Settings {
     viewfinder: defaultViewfinder(),
     horizon: { moon: true, peakNames: true },
     bookmarkIncludeTime: true,
+    showLocationMarkers: true,
     onboardingComplete: false
   }
 }
@@ -273,6 +274,7 @@ export function sanitizeSettings(raw: Json): Settings {
       peakNames: bool(horizon.peakNames, d.horizon.peakNames)
     },
     bookmarkIncludeTime: bool(r.bookmarkIncludeTime, d.bookmarkIncludeTime),
+    showLocationMarkers: bool(r.showLocationMarkers, d.showLocationMarkers),
     onboardingComplete: bool(r.onboardingComplete, d.onboardingComplete)
   }
 }

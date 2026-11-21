@@ -4,7 +4,7 @@ import type { PlaceSuggestion } from '@shared/types'
 import { getCommands, type Command } from '../commands'
 import { getEngine } from '../engine/instance'
 import { useDialogFocus } from '../hooks/useDialogFocus'
-import { flyToBookmark } from '../lib/bookmarks'
+import { flyToBookmark, openProfile } from '../lib/locations'
 import { coordinateProblem, formatLatLon, isShortMapsLink, parseLocationInput } from '../lib/coords'
 import { DEBOUNCE_MS, PlacesSession } from '../lib/places'
 import { useAppStore } from '../store/appStore'
@@ -47,6 +47,7 @@ const NO_PLACES: PlacesResult = { query: '', places: NO_SUGGESTIONS, error: null
 function PaletteDialog() {
   const set = useAppStore((s) => s.set)
   const bookmarks = useAppStore((s) => s.bookmarks)
+  const profiles = useAppStore((s) => s.profiles)
   const hasGoogleKey = useAppStore((s) => !!s.keys.googleApiKey)
   const target = useAppStore((s) => s.target)
   const [query, setQuery] = useState('')
@@ -122,13 +123,22 @@ function PaletteDialog() {
         }
       })
     }
+    // Saved locations, found by name, tags, best time or notes.
     const bm = bookmarks
-      .map((b) => ({ b, score: matches(q, b.name) }))
+      .map((b) => ({ b, score: matches(q, b.name, b.tags.join(' '), b.bestTime, b.notes, b.status === 'visited' ? 'visited' : 'to visit') }))
       .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, q ? 6 : 5)
     for (const { b } of bm) {
-      out.push({ key: `bm-${b.id}`, group: 'Bookmarks', icon: 'bookmark', title: b.name, run: () => flyToBookmark(b) })
+      const subtitle = [b.status === 'visited' ? 'Visited' : 'To visit', b.tags.join(', ')].filter(Boolean).join(' · ')
+      out.push({ key: `bm-${b.id}`, group: 'Saved locations', icon: 'bookmark', title: b.name, subtitle, run: () => flyToBookmark(b) })
+    }
+    if (q) {
+      const names = new Map(bookmarks.map((b) => [b.id, b.name]))
+      for (const p of profiles.filter((p) => matches(q, p.name, 'profile', names.get(p.locationId ?? '')) > 0).slice(0, 4)) {
+        const at = p.locationId ? names.get(p.locationId) : undefined
+        out.push({ key: `pr-${p.id}`, group: 'Saved profiles', icon: 'profile', title: p.name, subtitle: at, run: () => openProfile(p) })
+      }
     }
     const cmds = getCommands()
       .map((c: Command) => ({ c, score: matches(q, c.title, c.keywords, c.group) }))
@@ -139,7 +149,7 @@ function PaletteDialog() {
       out.push({ key: `cmd-${c.id}`, group: 'Commands', icon: 'command', title: c.title, hint: c.keys, run: c.run })
     }
     return out
-  }, [q, coords, places, bookmarks, session])
+  }, [q, coords, places, bookmarks, profiles, session])
 
   useEffect(() => setSelected(0), [q, places.length])
   useEffect(() => {

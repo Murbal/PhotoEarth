@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
@@ -54,8 +54,24 @@ async function mockForecast(electronApp: ElectronApplication): Promise<void> {
   })
 }
 
+/** A bookmark as version 1 of the app stored it (views only), migrated at the first start. */
+const LEGACY_BOOKMARKS = {
+  version: 1,
+  bookmarks: [
+    {
+      id: 'legacy',
+      name: 'Legacy view',
+      createdAt: '2025-06-01T08:00:00.000Z',
+      camera: { longitude: 7.9, latitude: 46.55, height: 4000, heading: 180, pitch: -30, roll: 0 },
+      mode: 'photorealistic',
+      time: { utc: '2025-06-21T04:30:00.000Z', timeZone: 'Europe/Zurich' }
+    }
+  ]
+}
+
 test.beforeAll(async () => {
   userData = mkdtempSync(join(tmpdir(), 'photoearth-e2e-'))
+  writeFileSync(join(userData, 'bookmarks.json'), JSON.stringify(LEGACY_BOOKMARKS))
   app = await electron.launch({ args: ['.'], env: launchEnv() })
   page = await app.firstWindow()
   await mockForecast(app)
@@ -85,6 +101,16 @@ test('renders the Cesium globe after skipping onboarding', async () => {
   await expect(page.locator('.map canvas')).toBeVisible()
   await page.waitForFunction(() => !!(window as unknown as { __photoearth?: unknown }).__photoearth)
   await expect(page.locator('.statusbar')).toContainText('Cam')
+})
+
+test('a version-1 bookmark is migrated into a saved location, and the original kept', async () => {
+  const list = await page.evaluate(() => window.photoearth.bookmarks.list())
+  expect(list).toHaveLength(1)
+  expect(list[0]).toMatchObject({ id: 'legacy', name: 'Legacy view', status: 'to-visit', notes: '', tags: [], photos: [], time: LEGACY_BOOKMARKS.bookmarks[0].time })
+  // Estimated from the camera until it is visited again.
+  expect(list[0].position.height).toBeNull()
+  expect(JSON.parse(readFileSync(join(userData, 'bookmarks.v1.backup.json'), 'utf8'))).toEqual(LEGACY_BOOKMARKS)
+  await expect.poll(() => JSON.parse(readFileSync(join(userData, 'bookmarks.json'), 'utf8')).version).toBe(2)
 })
 
 test('under WSL with GPU support, WebGL runs on the GPU rather than a software renderer', async () => {
@@ -712,7 +738,7 @@ test('side panels never cover the profile and time panels', async () => {
   const overlaps = (a: DOMRect, b: DOMRect) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
   await page.keyboard.press('l')
   await page.keyboard.press('t')
-  await page.getByRole('button', { name: 'Bookmarks' }).click()
+  await page.getByRole('button', { name: 'Saved locations', exact: true }).click()
   try {
     for (const [width, height] of [[1440, 900], [1920, 1080], [1100, 900], [1280, 760]]) {
       await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setContentSize(size[0], size[1]), [width, height])
@@ -727,7 +753,7 @@ test('side panels never cover the profile and time panels', async () => {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1440, 900))
     await page.keyboard.press('l')
     await page.keyboard.press('t')
-    await page.getByRole('button', { name: 'Bookmarks' }).click()
+    await page.getByRole('button', { name: 'Saved locations', exact: true }).click()
     await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.profile.clear())
   }
 })
@@ -1113,17 +1139,166 @@ test('light pollution: overlay layer, legend, and a sky brightness estimate at t
   await page.unroute(/^https:\/\/(djlorenz\.github\.io|gibs\.earthdata\.nasa\.gov)\//)
 })
 
-test('bookmarks persist across a restart', async () => {
+/** A PNG of the given size, drawn in the page (so the test needs no image files). */
+async function testPng(width: number, height: number): Promise<Buffer> {
+  const base64 = await page.evaluate(async ([w, h]) => {
+    const canvas = new OffscreenCanvas(w, h)
+    const ctx = canvas.getContext('2d')!
+    ctx.fillStyle = '#3a7bd5'
+    ctx.fillRect(0, 0, w, h)
+    ctx.fillStyle = '#ffd54f'
+    ctx.fillRect(0, 0, w / 2, h / 2)
+    const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer())
+    let s = ''
+    for (const b of bytes) s += String.fromCharCode(b)
+    return btoa(s)
+  }, [width, height])
+  return Buffer.from(base64, 'base64')
+}
+
+test('saved locations: save, edit, filter, photos, profiles and map markers', async () => {
+  // Ctrl/Cmd+B saves the view and opens the list, keeping the keyboard on the map.
   await page.keyboard.press('ControlOrMeta+b')
-  await expect(page.locator('.bookmark')).toHaveCount(1)
-  const saved = await page.evaluate(() => window.photoearth.bookmarks.list())
-  expect(saved).toHaveLength(1)
+  const panel = page.locator('.locations-panel')
+  await expect(panel.locator('.location-row')).toHaveCount(2)
+  const saved = (await page.evaluate(() => window.photoearth.bookmarks.list()))[1]
+  expect(saved.position.height).not.toBeNull()
+  expect(saved.time).toBeDefined()
+  const row = panel.locator('.location-row').first()
+  await row.hover()
+  await row.getByRole('button', { name: /^Edit / }).click()
+
+  // The editor: every field saves on its own.
+  const name = panel.getByRole('textbox', { name: 'Name', exact: true })
+  await name.fill('Sunset ridge')
+  await name.press('Enter')
+  await panel.getByRole('group', { name: 'Status' }).getByRole('button', { name: 'Visited' }).click()
+  await panel.getByRole('combobox', { name: 'Add tag' }).fill('Sunset, Lake,')
+  await panel.getByRole('textbox', { name: 'Best time' }).fill('Late October evenings')
+  await panel.getByRole('textbox', { name: 'Best time' }).press('Enter')
+  await panel.getByRole('textbox', { name: 'Notes' }).fill('Park at the upper lot.')
+  await panel.getByRole('textbox', { name: 'Notes' }).blur()
+  await expect
+    .poll(async () => (await page.evaluate(() => window.photoearth.bookmarks.list()))[1])
+    .toMatchObject({ name: 'Sunset ridge', status: 'visited', tags: ['sunset', 'lake'], bestTime: 'Late October evenings', notes: 'Park at the upper lot.' })
+
+  // "Add photos" opens the native file picker (stubbed here: Playwright can't click OS dialogs).
+  // Photos are copied into userData with a thumbnail; huge files are refused before they're read.
+  const pickDir = mkdtempSync(join(tmpdir(), 'photoearth-pick-'))
+  const ridge = join(pickDir, 'ridge.png')
+  writeFileSync(ridge, await testPng(640, 360))
+  const huge = join(pickDir, 'huge.jpg')
+  writeFileSync(huge, Buffer.alloc(41 * 1024 * 1024, 0xff))
+  const pickNext = (paths: string[]) =>
+    app.evaluate(({ dialog }, chosen) => {
+      const calls: unknown[] = []
+      ;(globalThis as { pickerCalls?: unknown[] }).pickerCalls = calls
+      dialog.showOpenDialog = (async (...args: unknown[]) => {
+        calls.push(args[args.length - 1])
+        return { canceled: false, filePaths: chosen }
+      }) as typeof dialog.showOpenDialog
+    }, paths)
+  try {
+    await pickNext([ridge])
+    await panel.getByRole('button', { name: 'Add photos' }).click()
+    await expect(panel.locator('.photo-thumb img')).toHaveCount(1)
+    const call = await app.evaluate(() => (globalThis as { pickerCalls?: Array<{ title: string; properties: string[] }> }).pickerCalls?.[0])
+    expect(call).toMatchObject({ title: 'Add photos to “Sunset ridge”', properties: ['openFile', 'multiSelections'] })
+    await expect.poll(() => panel.locator('.photo-thumb img').evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(427)
+    const photos = readdirSync(join(userData, 'photos'))
+    expect(photos.filter((f) => f.endsWith('.png'))).toHaveLength(1)
+    expect(photos.filter((f) => f.endsWith('.thumb.jpg'))).toHaveLength(1)
+    await pickNext([huge])
+    await panel.getByRole('button', { name: 'Add photos' }).click()
+    await expect(page.locator('.toast')).toContainText('at most 40 MB')
+    await expect(panel.locator('.photo-thumb')).toHaveCount(1)
+  } finally {
+    rmSync(pickDir, { recursive: true, force: true })
+  }
+  // Full size in a dialog, served by photo:// (not a path on disk).
+  await panel.locator('.photo-open').click()
+  const viewer = page.getByRole('dialog', { name: /Sunset ridge: ridge\.png/ })
+  await expect(viewer).toBeVisible()
+  await expect.poll(() => viewer.locator('img').evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(640)
+  expect(await viewer.locator('img').getAttribute('src')).toMatch(/^photo:\/\/local\/[0-9a-f-]{36}\.png$/)
+  await page.keyboard.press('Escape')
+  await expect(viewer).toHaveCount(0)
+
+  // An elevation profile saved with the location, and one on its own; both reopen.
+  await page.keyboard.press('p')
+  await addProfilePoints([[0, 0], [0.01, 0.012]])
+  await page.keyboard.press('Enter')
+  await panel.getByRole('button', { name: 'Save drawn path here' }).click()
+  await expect(panel.locator('.profile-row')).toHaveCount(1)
+  await page.keyboard.press('p')
+  await addProfilePoints([[0, 0], [-0.01, 0.005], [-0.012, 0.012]])
+  await page.keyboard.press('Enter')
+  await page.locator('.profile-panel').getByRole('button', { name: 'Save path' }).click()
+  await page.locator('.profile-panel').getByRole('combobox', { name: 'Save with' }).selectOption('')
+  await page.locator('.profile-panel').getByRole('textbox', { name: 'Profile name' }).fill('Valley floor')
+  await page.locator('.profile-panel').getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.locator('.profile-panel')).toContainText('Valley floor')
+  const profiles = await page.evaluate(() => window.photoearth.profiles.list())
+  expect(profiles.map((p) => [p.name, p.locationId, p.points.length])).toEqual([
+    [expect.stringMatching(/^Path /), saved.id, 2],
+    ['Valley floor', null, 3]
+  ])
+  await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.profile.clear())
+  await panel.locator('.profile-row .name').click()
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.profile.vertices.length)).toBe(2)
+  await expect(page.locator('.profile-panel strong')).toHaveText('Elevation profile')
+  await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.profile.clear())
+
+  // The list filters by status and tag; general profiles are listed under it.
+  await panel.getByRole('button', { name: 'Back to all locations' }).click()
+  await expect(panel.locator('.location-row')).toHaveCount(2)
+  await expect(panel.locator('.profile-row')).toHaveText(/Valley floor/)
+  await panel.getByRole('group', { name: 'Filter by status' }).getByRole('button', { name: 'Visited' }).click()
+  await expect(panel.locator('.location-row')).toHaveCount(1)
+  await expect(panel.locator('.location-row')).toContainText('Sunset ridge')
+  await panel.getByRole('group', { name: 'Filter by status' }).getByRole('button', { name: 'All' }).click()
+  await panel.getByRole('group', { name: 'Filter by tag' }).getByRole('button', { name: 'lake' }).click()
+  await expect(panel.locator('.location-row')).toHaveCount(1)
+  // The map shows the same locations as the list.
+  expect(await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.markers.markers.length)).toBe(1)
+  await panel.getByRole('group', { name: 'Filter by tag' }).getByRole('button', { name: 'lake' }).click()
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.markers.markers.length)).toBe(2)
+
+  // Clicking its pin opens the location and restores its time. The time panel (left open by
+  // earlier tests, and taller with the forecast) would cover the pin at the view center.
+  if (await page.locator('.time-panel').isVisible()) await page.getByRole('button', { name: 'Close time & sun' }).click()
+  await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.sun.setInstant(Date.parse('2026-01-15T12:00:00Z')))
+  // Back at the saved view (reopening the profile framed its path), the pin is where it was saved.
+  const pin = await page.evaluate(({ id, camera }) => {
+    const e = (window as unknown as { __photoearth: any }).__photoearth
+    e.camera.setView(camera)
+    e.scene.render()
+    return e.markers.screenPosition(id)
+  }, { id: saved.id, camera: saved.camera })
+  expect(pin).not.toBeNull()
+  const box = (await page.locator('.map canvas').boundingBox())!
+  await page.mouse.click(box.x + pin.x, box.y + pin.y - 12)
+  await expect(panel.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Sunset ridge')
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.sun.utc)).toBe(Date.parse(saved.time!.utc))
+  await panel.getByRole('button', { name: 'Back to all locations' }).click()
+})
+
+test('saved locations persist across a restart', async () => {
+  const before = await page.evaluate(() => window.photoearth.bookmarks.list())
+  expect(before).toHaveLength(2)
+  // A known last view (the one a location click flew to may still be in the air).
+  await page.evaluate(() => {
+    const e = (window as unknown as { __photoearth: any }).__photoearth
+    e.scene.camera.cancelFlight()
+    e.camera.setView({ longitude: -120.5, latitude: 37.7, height: 5000, heading: 0, pitch: -30, roll: 0 })
+  })
   await app.close()
   app = await electron.launch({ args: ['.'], env: launchEnv() })
   page = await app.firstWindow()
   await page.waitForFunction(() => !!(window as unknown as { __photoearth?: unknown }).__photoearth, null, { timeout: 30_000 })
   const list = await page.evaluate(() => window.photoearth.bookmarks.list())
-  expect(list).toHaveLength(1)
+  expect(list).toEqual(before)
+  expect((await page.evaluate(() => window.photoearth.profiles.list())).map((p) => p.name)).toContain('Valley floor')
   // The last camera position was restored too.
   const lon = await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.currentView().longitude)
   expect(lon).toBeLessThan(-119)

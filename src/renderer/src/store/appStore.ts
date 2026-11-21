@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
+import { NO_FILTER, type LocationFilter } from '@shared/locations'
 import { defaultSettings } from '@shared/settings'
-import type { ApiKeys, Bookmark, MapMode, SecretsStatus, Settings } from '@shared/types'
+import type { ApiKeys, Bookmark, MapMode, SavedProfile, SecretsStatus, Settings } from '@shared/types'
 import type { BodyDay } from '../lib/celestial'
 import type { SkyEstimate } from '../lib/skyBrightness'
 import type { SunlitSpan } from '../lib/horizon'
@@ -95,6 +96,8 @@ export interface ProfileState {
   loading: boolean
   source: 'terrain' | 'tiles' | null
   error: string | null
+  /** The saved profile this path was reopened from, if any. */
+  savedId: string | null
 }
 
 export interface HorizonObserver {
@@ -205,7 +208,8 @@ const emptyProfile: ProfileState = {
   hoverIndex: null,
   loading: false,
   source: null,
-  error: null
+  error: null,
+  savedId: null
 }
 
 export interface AppState {
@@ -240,7 +244,16 @@ export interface AppState {
   eyeLevel: boolean
   /** Viewfinder mode: lens field of view and crop frame (settings.viewfinder). */
   viewfinder: boolean
+  /** Saved scouting locations (§11.5). */
   bookmarks: Bookmark[]
+  /** Saved elevation profile paths. */
+  profiles: SavedProfile[]
+  /** What the locations panel and the map markers show. */
+  locationFilter: LocationFilter
+  /** The location open in the editor, highlighted on the map. */
+  activeLocation: string | null
+  /** A reference photo shown full size. */
+  photoViewer: { locationId: string; photoId: string } | null
   autoRange: { min: number; max: number } | null
   terrainReady: boolean
   tilesetReady: boolean
@@ -305,6 +318,10 @@ export const useAppStore = create<AppState>()(
     eyeLevel: false,
     viewfinder: false,
     bookmarks: [],
+    profiles: [],
+    locationFilter: NO_FILTER,
+    activeLocation: null,
+    photoViewer: null,
     autoRange: null,
     terrainReady: false,
     tilesetReady: false,

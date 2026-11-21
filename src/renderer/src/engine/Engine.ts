@@ -1,4 +1,5 @@
 import {
+  BoundingSphere,
   Cartesian2,
   Cartesian3,
   Cartographic,
@@ -11,8 +12,9 @@ import {
   ScreenSpaceEventType,
   type Scene
 } from 'cesium'
+import { estimateTarget, matchesFilter } from '@shared/locations'
 import { DEFAULT_VIEW } from '@shared/settings'
-import type { ApiCheck, ApiKeys, Bookmark, CameraView, MapMode, NewBookmark, PlaceDetails } from '@shared/types'
+import type { ApiCheck, ApiKeys, Bookmark, CameraView, GeoPosition, MapMode, NewBookmark, PlaceDetails, SavedProfile } from '@shared/types'
 import { formatLatLon, type ParsedLocation } from '../lib/coords'
 import { loadGeoid } from '../lib/geoid'
 import type { GeoPoint } from '../lib/profile'
@@ -23,6 +25,7 @@ import { ElevationStyler } from './ElevationStyler'
 import { GoogleImagery } from './GoogleImagery'
 import { HorizonTool } from './HorizonTool'
 import { LightPollution } from './LightPollution'
+import { LocationMarkers } from './LocationMarkers'
 import { PlaceLabels } from './PlaceLabels'
 import { PointInspector } from './PointInspector'
 import { ProfileTool } from './ProfileTool'
@@ -82,6 +85,7 @@ export class Engine {
   readonly terrainShadows: TerrainShadows
   readonly preloader: TilePreloader
   readonly viewfinder: Viewfinder
+  readonly markers: LocationMarkers
   private readonly handler: ScreenSpaceEventHandler
   private readonly subs: Array<() => void> = []
   private clickTimer: number | null = null
@@ -181,7 +185,7 @@ export class Engine {
       onUserInput: () => undefined,
       keyboardEnabled: () => {
         const s = appState()
-        return !s.paletteOpen && !s.settingsOpen && !s.onboardingOpen && !s.shortcutsOpen
+        return !s.paletteOpen && !s.settingsOpen && !s.onboardingOpen && !s.shortcutsOpen && !s.photoViewer
       },
       sampleGround: (lon, lat) => this.preciseGround(lon, lat)
     })
@@ -200,6 +204,7 @@ export class Engine {
     this.spotSun = new SpotSun(() => this.terrain?.provider ?? null)
     this.searchMarker = new SearchMarker(this.widget, (lon, lat) => this.preciseGround(lon, lat))
     this.readouts = new Readouts(scene, (target) => this.onTarget(target))
+    this.markers = new LocationMarkers(scene, (points) => this.sampleTerrainHeights(points))
     this.preloader = new TilePreloader(scene, () => {
       const cam = appState().camera
       return cam && cam.heightAgl !== null ? cam.height - cam.heightAgl : null
@@ -258,6 +263,7 @@ export class Engine {
     this.labels.destroy()
     this.terrainShadows.destroy()
     this.preloader.destroy()
+    this.markers.destroy()
     this.widget.destroy()
   }
 
@@ -412,6 +418,25 @@ export class Engine {
         ([on, lens]) => this.viewfinder.update(on, lens)
       )
     )
+    s.push(
+      useAppStore.subscribe(
+        (st) => [st.bookmarks, st.locationFilter, st.activeLocation, st.panels.bookmarks, st.settings.showLocationMarkers] as const,
+        () => this.updateMarkers(),
+        { equalityFn: (a, b) => a.every((v, i) => v === b[i]) }
+      )
+    )
+    s.push(useAppStore.subscribe((st) => st.terrainReady, (ready) => ready && this.markers.resample()))
+  }
+
+  /** Pins for the locations the panel's filter shows, plus the one being edited. */
+  private updateMarkers(): void {
+    const { bookmarks, locationFilter, panels, settings } = appState()
+    const activeLocation = panels.bookmarks ? appState().activeLocation : null
+    this.markers.setVisible(settings.showLocationMarkers)
+    this.markers.update(
+      bookmarks.filter((b) => b.id === activeLocation || matchesFilter(b, locationFilter)),
+      activeLocation
+    )
   }
 
   private applyMode(): void {
@@ -527,6 +552,15 @@ export class Engine {
     const p = Cartesian2.clone(position)
     this.clickTimer = window.setTimeout(() => {
       this.clickTimer = null
+      // A saved location's pin: open it (CPU hit test against the drawn pins, no GPU pick).
+      const location = this.markers.hitTest(p.x, p.y)
+      const b = location ? appState().bookmarks.find((x) => x.id === location) : undefined
+      if (b) {
+        appState().set({ activeLocation: b.id })
+        appState().togglePanel('bookmarks', true)
+        void this.flyToBookmark(b)
+        return
+      }
       const hit = pickSurface(this.scene, p.x, p.y)
       if (!hit) return
       // With the horizon panorama open, a click moves its observer.
@@ -638,6 +672,12 @@ export class Engine {
     return surfaceHeight(this.scene, longitude, latitude)
   }
 
+  /** Terrain heights (ellipsoidal) for marker placement; null without a terrain source. */
+  private async sampleTerrainHeights(points: Array<{ longitude: number; latitude: number }>): Promise<Array<number | null>> {
+    if (!this.terrain.available) return points.map(() => null)
+    return withTimeout(this.terrain.sample(points), 10_000, points.map(() => null))
+  }
+
   private async sampleProfile(points: GeoPoint[]): Promise<{ heights: Array<number | null>; source: 'terrain' | 'tiles' }> {
     if (this.terrain.available) return { heights: await this.terrain.sample(points), source: 'terrain' }
     if (this.tiles.tileset) {
@@ -668,6 +708,7 @@ export class Engine {
     return currentView(this.scene)
   }
 
+  /** The current view as a location: camera, mode, lens, optionally the simulated time, and the spot. */
   bookmarkFromView(name: string, includeTime: boolean): NewBookmark {
     const { mode, sim, viewfinder, settings } = appState()
     return {
@@ -675,10 +716,21 @@ export class Engine {
       camera: this.currentView(),
       mode,
       time: includeTime ? { utc: new Date(this.sun.utc).toISOString(), timeZone: sim.timeZone } : undefined,
-      viewfinder: viewfinder ? structuredClone(settings.viewfinder) : undefined
+      viewfinder: viewfinder ? structuredClone(settings.viewfinder) : undefined,
+      position: this.locationSpot()
     }
   }
 
+  /** Where a new location is: a dropped pin (inspect marker, then search pin), else the view center. */
+  locationSpot(): GeoPosition {
+    const canvas = this.scene.canvas
+    const spot = this.inspector.point ?? this.searchMarker.point ?? pickSurface(this.scene, canvas.clientWidth / 2, canvas.clientHeight / 2)
+    const c = spot && cartographicDeg(spot)
+    // Nothing loaded under the view center (or looking at the sky): estimate, measure on the next visit.
+    return c ? { longitude: c.longitude, latitude: c.latitude, height: c.height } : estimateTarget(this.currentView())
+  }
+
+  /** Flies to a saved location and restores its mode, lens and simulated time. */
   async flyToBookmark(b: Bookmark): Promise<void> {
     if (b.mode !== appState().mode) this.setMode(b.mode)
     if (b.time) this.sun.setInstant(Date.parse(b.time.utc), b.time.timeZone)
@@ -689,6 +741,37 @@ export class Engine {
       appState().set({ viewfinder: true })
     }
     await this.camera.flyToView(b.camera)
+    if (b.position.height === null) void this.measureLocation(b)
+  }
+
+  /**
+   * A location saved before locations had a position only has one estimated from its camera.
+   * Standing in its view again, the view center on the loaded surface replaces the estimate.
+   */
+  private async measureLocation(b: Bookmark): Promise<void> {
+    const started = Date.now()
+    while (appState().pendingTiles > 0 && Date.now() - started < 8000) await new Promise((r) => setTimeout(r, 250))
+    const v = this.currentView()
+    const still = Math.abs(v.longitude - b.camera.longitude) < 1e-6 && Math.abs(v.latitude - b.camera.latitude) < 1e-6 && Math.abs(v.height - b.camera.height) < 1
+    if (this.destroyed || !still) return
+    const canvas = this.scene.canvas
+    const hit = pickSurface(this.scene, canvas.clientWidth / 2, canvas.clientHeight / 2)
+    const c = hit && cartographicDeg(hit)
+    if (!c) return
+    const updated = await window.photoearth.bookmarks.update(b.id, { position: { longitude: c.longitude, latitude: c.latitude, height: c.height } })
+    if (updated) appState().set({ bookmarks: appState().bookmarks.map((x) => (x.id === updated.id ? updated : x)) })
+  }
+
+  /** Reopens a saved elevation profile and frames its path. */
+  async openSavedProfile(profile: SavedProfile): Promise<void> {
+    this.inspector.clear()
+    const vertices = this.profile.load(profile.points, profile.id)
+    if (vertices.length < 2) return
+    const sphere = BoundingSphere.fromPoints(vertices)
+    const c = cartographicDeg(sphere.center)
+    if (!c) return
+    const ground = profile.points.reduce((sum, p) => sum + (p.height ?? 0), 0) / profile.points.length
+    await this.camera.flyToLocation(c.latitude, c.longitude, { range: Math.max(sphere.radius * 2.6, 1500), groundHeight: ground, pitch: -45 })
   }
 
   /** Flies to a searched place and pins it, labeled with the name the user picked. */

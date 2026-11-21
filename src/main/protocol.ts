@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises'
 import { extname, join, normalize, sep } from 'node:path'
 import { protocol } from 'electron'
+import { PHOTO_HOST, PHOTO_SCHEME } from '@shared/locations'
+import { PHOTO_MIME, sniffImage, type PhotoStore } from './photos'
 import { APP_HOST, APP_SCHEME, contentSecurityPolicy } from './security'
 
 const MIME: Record<string, string> = {
@@ -30,8 +32,33 @@ export function registerAppScheme(): void {
     {
       scheme: APP_SCHEME,
       privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true }
-    }
+    },
+    // Reference photos of saved locations; images only (no fetch, no scripts).
+    { scheme: PHOTO_SCHEME, privileges: { standard: true, secure: true } }
   ])
+}
+
+/**
+ * Serves stored reference photos at `photo://local/<file>`. Only names the photo store writes
+ * resolve, so nothing else on disk is reachable; the type comes from the bytes, not the name.
+ */
+export function handlePhotoScheme(photos: PhotoStore): void {
+  protocol.handle(PHOTO_SCHEME, async (req) => {
+    const url = new URL(req.url)
+    const path = url.host === PHOTO_HOST ? photos.resolve(decodeURIComponent(url.pathname.slice(1))) : null
+    if (!path) return new Response('Not found', { status: 404 })
+    try {
+      const data = await readFile(path)
+      const type = sniffImage(data)
+      if (!type) return new Response('Not found', { status: 404 })
+      return new Response(new Uint8Array(data), {
+        status: 200,
+        headers: { 'Content-Type': PHOTO_MIME[type], 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, max-age=31536000, immutable' }
+      })
+    } catch {
+      return new Response('Not found', { status: 404 })
+    }
+  })
 }
 
 /**

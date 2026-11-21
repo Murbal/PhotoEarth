@@ -148,6 +148,8 @@ export interface Settings {
   viewfinder: ViewfinderSettings
   horizon: HorizonSettings
   bookmarkIncludeTime: boolean
+  /** Markers for the saved locations on the map. */
+  showLocationMarkers: boolean
   onboardingComplete: boolean
 }
 
@@ -158,18 +160,126 @@ export interface BookmarkTime {
   timeZone: string
 }
 
+export type LocationStatus = 'to-visit' | 'visited'
+
+/** A point on the ground. Degrees; height in meters above the WGS84 ellipsoid. */
+export interface GeoPosition {
+  longitude: number
+  latitude: number
+  /**
+   * Null while only estimated from the camera (bookmarks saved before locations had a
+   * position); measured on the surface the next time the location is visited.
+   */
+  height: number | null
+}
+
+/** A reference photo, copied into the app's photo directory (never referenced by its original path). */
+export interface LocationPhoto {
+  id: string
+  /** Stored file name, `<id>.<ext>`; the thumbnail is `<id>.thumb.jpg`. */
+  file: string
+  /** Original file name, for display only. */
+  name: string
+  bytes: number
+  /** Pixel size as displayed (EXIF orientation applied). */
+  width: number
+  height: number
+  addedAt: string
+}
+
+/**
+ * A saved scouting location. It grew out of the view bookmarks: every bookmark is a location,
+ * and a plain bookmark is one with no notes, tags or photos.
+ */
 export interface Bookmark {
   id: string
   name: string
   createdAt: string
+  updatedAt: string
   camera: CameraView
   mode: MapMode
   time?: BookmarkTime
   /** Set when the view was saved in viewfinder mode: reopens framed with the same lens. */
   viewfinder?: ViewfinderSettings
+  /** The spot itself (map marker): the pin or view center when saved. */
+  position: GeoPosition
+  status: LocationStatus
+  notes: string
+  /** Lowercase, unique. */
+  tags: string[]
+  /** Free text, e.g. "Sunrise, late October, after fresh snow". */
+  bestTime: string
+  photos: LocationPhoto[]
 }
 
-export type NewBookmark = Omit<Bookmark, 'id' | 'createdAt'>
+export interface NewBookmark {
+  name: string
+  camera: CameraView
+  mode: MapMode
+  time?: BookmarkTime
+  viewfinder?: ViewfinderSettings
+  position?: GeoPosition
+  status?: LocationStatus
+  notes?: string
+  tags?: string[]
+  bestTime?: string
+}
+
+/** Editable fields. `null` clears the saved time or lens. Photos change only through addPhoto/removePhoto. */
+export interface BookmarkPatch {
+  name?: string
+  camera?: CameraView
+  mode?: MapMode
+  time?: BookmarkTime | null
+  viewfinder?: ViewfinderSettings | null
+  position?: GeoPosition
+  status?: LocationStatus
+  notes?: string
+  tags?: string[]
+  bestTime?: string
+}
+
+/** A photo to import: the original file's bytes and a JPEG thumbnail made by the renderer. */
+export interface PhotoUpload {
+  name: string
+  data: Uint8Array
+  thumb: Uint8Array
+  width: number
+  height: number
+}
+
+export type PhotoResult = { ok: true; bookmark: Bookmark } | { ok: false; error: string }
+
+/** A file chosen in the native photo picker: a one-time token, never its path. */
+export interface PickedPhoto {
+  token: string
+  name: string
+  bytes: number
+}
+
+export type PickedPhotoData = { ok: true; data: Uint8Array } | { ok: false; error: string }
+
+/** A saved elevation profile path (§7.3), on its own or attached to a location. */
+export interface SavedProfile {
+  id: string
+  name: string
+  createdAt: string
+  /** The clicked vertices, with their surface heights (ellipsoidal) when known. */
+  points: GeoPosition[]
+  /** The location it belongs to, or null for a general profile. */
+  locationId: string | null
+}
+
+export interface NewProfile {
+  name: string
+  points: GeoPosition[]
+  locationId?: string | null
+}
+
+export interface ProfilePatch {
+  name?: string
+  locationId?: string | null
+}
 
 export interface ApiKeys {
   googleApiKey: string | null
@@ -332,10 +442,24 @@ export interface PhotoEarthApi {
     status(): Promise<SecretsStatus>
     validate(keys: ApiKeys): Promise<ValidationResult>
   }
+  /** Saved scouting locations (formerly view bookmarks). */
   bookmarks: {
     list(): Promise<Bookmark[]>
     create(bookmark: NewBookmark): Promise<Bookmark>
-    update(id: string, patch: Partial<NewBookmark>): Promise<Bookmark | null>
+    update(id: string, patch: BookmarkPatch): Promise<Bookmark | null>
+    /** Also deletes the location's photos and its attached profiles. */
+    remove(id: string): Promise<boolean>
+    addPhoto(id: string, photo: PhotoUpload): Promise<PhotoResult>
+    /** Opens the native file picker for photos to add to a location; [] when cancelled. */
+    pickPhotos(id: string): Promise<PickedPhoto[]>
+    /** Reads a file chosen in the picker (each token works once). */
+    readPickedPhoto(token: string): Promise<PickedPhotoData>
+    removePhoto(id: string, photoId: string): Promise<Bookmark | null>
+  }
+  profiles: {
+    list(): Promise<SavedProfile[]>
+    create(profile: NewProfile): Promise<SavedProfile | null>
+    update(id: string, patch: ProfilePatch): Promise<SavedProfile | null>
     remove(id: string): Promise<boolean>
   }
   places: {

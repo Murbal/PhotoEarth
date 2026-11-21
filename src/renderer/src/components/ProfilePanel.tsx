@@ -1,5 +1,6 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { getEngine } from '../engine/instance'
+import { defaultProfileName, saveProfile } from '../lib/locations'
 import { nearestSampleIndex } from '../lib/profile'
 import { FEET_PER_METER, formatDistance, formatElevation } from '../lib/units'
 import { useAppStore } from '../store/appStore'
@@ -13,6 +14,8 @@ export function ProfilePanel() {
   const profile = useAppStore((s) => s.profile)
   const units = useAppStore((s) => s.settings.units)
   const svgRef = useRef<SVGSVGElement>(null)
+  const savedName = useAppStore((s) => s.profiles.find((p) => p.id === s.profile.savedId)?.name ?? null)
+  const [saving, setSaving] = useState(false)
   const { samples, stats, hoverIndex } = profile
 
   const geometry = useMemo(() => {
@@ -62,6 +65,7 @@ export function ProfilePanel() {
     <div className="panel profile-panel">
       <div className="row">
         <strong>Elevation profile</strong>
+        {savedName && <span className="muted">· {savedName}</span>}
         {profile.loading && <span className="small muted">sampling…</span>}
         {profile.source && !profile.loading && (
           <span className="badge">{profile.source === 'terrain' ? 'Cesium World Terrain' : '3D Tiles surface'}</span>
@@ -82,14 +86,22 @@ export function ProfilePanel() {
             </button>
           </>
         ) : (
-          <button className="btn" onClick={() => getEngine()?.startProfile()}>
-            New path
-          </button>
+          <>
+            {!profile.savedId && profile.points.length > 1 && !saving && (
+              <button className="btn" onClick={() => setSaving(true)} title="Keep this path to reopen later, on its own or with a saved location">
+                Save path
+              </button>
+            )}
+            <button className="btn" onClick={() => getEngine()?.startProfile()}>
+              New path
+            </button>
+          </>
         )}
         <button className="icon-btn small" title="Clear profile" onClick={() => getEngine()?.profile.clear()}>
           <Icon name="close" size={14} />
         </button>
       </div>
+      {saving && !profile.active && <SaveProfileForm onDone={() => setSaving(false)} />}
       {profile.error && <div className="notice">{profile.error}</div>}
       {!geometry && !profile.error && (
         <div className="muted" style={{ padding: '18px 0' }}>
@@ -169,5 +181,51 @@ export function ProfilePanel() {
         </>
       )}
     </div>
+  )
+}
+
+/** Name the drawn path and choose where it belongs: on its own, or with a saved location. */
+function SaveProfileForm({ onDone }: { onDone: () => void }) {
+  const bookmarks = useAppStore((s) => s.bookmarks)
+  const active = useAppStore((s) => s.activeLocation)
+  const [name, setName] = useState(defaultProfileName)
+  const [locationId, setLocationId] = useState<string>(active ?? '')
+  const submit = () => void saveProfile(name.trim() || defaultProfileName(), locationId || null).then((saved) => saved && onDone())
+  return (
+    <form
+      className="row save-profile"
+      onSubmit={(e) => {
+        e.preventDefault()
+        submit()
+      }}
+    >
+      <input
+        className="input grow"
+        aria-label="Profile name"
+        autoFocus
+        value={name}
+        maxLength={200}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key !== 'Escape') return
+          e.stopPropagation()
+          onDone()
+        }}
+      />
+      <select className="input" aria-label="Save with" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+        <option value="">On its own</option>
+        {[...bookmarks].reverse().map((b) => (
+          <option key={b.id} value={b.id}>
+            With {b.name}
+          </option>
+        ))}
+      </select>
+      <button className="btn primary" type="submit">
+        Save
+      </button>
+      <button className="btn ghost" type="button" onClick={onDone}>
+        Cancel
+      </button>
+    </form>
   )
 }

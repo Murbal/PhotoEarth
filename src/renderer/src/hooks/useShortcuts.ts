@@ -28,9 +28,10 @@ export function useShortcuts(): void {
         s.set({ settingsOpen: true })
         return
       }
-      const modal = s.paletteOpen || s.settingsOpen || s.onboardingOpen || s.shortcutsOpen
+      const modal = s.paletteOpen || s.settingsOpen || s.onboardingOpen || s.shortcutsOpen || !!s.photoViewer
       if (e.key === 'Escape') {
-        if (s.paletteOpen) s.set({ paletteOpen: false })
+        if (s.photoViewer) s.set({ photoViewer: null })
+        else if (s.paletteOpen) s.set({ paletteOpen: false })
         else if (s.shortcutsOpen) s.set({ shortcutsOpen: false })
         else if (s.settingsOpen) s.set({ settingsOpen: false })
         else if (s.profile.active) getEngine()?.profile.cancelOrFinish()
