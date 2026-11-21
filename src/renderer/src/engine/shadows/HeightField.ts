@@ -12,6 +12,11 @@ import {
 } from 'cesium'
 import { fillGaps, heightRange, rasterizeTriangles, terrainLevelFor, type ShadowLevel } from '../../lib/terrainShadow'
 
+/** A longitude in radians, brought into [−π, π]. */
+function wrapLongitude(lon: number): number {
+  return lon - 2 * Math.PI * Math.round(lon / (2 * Math.PI))
+}
+
 /**
  * Local tangent-plane frame (x east, y north, z up) at a point on the ellipsoid. Grid
  * coordinates are the orthographic projection onto this plane of the nadir ground point.
@@ -127,11 +132,18 @@ export class HeightField {
     const level = terrainLevelFor(cell)
     const rect = this.boundsOf(frame, cx, cy, half + 2 * cell)
     const scheme = this.provider.tilingScheme
-    const nw = scheme.positionToTileXY(Cartographic.fromRadians(rect.west, rect.north), level)
-    const se = scheme.positionToTileXY(Cartographic.fromRadians(rect.east, rect.south), level)
+    const nw = scheme.positionToTileXY(Cartographic.fromRadians(wrapLongitude(rect.west), rect.north), level)
+    const se = scheme.positionToTileXY(Cartographic.fromRadians(wrapLongitude(rect.east), rect.south), level)
     if (!nw || !se) return null
+    // Across the antimeridian the east column has a smaller index than the west one: count on
+    // around the world rather than across all of it.
+    const columns = scheme.getNumberOfXTilesAtLevel(level)
+    const spanX = rect.east - rect.west >= 2 * Math.PI ? columns - 1 : (se.x - nw.x + columns) % columns
     const jobs: Array<Promise<TileResult | null>> = []
-    for (let x = nw.x; x <= se.x; x++) for (let y = nw.y; y <= se.y; y++) jobs.push(this.tile(x, y, level))
+    for (let k = 0; k <= spanX; k++) {
+      const x = (nw.x + k) % columns
+      for (let y = nw.y; y <= se.y; y++) jobs.push(this.tile(x, y, level))
+    }
     const tiles = (await Promise.all(jobs)).filter((t): t is TileResult => t !== null)
     if (cancelled()) return null
 
@@ -163,20 +175,25 @@ export class HeightField {
     return result
   }
 
-  /** Lon/lat bounds of a square in the frame (sampled along its edges). */
-  private boundsOf(frame: LocalFrame, cx: number, cy: number, half: number): Rectangle {
+  /**
+   * Lon/lat bounds of a square in the frame (sampled along its edges). Longitudes are unwrapped
+   * around the frame's own, so a square across the antimeridian gets west < −π or east > π
+   * instead of spanning the whole world.
+   */
+  private boundsOf(frame: LocalFrame, cx: number, cy: number, half: number): { west: number; south: number; east: number; north: number } {
     let west = Infinity, south = Infinity, east = -Infinity, north = -Infinity
     for (let i = 0; i <= 4; i++) {
       for (let j = 0; j <= 4; j++) {
         if (i !== 0 && i !== 4 && j !== 0 && j !== 4) continue
         const c = frame.toCartographic(cx - half + (i / 2) * half, cy - half + (j / 2) * half)
-        west = Math.min(west, c.longitude)
-        east = Math.max(east, c.longitude)
+        const lon = frame.longitude + wrapLongitude(c.longitude - frame.longitude)
+        west = Math.min(west, lon)
+        east = Math.max(east, lon)
         south = Math.min(south, c.latitude)
         north = Math.max(north, c.latitude)
       }
     }
-    return new Rectangle(west, south, east, north)
+    return { west, south, east, north }
   }
 
   private tile(x: number, y: number, level: number): Promise<TileResult | null> {

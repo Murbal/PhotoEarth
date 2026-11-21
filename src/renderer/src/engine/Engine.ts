@@ -767,7 +767,10 @@ export class Engine {
 
   /** Approximate ground height for flights; never blocks for long. */
   async groundHeight(longitude: number, latitude: number): Promise<number> {
-    if (!this.terrain.available) return surfaceHeight(this.scene, longitude, latitude) ?? 0
+    // Without terrain the globe is the bare ellipsoid, whose coarse tiles sag hundreds of meters
+    // below it where nothing finer has loaded yet (e.g. a place first reached from Map mode).
+    // Nothing real is below it but the odd depression, so the error of clamping is small.
+    if (!this.terrain.available) return Math.max(0, surfaceHeight(this.scene, longitude, latitude) ?? 0)
     const [h] = await withTimeout(this.terrain.sample([{ longitude, latitude }]), 1500, [null])
     return h ?? 0
   }

@@ -3,6 +3,7 @@ import './styles/app.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
+import { RootBoundary } from './components/ErrorBoundary'
 
 // Cesium loads workers and assets from here (copied next to the bundle at build time).
 ;(window as unknown as { CESIUM_BASE_URL: string }).CESIUM_BASE_URL = '/cesium/'
@@ -16,6 +17,8 @@ if (import.meta.env.VITE_PHOTOEARTH_TEST === '1') {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <RootBoundary>
+      <App />
+    </RootBoundary>
   </StrictMode>
 )

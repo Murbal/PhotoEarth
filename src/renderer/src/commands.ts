@@ -500,7 +500,8 @@ function commandList(): Command[] {
     { id: 'toggle-theme', title: 'Switch theme: dark / light', group: 'App', run: toggleSetting((d) => void (d.theme = d.theme === 'dark' ? 'light' : 'dark')) },
     { id: 'open-settings', title: 'Open settings', group: 'App', keys: shortcutLabel('Mod+,'), keywords: 'api key preferences', run: () => appState().set({ settingsOpen: true }) },
     { id: 'open-shortcuts', title: 'Keyboard shortcuts', group: 'App', keys: '?', run: () => appState().set({ shortcutsOpen: true }) },
-    { id: 'retry-providers', title: 'Retry loading map data', group: 'App', run: () => void engine()?.retryProviders() }
+    { id: 'retry-providers', title: 'Retry loading map data', group: 'App', run: () => void engine()?.retryProviders() },
+    { id: 'reload-window', title: 'Reload window', group: 'App', keywords: 'restart refresh', run: () => window.location.reload() }
   ]
 }
 

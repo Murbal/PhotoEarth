@@ -154,6 +154,22 @@ describe('BookmarkStore', () => {
     expect(readdirSync(photos).sort()).toEqual([kept!.file, `${kept!.id}.thumb.jpg`, 'notes.txt'].sort())
   })
 
+  it('keeps every photo when bookmarks.json is unreadable or from a newer version', () => {
+    for (const contents of ['{ "version": 2, "bookmarks": [ ,] }', (v: string) => v.replace('"version": 2', '"version": 99')]) {
+      const dir = tempDir()
+      const store = new BookmarkStore(dir)
+      const loc = store.create({ name: 'A', camera, mode: 'photorealistic' })
+      expect(store.addPhoto(loc.id, photo()).ok).toBe(true)
+      store.flush()
+      const photos = join(dir, 'photos')
+      const before = readdirSync(photos).sort()
+      const file = join(dir, 'bookmarks.json')
+      writeFileSync(file, typeof contents === 'string' ? contents : contents(readFileSync(file, 'utf8')))
+      new BookmarkStore(dir)
+      expect(readdirSync(photos).sort()).toEqual(before)
+    }
+  })
+
   it('saves profiles on their own or with a location, and drops them with it', () => {
     const dir = tempDir()
     let store = new BookmarkStore(dir)

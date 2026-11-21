@@ -41,10 +41,16 @@ export class BookmarkStore {
     this.file = new JsonFile<BookmarksFile>(path, (raw) => migrateBookmarksFile(raw))
     if (version !== null && version !== BOOKMARKS_FILE_VERSION) this.file.set(this.file.get())
     this.photos = new PhotoStore(join(dir, 'photos'))
-    try {
-      this.photos.removeOrphans(this.list().flatMap((b) => b.photos))
-    } catch (err) {
-      console.error('[photoearth] Could not clean up the photo directory:', err)
+    // Orphans are only safe to delete when every location was read. An unreadable file (kept as
+    // bookmarks.json.corrupt-*) or one from a newer version may still refer to the photos.
+    if (this.file.recovered || (version !== null && version > BOOKMARKS_FILE_VERSION)) {
+      console.error('[photoearth] Keeping all stored photos: bookmarks.json was not fully read.')
+    } else {
+      try {
+        this.photos.removeOrphans(this.list().flatMap((b) => b.photos))
+      } catch (err) {
+        console.error('[photoearth] Could not clean up the photo directory:', err)
+      }
     }
   }
 

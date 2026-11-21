@@ -131,8 +131,13 @@ void app.whenReady().then(async () => {
   })
 
   app.on('before-quit', () => {
-    settings.flush()
-    bookmarks.flush()
+    for (const store of [settings, bookmarks]) {
+      try {
+        store.flush()
+      } catch (err) {
+        console.error('[photoearth] Could not save on quit:', err)
+      }
+    }
   })
 })
 

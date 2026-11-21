@@ -3,6 +3,7 @@ import { AlignmentPanel } from './components/AlignmentPanel'
 import { Banners } from './components/Banners'
 import { CommandPalette } from './components/CommandPalette'
 import { ElevationPanel } from './components/ElevationPanel'
+import { PartBoundary } from './components/ErrorBoundary'
 import { HorizonPanel } from './components/HorizonPanel'
 import { LocationsPanel, PhotoViewer } from './components/LocationsPanel'
 import { MapMode } from './components/MapMode'
@@ -120,13 +121,18 @@ const STATUS_CLEARANCE = 44
  * open side panels; only when that space is too small does it span the width, and the side
  * panels then end above it instead.
  */
-function useOverlayLayout(root: RefObject<HTMLDivElement | null>, stack: RefObject<HTMLDivElement | null>): void {
+function useOverlayLayout(
+  root: RefObject<HTMLDivElement | null>,
+  stack: RefObject<HTMLDivElement | null>,
+  top: RefObject<HTMLDivElement | null>
+): void {
   const left = useAppStore((s) => s.panels.bookmarks)
   const rightElevation = useAppStore((s) => s.panels.elevation)
   const rightAlignment = useAppStore((s) => s.alignment.open)
   useLayoutEffect(() => {
     const rootEl = root.current
     const stackEl = stack.current
+    const topEl = top.current
     if (!rootEl || !stackEl) return
     const apply = () => {
       const width = rootEl.clientWidth
@@ -139,9 +145,11 @@ function useOverlayLayout(root: RefObject<HTMLDivElement | null>, stack: RefObje
       const style = rootEl.style
       style.setProperty('--stack-left', `${besidePanels ? leftInset : EDGE}px`)
       style.setProperty('--stack-right', `${besidePanels ? rightInset : EDGE}px`)
-      // Keep the bottom stack clear of top-center chips (and side panels when they sit above it).
+      // Keep the bottom stack clear of top-center chips and banners (and side panels when they
+      // sit above it). Banners grow with their text, so measure them rather than assume a height.
       const sideAbove = !besidePanels && (left || rightElevation || rightAlignment)
-      const topClearance = sideAbove ? 60 + 160 + GAP : 112
+      const topBottom = topEl && topEl.offsetHeight > 0 ? topEl.offsetTop + topEl.offsetHeight + GAP : 0
+      const topClearance = Math.max(sideAbove ? 60 + 160 + GAP : 112, topBottom)
       style.setProperty('--stack-max-height', `calc(100% - ${topClearance + STACK_BOTTOM}px)`)
       const stackHeight = stackEl.offsetHeight
       style.setProperty('--stack-height', `${stackHeight}px`)
@@ -152,8 +160,9 @@ function useOverlayLayout(root: RefObject<HTMLDivElement | null>, stack: RefObje
     const observer = new ResizeObserver(apply)
     observer.observe(rootEl)
     observer.observe(stackEl)
+    if (topEl) observer.observe(topEl)
     return () => observer.disconnect()
-  }, [root, stack, left, rightElevation, rightAlignment])
+  }, [root, stack, top, left, rightElevation, rightAlignment])
 }
 
 export function App() {
@@ -163,6 +172,7 @@ export function App() {
   const mapOpen = useAppStore((s) => s.settings.map.open)
   const overlayRef = useRef<HTMLDivElement>(null)
   const stackRef = useRef<HTMLDivElement>(null)
+  const topRef = useRef<HTMLDivElement>(null)
   const [creditEl, setCreditEl] = useState<HTMLDivElement | null>(null)
   const [bootError, setBootError] = useState<string | null>(null)
 
@@ -176,7 +186,7 @@ export function App() {
   useMenuCommands()
   useShortcuts()
   useForecastFeed()
-  useOverlayLayout(overlayRef, stackRef)
+  useOverlayLayout(overlayRef, stackRef, topRef)
 
   if (bootError) {
     return (
@@ -192,39 +202,49 @@ export function App() {
   return (
     <>
       {booted && <MapView creditContainer={creditEl} inert={modalOpen || mapOpen} />}
-      {booted && <MapMode />}
+      {booted && <PartBoundary name="Map mode"><MapMode /></PartBoundary>}
       {/* While a dialog is open, everything behind it is inert: no focus, no clicks. 3D-only
           overlays are hidden in Map mode (styles: .overlay-root[data-map]). */}
       <div ref={overlayRef} className="overlay-root" inert={modalOpen} data-map={mapOpen ? '' : undefined}>
-        <ViewfinderFrame />
-        <LoadingBar />
-        <TopBar />
-        <div className="top-center">
-          <StatusChips />
-          <Banners />
+        <PartBoundary name="Viewfinder frame"><ViewfinderFrame /></PartBoundary>
+        <PartBoundary name="Loading bar"><LoadingBar /></PartBoundary>
+        <PartBoundary name="Top bar"><TopBar /></PartBoundary>
+        <div ref={topRef} className="top-center">
+          <PartBoundary name="Status chips"><StatusChips /></PartBoundary>
+          <PartBoundary name="Banners"><Banners /></PartBoundary>
         </div>
-        <RightRail />
-        <LocationsPanel />
-        <ElevationPanel />
-        <AlignmentPanel />
-        <InspectCard />
-        <Crosshair />
+        <PartBoundary name="Tool rail"><RightRail /></PartBoundary>
+        <PartBoundary name="Saved locations"><LocationsPanel /></PartBoundary>
+        <PartBoundary name="Elevation panel"><ElevationPanel /></PartBoundary>
+        <PartBoundary name="Shot alignment"><AlignmentPanel /></PartBoundary>
+        <PartBoundary name="Inspect card"><InspectCard /></PartBoundary>
+        <PartBoundary name="Crosshair"><Crosshair /></PartBoundary>
         <div ref={stackRef} className="bottom-stack">
-          <ProfilePanel />
-          <HorizonPanel />
-          <ViewshedPanel />
-          <ViewfinderPanel />
-          <TimePanel />
+          <PartBoundary name="Elevation profile"><ProfilePanel /></PartBoundary>
+          <PartBoundary name="Horizon panorama"><HorizonPanel /></PartBoundary>
+          <PartBoundary name="Viewshed analysis"><ViewshedPanel /></PartBoundary>
+          <PartBoundary name="Viewfinder"><ViewfinderPanel /></PartBoundary>
+          <PartBoundary name="Time panel"><TimePanel /></PartBoundary>
         </div>
-        <FpsIndicator />
-        <Toast />
-        <StatusBar creditRef={setCreditEl} />
+        <PartBoundary name="Frame rate"><FpsIndicator /></PartBoundary>
+        <PartBoundary name="Toast"><Toast /></PartBoundary>
+        <PartBoundary name="Status bar"><StatusBar creditRef={setCreditEl} /></PartBoundary>
       </div>
-      <CommandPalette />
-      <SettingsDialog />
-      <ShortcutsOverlay />
-      <Onboarding />
-      <PhotoViewer />
+      <PartBoundary name="Command palette" onCrash={() => appState().set({ paletteOpen: false })}>
+        <CommandPalette />
+      </PartBoundary>
+      <PartBoundary name="Settings" onCrash={() => appState().set({ settingsOpen: false })}>
+        <SettingsDialog />
+      </PartBoundary>
+      <PartBoundary name="Shortcuts" onCrash={() => appState().set({ shortcutsOpen: false })}>
+        <ShortcutsOverlay />
+      </PartBoundary>
+      <PartBoundary name="Onboarding" onCrash={() => appState().set({ onboardingOpen: false })}>
+        <Onboarding />
+      </PartBoundary>
+      <PartBoundary name="Photo viewer" onCrash={() => appState().set({ photoViewer: null })}>
+        <PhotoViewer />
+      </PartBoundary>
     </>
   )
 }

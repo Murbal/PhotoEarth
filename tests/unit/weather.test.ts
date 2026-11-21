@@ -299,4 +299,14 @@ describe('daily outlook', () => {
     expect(day.maxGust).toBe(14)
     expect(days.find((d) => d.date === '2026-11-21')!.morningFog.level).toBe('low')
   })
+
+  it('keeps polar-night days, which have no sunrise, sunset or daylight gusts', () => {
+    // Longyearbyen in late November: the sun stays below the horizon all day.
+    const svalbard = { latitude: 78.22, longitude: 15.65 }
+    const f = { ...forecast(series(4 * 24)), location: svalbard }
+    expect(sunDay('2026-11-22', 'Arctic/Longyearbyen', svalbard.latitude, svalbard.longitude).polar).toBe('night')
+    const days = forecastDays(f, 'Arctic/Longyearbyen', '2026-11-21')
+    expect(days.length).toBeGreaterThanOrEqual(3)
+    expect(days.every((d) => d.sunrise === null && d.sunset === null && d.maxGust === null)).toBe(true)
+  })
 })

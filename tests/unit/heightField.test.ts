@@ -89,6 +89,22 @@ describe('height field loading', () => {
     expect(provider.requests).toBe(requests)
   })
 
+  it('requests only the tiles around a square that crosses the antimeridian', async () => {
+    // Fiji: a 40 km square around 179.98° E reaches into the western hemisphere.
+    const provider = fakeProvider()
+    const field = new HeightField(provider)
+    const near = new LocalFrame(179.98 * DEG, -17 * DEG)
+    const far = new LocalFrame(170 * DEG, -17 * DEG)
+    const across = await field.loadLevel(near, 0, 0, 20_000, 64, null, () => false)
+    const acrossRequests = provider.requests
+    await new HeightField(provider).loadLevel(far, 0, 0, 20_000, 64, null, () => false)
+    const usual = provider.requests - acrossRequests
+    expect(across).not.toBeNull()
+    // Two columns instead of one, never the whole band of the world.
+    expect(acrossRequests).toBeLessThanOrEqual(usual * 3)
+    expect(across!.heights.every(Number.isFinite)).toBe(true)
+  })
+
   it('stops when cancelled', async () => {
     const field = new HeightField(fakeProvider())
     const frame = new LocalFrame(8 * DEG, 46 * DEG)

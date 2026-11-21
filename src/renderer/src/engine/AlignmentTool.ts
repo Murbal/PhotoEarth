@@ -52,7 +52,11 @@ export class AlignmentTool {
   private obstructionPos: Cartesian3 | null = null
   private cachedSamples: LineOfSightSample[] = []
   private losRequest = 0
-  private pinRequest = 0
+  /**
+   * Per pin, so placing the Subject right after the Camera doesn't drop the Camera's precise
+   * ground height while it is still being sampled (and the other way round).
+   */
+  private readonly pinRequest = { camera: 0, subject: 0 }
 
   constructor(
     private readonly widget: CesiumWidget,
@@ -92,7 +96,7 @@ export class AlignmentTool {
 
   close(): void {
     this.losRequest++
-    this.pinRequest++
+    this.invalidatePins()
     this.removeEntities()
     this.cameraGround = null
     this.cameraEye = null
@@ -105,7 +109,7 @@ export class AlignmentTool {
 
   clearPins(): void {
     this.losRequest++
-    this.pinRequest++
+    this.invalidatePins()
     this.cameraGround = null
     this.cameraEye = null
     this.subjectPos = null
@@ -140,7 +144,7 @@ export class AlignmentTool {
   }
 
   async setCameraFromCoords(longitude: number, latitude: number, initialGroundHeight?: number, label?: string): Promise<void> {
-    const id = ++this.pinRequest
+    const id = ++this.pinRequest.camera
     const ground0 = initialGroundHeight !== undefined && Number.isFinite(initialGroundHeight) ? initialGroundHeight : 0
     const pin: AlignmentPin = {
       longitude,
@@ -160,7 +164,7 @@ export class AlignmentTool {
     this.recompute(true)
 
     const precise = await this.deps.sampleGround(longitude, latitude).catch(() => undefined)
-    if (id !== this.pinRequest) return
+    if (id !== this.pinRequest.camera) return
     const current = appState().alignment.camera
     if (!current || Math.abs(current.longitude - longitude) > 1e-7 || Math.abs(current.latitude - latitude) > 1e-7) return
     if (precise !== undefined && Number.isFinite(precise)) {
@@ -172,7 +176,7 @@ export class AlignmentTool {
   }
 
   async setSubjectFromCoords(longitude: number, latitude: number, initialGroundHeight?: number, label?: string): Promise<void> {
-    const id = ++this.pinRequest
+    const id = ++this.pinRequest.subject
     const ground0 = initialGroundHeight !== undefined && Number.isFinite(initialGroundHeight) ? initialGroundHeight : 0
     const pin: AlignmentPin = {
       longitude,
@@ -192,7 +196,7 @@ export class AlignmentTool {
     this.recompute(true)
 
     const precise = await this.deps.sampleGround(longitude, latitude).catch(() => undefined)
-    if (id !== this.pinRequest) return
+    if (id !== this.pinRequest.subject) return
     const current = appState().alignment.subject
     if (!current || Math.abs(current.longitude - longitude) > 1e-7 || Math.abs(current.latitude - latitude) > 1e-7) return
     if (precise !== undefined && Number.isFinite(precise)) {
@@ -279,7 +283,7 @@ export class AlignmentTool {
    */
   debugSetPins(camera: AlignmentPin, subject: AlignmentPin, samples?: LineOfSightSample[]): void {
     this.losRequest++
-    this.pinRequest++
+    this.invalidatePins()
     const s = appState()
     if (s.panels.elevation) s.togglePanel('elevation', false)
     s.patchAlignment({
@@ -302,9 +306,15 @@ export class AlignmentTool {
     }
   }
 
+  /** Drops every pending precise-height lookup (pins cleared, replaced or swapped). */
+  private invalidatePins(): void {
+    this.pinRequest.camera++
+    this.pinRequest.subject++
+  }
+
   destroy(): void {
     this.losRequest++
-    this.pinRequest++
+    this.invalidatePins()
     this.removeEntities()
   }
 

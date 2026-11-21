@@ -295,7 +295,9 @@ export function forecastDays(f: Forecast, timeZone: string, today: string): DayO
         if (g !== null && (maxGust === null || g > maxGust)) maxGust = g
       }
     }
-    if (sunrise || sunset || maxGust !== null) days.push({ date, sunrise, sunset, morningFog, maxGust })
+    // Keep every day the forecast reaches, including polar night with no sunrise, sunset or
+    // daylight gusts: its fog note and astro window still apply.
+    if (sunrise || sunset || maxGust !== null || hourIndex(s, sun.solarNoon) >= 0) days.push({ date, sunrise, sunset, morningFog, maxGust })
   }
   return days
 }
