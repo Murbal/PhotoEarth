@@ -2,7 +2,9 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { defaultSettings } from '@shared/settings'
 import type { ApiKeys, Bookmark, MapMode, SecretsStatus, Settings } from '@shared/types'
+import type { BodyDay } from '../lib/celestial'
 import type { SunlitSpan } from '../lib/horizon'
+import type { MoonState } from '../lib/moon'
 import type { Horizon, SkylinePeak } from '../lib/panorama'
 import type { ProfileSample, ProfileStats, GeoPoint } from '../lib/profile'
 import type { BandSegment } from '../lib/sun'
@@ -70,6 +72,14 @@ export interface SunInfo {
   zoneName: string
   /** The local day split into sky bands (slider shading, golden/blue hour and twilight times). */
   bands: BandSegment[]
+}
+
+/** The moon at the simulated instant and camera target, with its rise and set that local day. */
+export interface MoonInfo extends MoonState, BodyDay {
+  utc: number
+  /** First new and full moon from the start of the local day (UTC instants). */
+  nextNewMoon: number | null
+  nextFullMoon: number | null
 }
 
 export type Panel = 'time' | 'elevation' | 'bookmarks'
@@ -191,6 +201,7 @@ export interface AppState {
   scale: { pixels: number; label: string } | null
   sim: SimState
   sun: SunInfo | null
+  moon: MoonInfo | null
   banners: Banner[]
   panels: Record<Panel, boolean>
   paletteOpen: boolean
@@ -253,6 +264,7 @@ export const useAppStore = create<AppState>()(
     scale: null,
     sim: { ...todayIn(), timeZone: 'UTC', playing: false, speed: '10m' },
     sun: null,
+    moon: null,
     banners: [],
     panels: { time: false, elevation: false, bookmarks: false },
     paletteOpen: false,

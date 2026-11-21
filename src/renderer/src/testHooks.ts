@@ -13,6 +13,7 @@ import {
   ShadowMode,
   Transforms
 } from 'cesium'
+import { moonEarthFixed } from './lib/moon'
 import * as terrainShadow from './lib/terrainShadow'
 
 export const testCesium = {
@@ -27,5 +28,7 @@ export const testCesium = {
   ShadowMode,
   Transforms,
   /** Pure terrain-shadow geometry, for comparing the GPU pass with its CPU reference. */
-  terrainShadow
+  terrainShadow,
+  /** The moon position the rendered moon should be drawn at. */
+  moonEarthFixed
 }

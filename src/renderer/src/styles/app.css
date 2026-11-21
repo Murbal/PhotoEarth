@@ -14,7 +14,7 @@
   --danger: #ff6b6b;
   --ok: #4cd18a;
   --sun: #ffc94d;
-  --moon: #c8d3e4;
+  --moon: #b8c8ff;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.25);
   --radius: 12px;
   --radius-sm: 8px;
@@ -37,7 +37,7 @@
   --accent-strong: #1677c4;
   --warn: #a35f00;
   --sun: #b77800;
-  --moon: #5b6a82;
+  --moon: #4b62b0;
   --danger: #c93636;
   --ok: #17864c;
   --shadow: 0 10px 30px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.08);
@@ -825,14 +825,14 @@ input[type='color'] {
   margin-top: 2px;
 }
 
-.sun-readouts {
+.sky-readouts {
   display: grid;
-  grid-template-columns: repeat(5, auto);
+  grid-template-columns: repeat(6, auto);
   gap: 4px 18px;
   font-size: 12px;
 }
 
-.sun-readouts .k {
+.sky-readouts .k {
   color: var(--text-faint);
   font-size: 11px;
 }
@@ -878,6 +878,57 @@ input[type='color'] {
   vertical-align: -1px;
   border-radius: 2px;
   border: 1px solid var(--panel-border);
+}
+
+.body-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.body-key {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.body-key.sun {
+  background: var(--sun);
+}
+
+.body-key.moon {
+  background: var(--moon);
+}
+
+.sky-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.moon-phase {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.moon-disc {
+  flex: none;
+}
+
+/* The same night-sky colors in both themes, so lit always reads as lit. */
+.moon-disc-dark {
+  fill: #283044;
+  stroke: #8d9bbd;
+  stroke-opacity: 0.5;
+  stroke-width: 0.6;
+}
+
+.moon-disc-lit {
+  fill: #eef1f8;
 }
 
 /* profile */

@@ -119,6 +119,8 @@ export interface Settings {
   /** Shadow-map detail (buildings, trees) on top of heightmap terrain shadows. */
   detailShadows: boolean
   showSunIndicator: boolean
+  /** Moon direction line on the map, like the sun's. */
+  showMoonIndicator: boolean
   viewfinder: ViewfinderSettings
   horizon: HorizonSettings
   bookmarkIncludeTime: boolean

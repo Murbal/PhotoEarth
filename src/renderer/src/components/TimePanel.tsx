@@ -20,13 +20,15 @@ import {
   formatDuration,
   formatLongDate,
   formatOffset,
+  formatShortDate,
   parseDate,
   utcToZoned,
   withYear
 } from '../lib/time'
 import { compassPoint } from '../lib/units'
-import { useAppStore, type PlaybackSpeedId } from '../store/appStore'
+import { useAppStore, type MoonInfo, type PlaybackSpeedId } from '../store/appStore'
 import { Icon } from './Icon'
+import { MoonDisc } from './MoonDisc'
 import { TrackSlider, type SliderMarker } from './Slider'
 
 /** Slider shading for each sky band. */
@@ -163,6 +165,7 @@ export function TimePanel() {
   const open = useAppStore((s) => s.panels.time)
   const sim = useAppStore((s) => s.sim)
   const sun = useAppStore((s) => s.sun)
+  const moon = useAppStore((s) => s.moon)
   const settings = useAppStore((s) => s.settings)
   const patchSim = useAppStore((s) => s.patchSim)
   const patchSettings = useAppStore((s) => s.patchSettings)
@@ -202,6 +205,17 @@ export function TimePanel() {
     const clock = (m: number | null) => (m === null ? '—' : formatClock(m))
     return { markers, rise: clock(rise), noon: clock(noon), set: clock(set) }
   }, [sunrise, solarNoon, sunset, sim.date, sim.timeZone])
+  // Like the sun times: `moon` is replaced every playback frame, its rise and set aren't.
+  const moonRise = moon?.rise ?? null
+  const moonTransit = moon?.transit ?? null
+  const moonSet = moon?.set ?? null
+  const moonTimes = useMemo(() => {
+    const clock = (t: number | null) => {
+      const m = markerMinutes(t, sim.date, sim.timeZone)
+      return m === null ? '—' : formatClock(m)
+    }
+    return { rise: clock(moonRise), transit: clock(moonTransit), set: clock(moonSet) }
+  }, [moonRise, moonTransit, moonSet, sim.date, sim.timeZone])
   const bands = sun?.bands ?? NO_BANDS
   const dayBackground = useMemo(() => dayGradient(bands), [bands])
 
@@ -242,7 +256,7 @@ export function TimePanel() {
           </div>
           <div
             className="small muted time-location"
-            title="Sun position, sunrise, sunset and the time zone are calculated for the ground at the center of the view (the ring on the map). Pan the map to move it; the inspected point and search pin don't change it."
+            title="Sun and moon positions, their rise and set times, and the time zone are calculated for the ground at the center of the view (the ring on the map). Pan the map to move it; the inspected point and search pin don't change it."
           >
             <span className="sun-target-key" aria-hidden="true" />
             For the view center{target ? ` · ${shortLatLon(target.latitude, target.longitude)}` : ''}
@@ -351,22 +365,60 @@ export function TimePanel() {
         </div>
       </div>
 
-      <div className="row" style={{ marginTop: 6, justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
-        <div className="sun-readouts">
+      <div className="row" style={{ marginTop: 6, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 14 }}>
+        <div className="sky-readouts">
+          <span />
           <span className="k">Azimuth</span>
           <span className="k">Altitude</span>
-          <span className="k">Sunrise</span>
-          <span className="k">Solar noon</span>
-          <span className="k">Sunset</span>
+          <span className="k">Rise</span>
+          <span className="k" title="Highest point of the day: solar noon for the sun">
+            Transit
+          </span>
+          <span className="k">Set</span>
+
+          <span className="body-label">
+            <span className="body-key sun" aria-hidden="true" />
+            Sun
+          </span>
           <span className="mono">{sun ? `${sun.azimuth.toFixed(1)}° ${compassPoint(sun.azimuth)}` : '—'}</span>
           <span className="mono" style={{ color: sun && sun.altitude < 0 ? 'var(--text-muted)' : 'var(--sun)' }}>
             {sun ? `${sun.altitude.toFixed(1)}°` : '—'}
           </span>
-          <span className="mono">{sun?.polar === 'day' ? 'polar day' : sun?.polar === 'night' ? 'polar night' : dayTimes.rise}</span>
-          <span className="mono">{sun ? dayTimes.noon : '—'}</span>
-          <span className="mono">{sun?.polar ? '—' : dayTimes.set}</span>
+          <span className="mono" title="Sunrise">
+            {sun?.polar === 'day' ? 'polar day' : sun?.polar === 'night' ? 'polar night' : dayTimes.rise}
+          </span>
+          <span className="mono" title="Solar noon">
+            {sun ? dayTimes.noon : '—'}
+          </span>
+          <span className="mono" title="Sunset">
+            {sun?.polar ? '—' : dayTimes.set}
+          </span>
+
+          <span className="body-label">
+            <span className="body-key moon" aria-hidden="true" />
+            Moon
+          </span>
+          <span className="mono">{moon ? `${moon.azimuth.toFixed(1)}° ${compassPoint(moon.azimuth)}` : '—'}</span>
+          <span className="mono" style={{ color: moon && moon.altitude < 0 ? 'var(--text-muted)' : 'var(--moon)' }}>
+            {moon ? `${moon.altitude.toFixed(1)}°` : '—'}
+          </span>
+          <span className="mono" title={moon && moon.rise === null && !moon.polar ? 'No moonrise on this date' : 'Moonrise (upper limb)'}>
+            {moon?.polar === 'up' ? 'up all day' : moon?.polar === 'down' ? 'down all day' : moonTimes.rise}
+          </span>
+          <span
+            className="mono"
+            title={moon?.transitAltitude != null ? `Moon transit, ${moon.transitAltitude.toFixed(1)}° high` : 'No moon transit on this date'}
+          >
+            {moon ? moonTimes.transit : '—'}
+          </span>
+          <span className="mono" title={moon && moon.set === null && !moon.polar ? 'No moonset on this date' : 'Moonset (upper limb)'}>
+            {moon?.polar ? '—' : moonTimes.set}
+          </span>
         </div>
-        <div className="small muted">Day length {dayLength}</div>
+        <div className="sky-side">
+          <div className="small muted">Day length {dayLength}</div>
+          {moon && <MoonPhase moon={moon} date={sim.date} timeZone={sim.timeZone} imperial={settings.units === 'imperial'} />}
+        </div>
       </div>
 
       <LightWindowsTable bands={bands} minutes={sim.minutes} />
@@ -393,6 +445,14 @@ export function TimePanel() {
           />
           Sun direction
         </label>
+        <label className="switch">
+          <input
+            type="checkbox"
+            checked={settings.showMoonIndicator}
+            onChange={(e) => patchSettings((d) => void (d.showMoonIndicator = e.target.checked))}
+          />
+          Moon direction
+        </label>
         <label
           className="switch"
           title="Shadow-map detail close to the camera (buildings, trees) on top of the terrain shadows. Photorealistic mode only."
@@ -409,6 +469,36 @@ export function TimePanel() {
         <span className="small faint" style={{ marginLeft: 'auto' }}>
           <span className="kbd">[</span> <span className="kbd">]</span> ±15 min · <span className="kbd">Shift</span>+<span className="kbd">[ ]</span> ±1 day
         </span>
+      </div>
+    </div>
+  )
+}
+
+/** Local "today 14:05" or "Nov 24 14:05" for an instant. */
+function eventTime(utc: number | null, date: string, timeZone: string): string {
+  if (utc === null) return '—'
+  const local = utcToZoned(utc, timeZone)
+  return `${local.date === date ? 'today' : formatShortDate(local.date)} ${formatClock(local.minutes)}`
+}
+
+function MoonPhase({ moon, date, timeZone, imperial }: { moon: MoonInfo; date: string; timeZone: string; imperial: boolean }) {
+  const lit = Math.round(moon.illumination * 100)
+  const distance = imperial
+    ? `${Math.round(moon.distanceKm / 1.609344).toLocaleString('en-US')} mi`
+    : `${Math.round(moon.distanceKm).toLocaleString('en-US')} km`
+  // Soonest first: the full moon while waxing, the new moon while waning.
+  const events = [
+    { label: 'Full', utc: moon.nextFullMoon },
+    { label: 'New', utc: moon.nextNewMoon }
+  ].sort((a, b) => (a.utc ?? Infinity) - (b.utc ?? Infinity))
+  return (
+    <div className="moon-phase" title={`Distance ${distance}. The disc is drawn as the moon looks in the sky from here: up is towards the zenith.`}>
+      <MoonDisc illumination={moon.illumination} brightLimb={moon.brightLimb} size={30} label={`${moon.phaseName}, ${lit}% illuminated`} />
+      <div>
+        <div>
+          {moon.phaseName} <span className="muted">· {lit}%</span>
+        </div>
+        <div className="small muted">{events.map((e) => `${e.label} ${eventTime(e.utc, date, timeZone)}`).join(' · ')}</div>
       </div>
     </div>
   )

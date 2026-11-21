@@ -921,6 +921,38 @@ test('time zone follows the viewed location', async () => {
   await expect(page.locator('.light-windows')).toContainText(/\d\d:\d\d–\d\d:\d\d|all day/)
 })
 
+test('moon: readouts, direction line, and the rendered moon where the readouts put it', async () => {
+  if (!(await page.locator('.time-panel').isVisible())) await page.keyboard.press('t')
+  // The full moon of 2026-03-03 (a total lunar eclipse).
+  await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.sun.setInstant(Date.parse('2026-03-03T22:00:00Z')))
+  const panel = page.locator('.time-panel')
+  await expect(panel.locator('.sky-readouts')).toContainText('Moon')
+  await expect(panel.locator('.moon-phase')).toContainText(/Full moon|Waning gibbous/)
+  await expect(panel.locator('svg.moon-disc path.moon-disc-lit')).toHaveCount(1)
+  await expect(panel.locator('.moon-phase')).toContainText('%')
+
+  // The direction line: two more entities while it's on.
+  const entities = () => page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.widget.entities.values.length)
+  const before = await entities()
+  await panel.getByText('Moon direction').click()
+  await expect.poll(entities).toBe(before + 2)
+  await panel.getByText('Moon direction').click()
+  await expect.poll(entities).toBe(before)
+
+  // Cesium's moon is drawn at astronomy-engine's position, not its own series (~200 km, 0.03° off).
+  const offset = await page.evaluate(async () => {
+    const e = (window as unknown as { __photoearth: any }).__photoearth
+    const C = (window as unknown as { Cesium: any }).Cesium
+    e.scene.requestRender()
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    const m = e.scene.moon._ellipsoidPrimitive.modelMatrix
+    const [x, y, z] = C.moonEarthFixed(e.sun.utc)
+    return { km: Math.hypot(m[12] - x, m[13] - y, m[14] - z) / 1000, distanceKm: Math.hypot(x, y, z) / 1000 }
+  })
+  expect(offset.distanceKm).toBeGreaterThan(356_000)
+  expect(offset.km).toBeLessThan(1) // < 0.0002°
+})
+
 test('bookmarks persist across a restart', async () => {
   await page.keyboard.press('ControlOrMeta+b')
   await expect(page.locator('.bookmark')).toHaveCount(1)
