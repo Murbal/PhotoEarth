@@ -22,6 +22,7 @@ import { CameraController } from './CameraController'
 import { ElevationStyler } from './ElevationStyler'
 import { GoogleImagery } from './GoogleImagery'
 import { HorizonTool } from './HorizonTool'
+import { LightPollution } from './LightPollution'
 import { PlaceLabels } from './PlaceLabels'
 import { PointInspector } from './PointInspector'
 import { ProfileTool } from './ProfileTool'
@@ -66,6 +67,7 @@ export class Engine {
   readonly tiles: TilesetManager
   readonly terrain: TerrainManager
   readonly imagery: GoogleImagery
+  readonly lightPollution: LightPollution
   readonly labels: PlaceLabels
   readonly camera: CameraController
   readonly sun: SunController
@@ -165,6 +167,10 @@ export class Engine {
       appState().set({ terrainReady: true })
     })
     this.imagery = new GoogleImagery(scene, this.widget.creditDisplay, imagery.error, imagery.ready)
+    this.lightPollution = new LightPollution(scene, (shown) => {
+      this.sun?.setUnlitGlobe(shown)
+      this.applyStyle()
+    })
     this.labels = new PlaceLabels(scene, { onError: labels.error, onReady: labels.ready }, {
       nearby: (req) => window.photoearth.places.nearby(req),
       cities: (req) => window.photoearth.places.cities(req)
@@ -248,6 +254,7 @@ export class Engine {
     this.moon.destroy()
     this.readouts.destroy()
     this.imagery.destroy()
+    this.lightPollution.destroy()
     this.labels.destroy()
     this.terrainShadows.destroy()
     this.preloader.destroy()
@@ -361,6 +368,12 @@ export class Engine {
     )
     s.push(
       subscribeJson(
+        (st) => st.settings.lightPollution,
+        (lp) => this.lightPollution.configure(lp, this.scene.globe.show)
+      )
+    )
+    s.push(
+      subscribeJson(
         (st) => st.settings.placeLabels,
         (on) => this.labels.configure(this.keys.googleApiKey, on)
       )
@@ -416,6 +429,7 @@ export class Engine {
       this.scene.terrainProvider = terrain
     }
     this.imagery.setVisible(globe.show)
+    this.lightPollution.configure(settings.lightPollution, globe.show)
     this.labels.refresh()
     if (!photo && !this.terrain.available) {
       appState().postBanner({
@@ -439,7 +453,13 @@ export class Engine {
     // Called from the terrain-shadow status callback, which can fire during construction.
     if (!this.styler || !this.terrain) return
     const { mode, settings, autoRange } = appState()
-    this.styler.apply(settings.elevation, mode === 'elevation' && this.terrain.available, autoRange, this.terrainShadows.ready)
+    this.styler.apply(
+      settings.elevation,
+      mode === 'elevation' && this.terrain.available,
+      autoRange,
+      this.terrainShadows.ready,
+      this.lightPollution.shown
+    )
   }
 
   private applyLighting(): void {
@@ -462,6 +482,8 @@ export class Engine {
     this.scene.postProcessStages.fxaa.enabled = q.fxaa
     this.widget.useBrowserRecommendedResolution = !quality.devicePixelRatioAware
     this.widget.resolutionScale = q.resolutionScale
+    // Contours fade with the terrain's screen-space error.
+    this.applyStyle()
     this.requestRender()
   }
 

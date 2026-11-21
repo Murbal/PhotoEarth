@@ -134,6 +134,13 @@ const PATHS: Record<string, ReactElement> = {
       <path d="M3.5 12h17M12 3.5v3" />
     </>
   ),
+  /** A crescent moon and a star: the light pollution (night sky brightness) overlay. */
+  night: (
+    <>
+      <path d="M19.5 14.8A7.5 7.5 0 0 1 9.2 4.5a7.5 7.5 0 1 0 10.3 10.3z" />
+      <path d="M17 3.5v4M15 5.5h4" />
+    </>
+  ),
   now: (
     <>
       <circle cx="12" cy="12" r="9" />

@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { defaultSettings } from '@shared/settings'
 import type { ApiKeys, Bookmark, MapMode, SecretsStatus, Settings } from '@shared/types'
 import type { BodyDay } from '../lib/celestial'
+import type { SkyEstimate } from '../lib/skyBrightness'
 import type { SunlitSpan } from '../lib/horizon'
 import type { MoonState } from '../lib/moon'
 import type { Horizon, SkylinePeak } from '../lib/panorama'
@@ -159,6 +160,15 @@ export interface WeatherState {
   error: string | null
 }
 
+/** Estimated night sky brightness at the inspected point (§7.5), while the overlay is on. */
+export interface SkyInfo {
+  /** `outside`: beyond the data (65° S – 75° N). */
+  status: 'loading' | 'ready' | 'outside' | 'unavailable'
+  /** Label of the data set the estimate comes from. */
+  source: string
+  estimate: SkyEstimate | null
+}
+
 /** Where the last search (place or coordinates) took the camera. */
 export interface Destination {
   name: string
@@ -222,6 +232,7 @@ export interface AppState {
   inspect: InspectInfo | null
   spotSun: SpotSunInfo | null
   weather: WeatherState
+  sky: SkyInfo | null
   destination: Destination | null
   pendingTiles: number
   fps: number | null
@@ -286,6 +297,7 @@ export const useAppStore = create<AppState>()(
     inspect: null,
     spotSun: null,
     weather: { status: 'idle', forecast: null, error: null },
+    sky: null,
     destination: null,
     pendingTiles: 0,
     fps: null,

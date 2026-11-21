@@ -5,6 +5,7 @@ import { PALETTE_LABELS, paletteGradientCss, SLOPE_CLASSES } from '../lib/palett
 import { FEET_PER_METER, formatElevation } from '../lib/units'
 import { useAppStore } from '../store/appStore'
 import { Icon } from './Icon'
+import { LightPollutionSection } from './LightPollution'
 
 function Opacity({ value, onChange, disabled }: { value: number; onChange: (v: number) => void; disabled?: boolean }) {
   return (
@@ -247,6 +248,8 @@ export function ElevationPanel() {
               : 'Fixed light from the north-west for reading terrain shape.'}
           </div>
         </div>
+
+        <LightPollutionSection />
       </div>
     </div>
   )

@@ -611,6 +611,48 @@ input[type='color'] {
   margin-bottom: 2px;
 }
 
+/* Light pollution zones (§7.5): a chip per zone, brightness ticks under the boundaries. */
+.lp-legend {
+  margin-top: 6px;
+}
+
+.lp-zones {
+  display: flex;
+  gap: 1px;
+}
+
+.lp-zones > div {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.lp-swatch {
+  height: 10px;
+  border-radius: 2px;
+  margin-bottom: 2px;
+  border: 1px solid var(--panel-border);
+}
+
+.lp-ticks {
+  position: relative;
+  height: 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.lp-ticks > span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+}
+
+.lp-ticks > span:first-child {
+  transform: none;
+}
+
 /* ───────────── bottom ───────────── */
 
 .bottom-stack {
@@ -1367,6 +1409,34 @@ input[type='color'] {
   justify-content: start;
   align-items: baseline;
   gap: 3px 14px;
+}
+
+.sky-readout {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--panel-border);
+  max-width: 260px;
+}
+
+.sky-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 3px 10px;
+}
+
+.sky-grid .k {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.zone-chip {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  border: 1px solid var(--panel-border);
+  vertical-align: -1px;
 }
 
 .spot-sun-grid .k {

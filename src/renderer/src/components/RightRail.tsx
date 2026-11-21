@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { runCommand } from '../commands'
 import { getEngine } from '../engine/instance'
 import { shortcutLabel } from '../lib/platform'
 import { haversine } from '../lib/profile'
@@ -164,6 +165,7 @@ export function RightRail() {
   const camera = useAppStore((s) => s.camera)
   const pinElsewhere = !!pin && (!camera || haversine(pin, camera) > 5)
   const placeLabels = useAppStore((s) => s.settings.placeLabels)
+  const lightPollution = useAppStore((s) => s.settings.lightPollution.enabled)
   const viewfinder = useAppStore((s) => s.viewfinder)
   const patchSettings = useAppStore((s) => s.patchSettings)
 
@@ -173,7 +175,7 @@ export function RightRail() {
         <RailButton icon="sun" label="Time & sun" keys="T" active={panels.time} pressed={panels.time} onClick={() => togglePanel('time')} />
         <RailButton
           icon="layers"
-          label="Elevation styling: tint, contours, slope"
+          label="Elevation styling & light pollution"
           keys="L"
           active={panels.elevation}
           pressed={panels.elevation}
@@ -215,6 +217,14 @@ export function RightRail() {
           active={placeLabels}
           pressed={placeLabels}
           onClick={() => patchSettings((d) => void (d.placeLabels = !d.placeLabels))}
+        />
+        <RailButton
+          icon="night"
+          label={lightPollution ? 'Light pollution: hide' : 'Light pollution: sky brightness & Bortle estimate'}
+          keys="K"
+          active={lightPollution}
+          pressed={lightPollution}
+          onClick={() => runCommand('toggle-light-pollution')}
         />
         <RailButton icon="bookmark" label="Bookmarks" active={panels.bookmarks} pressed={panels.bookmarks} onClick={() => togglePanel('bookmarks')} />
         <div className="divider" />

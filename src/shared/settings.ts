@@ -3,6 +3,7 @@ import type {
   CompositionGuide,
   FrameAspect,
   ImageryType,
+  LightPollutionSourceId,
   MapMode,
   PaletteId,
   QualityOverrides,
@@ -26,6 +27,17 @@ export const DEFAULT_VIEW: CameraView = {
 export const QUALITY_PRESETS: readonly QualityPreset[] = ['low', 'medium', 'high', 'ultra']
 export const PALETTES: readonly PaletteId[] = ['terrain', 'viridis', 'spectral', 'magma', 'grayscale']
 export const SCROLL_GESTURES: readonly ScrollGesture[] = ['auto', 'pan', 'zoom']
+export const LIGHT_POLLUTION_SOURCES: readonly LightPollutionSourceId[] = [
+  'atlas-2025',
+  'atlas-2024',
+  'atlas-2023',
+  'atlas-2022',
+  'atlas-2020',
+  'atlas-2016',
+  'black-marble'
+]
+/** Hosts of the light pollution tiles, allowed by the CSP (src/main/security.ts). */
+export const LIGHT_POLLUTION_ORIGINS: readonly string[] = ['https://djlorenz.github.io', 'https://gibs.earthdata.nasa.gov']
 export const IMAGERY_TYPES: readonly ImageryType[] = ['satellite', 'terrain', 'roadmap']
 export const CONTOUR_INTERVALS = [10, 20, 50, 100, 200, 500] as const
 /** Imperial contour intervals in feet (stored as meters). */
@@ -84,6 +96,7 @@ export function defaultSettings(): Settings {
       slope: { enabled: false, opacity: 0.6 },
       hillshade: { enabled: true, opacity: 0.5, followSun: true }
     },
+    lightPollution: { enabled: false, opacity: 0.6, source: 'atlas-2025' },
     verticalExaggeration: 1,
     lighting: 'sun',
     shadows: true,
@@ -178,6 +191,7 @@ export function sanitizeSettings(raw: Json): Settings {
   const slope = isObject(e.slope) ? e.slope : {}
   const hill = isObject(e.hillshade) ? e.hillshade : {}
   const horizon = isObject(r.horizon) ? r.horizon : {}
+  const lp = isObject(r.lightPollution) ? r.lightPollution : {}
   const modes: readonly MapMode[] = ['photorealistic', 'elevation']
   const cascades = o.shadowCascades === 1 || o.shadowCascades === 4 ? o.shadowCascades : null
 
@@ -240,6 +254,11 @@ export function sanitizeSettings(raw: Json): Settings {
         opacity: num(hill.opacity, d.elevation.hillshade.opacity, 0, 1),
         followSun: bool(hill.followSun, d.elevation.hillshade.followSun)
       }
+    },
+    lightPollution: {
+      enabled: bool(lp.enabled, d.lightPollution.enabled),
+      opacity: num(lp.opacity, d.lightPollution.opacity, 0, 1),
+      source: oneOf(lp.source, LIGHT_POLLUTION_SOURCES, d.lightPollution.source)
     },
     verticalExaggeration: num(r.verticalExaggeration, d.verticalExaggeration, MIN_EXAGGERATION, MAX_EXAGGERATION),
     lighting: oneOf(r.lighting, ['sun', 'flat'], d.lighting),
