@@ -244,7 +244,7 @@ These can be toggled and combined:
 
 ### 7.4 Peak / point inspection
 
-- Click a point to drop a temporary marker that shows coordinates and elevation. It can be copied to the clipboard.
+- Click a point to drop a temporary marker that shows coordinates and elevation. It can be copied to the clipboard as one line: plain decimal coordinates (6 decimals, whatever the coordinate format setting), the elevation in the chosen units without a thousands separator ("1234 m" or "4049 ft"), and the night-sky estimate while the light pollution overlay is on (§7.5).
 - The marker also shows **terrain-aware sun times** for the simulated date: the flat-horizon sunrise and sunset (SunCalc) next to when the sun actually clears and drops behind the skyline seen from that point ("first light / last light"), plus the total direct sun. The skyline is traced once per point on its own heightmap levels (±80 km, the terrain shadow geometry of §8.1.1: earth curvature, refraction, the center of the sun's disc), so changing the date is instant. Clicking a terrain time sets the simulation to it. Needs a Cesium ion token. While the marker is set, the time-of-day slider shows direct sun on the marker instead of the view center's sky: two tones (sun / shade, no twilight or golden-hour bands) with first and last light marked.
 
 ### 7.5 Light pollution overlay

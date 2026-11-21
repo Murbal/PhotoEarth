@@ -1,5 +1,5 @@
 import { getEngine } from '../engine/instance'
-import { formatLatLon, formatLatLonPlain } from '../lib/coords'
+import { formatLatLon, formatPointForClipboard } from '../lib/coords'
 import { formatClock, formatDuration, formatShortDate, utcToZoned } from '../lib/time'
 import { formatElevation } from '../lib/units'
 import { appState, useAppStore, type SpotSunInfo } from '../store/appStore'
@@ -123,10 +123,9 @@ export function InspectCard() {
   const sky = useAppStore((s) => s.sky?.estimate ?? null)
   if (!inspect || !inspect.screen) return null
   const copy = () => {
-    const elev = inspect.elevation !== null ? `, ${Math.round(inspect.elevation)} m` : ''
-    const night = sky ? `, ${skySummary(sky)}` : ''
+    const text = formatPointForClipboard(inspect.latitude, inspect.longitude, inspect.elevation, units, sky ? [skySummary(sky)] : [])
     void navigator.clipboard
-      .writeText(`${formatLatLonPlain(inspect.latitude, inspect.longitude)}${elev}${night}`)
+      .writeText(text)
       .then(() => appState().showToast('Copied to clipboard'))
   }
   return (

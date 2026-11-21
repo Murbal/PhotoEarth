@@ -7,6 +7,8 @@ describe('units', () => {
     expect(formatElevation(3967.4, 'metric')).toBe('3,967 m')
     expect(formatElevation(3967.4, 'imperial')).toBe('13,016 ft')
     expect(formatElevation(null, 'metric')).toBe('—')
+    expect(formatElevation(3967.4, 'metric', { grouping: false })).toBe('3967 m')
+    expect(formatElevation(3967.4, 'imperial', { grouping: false })).toBe('13016 ft')
   })
 
   it('formats distances', () => {
