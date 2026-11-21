@@ -1,6 +1,6 @@
 import * as Astronomy from 'astronomy-engine'
 import { describe, expect, it } from 'vitest'
-import { lightPhase, sunDay, sunDirectionENU, sunPosition } from '@renderer/lib/sun'
+import { dayBands, geometricAltitude, lightPhase, lightWindows, skyBand, sunDay, sunDirectionENU, sunPosition } from '@renderer/lib/sun'
 import { zonedToUtc } from '@renderer/lib/time'
 
 // Independent high-precision reference (astronomy-engine, VSOP87-based, sub-arcminute),
@@ -134,5 +134,106 @@ describe('sunrise / sunset', () => {
     expect(lightPhase(-9)).toBe('nautical')
     expect(lightPhase(-15)).toBe('astronomical')
     expect(lightPhase(-30)).toBe('night')
+  })
+})
+
+describe('sky bands and light windows', () => {
+  // Zurich on the June solstice: the sun dips to about −19° at night, so every band appears.
+  const zurich = { date: '2026-06-21', tz: 'Europe/Zurich', lat: 47.3769, lon: 8.5417 }
+
+  it('covers the whole day with contiguous, distinct bands', () => {
+    for (const c of [zurich, { date: '2026-12-21', tz: 'Europe/Oslo', lat: 69.6492, lon: 18.9553 }, { date: '2026-03-29', tz: 'Europe/Zurich', lat: 47.3769, lon: 8.5417 }]) {
+      const bands = dayBands(c.date, c.tz, c.lat, c.lon)
+      expect(bands[0].start).toBe(0)
+      expect(bands[bands.length - 1].end).toBe(1440)
+      for (let i = 1; i < bands.length; i++) {
+        expect(bands[i].start).toBe(bands[i - 1].end)
+        expect(bands[i].band).not.toBe(bands[i - 1].band)
+      }
+    }
+  })
+
+  it('puts the band edges where the sun crosses those altitudes (reference within 2 min)', () => {
+    const observer = new Astronomy.Observer(zurich.lat, zurich.lon, 0)
+    const midnight = zonedToUtc(zurich.date, 0, zurich.tz)
+    const windows = lightWindows(dayBands(zurich.date, zurich.tz, zurich.lat, zurich.lon))
+    const localUtc = (minutes: number) => zonedToUtc(zurich.date, minutes, zurich.tz)
+    // Band edges are geometric altitudes, as is astronomy-engine's SearchAltitude.
+    const ref = (direction: 1 | -1, altitude: number) =>
+      Astronomy.SearchAltitude(Astronomy.Body.Sun, observer, direction, new Date(midnight), 1, altitude)!.date.getTime()
+    const close = (minutes: number, utc: number) => expect(Math.abs(localUtc(minutes) - utc)).toBeLessThan(120_000)
+
+    const [blueAm] = windows.blue.filter((w) => w.kind === 'morning')
+    const [blueEve] = windows.blue.filter((w) => w.kind === 'evening')
+    close(blueAm.start, ref(+1, -6))
+    close(blueAm.end, ref(+1, -4))
+    close(blueEve.start, ref(-1, -4))
+    close(blueEve.end, ref(-1, -6))
+    const [nauticalAm] = windows.nautical.filter((w) => w.kind === 'morning')
+    close(nauticalAm.start, ref(+1, -12))
+
+    // Golden hour runs from −4° to +6°.
+    const [goldenAm] = windows.golden.filter((w) => w.kind === 'morning')
+    const [goldenEve] = windows.golden.filter((w) => w.kind === 'evening')
+    expect(goldenAm.start).toBeCloseTo(blueAm.end, 6)
+    close(goldenAm.end, ref(+1, 6))
+    close(goldenEve.start, ref(-1, 6))
+    expect(goldenEve.end).toBeCloseTo(blueEve.start, 6)
+
+    // Civil twilight: dawn to sunrise and sunset to dusk.
+    const day = sunDay(zurich.date, zurich.tz, zurich.lat, zurich.lon)
+    const [civilAm] = windows.civil.filter((w) => w.kind === 'morning')
+    const [civilEve] = windows.civil.filter((w) => w.kind === 'evening')
+    expect(Math.abs(localUtc(civilAm.start) - day.dawn!)).toBeLessThan(60_000)
+    expect(Math.abs(localUtc(civilAm.end) - day.sunrise!)).toBeLessThan(60_000)
+    expect(Math.abs(localUtc(civilEve.start) - day.sunset!)).toBeLessThan(60_000)
+    expect(Math.abs(localUtc(civilEve.end) - day.dusk!)).toBeLessThan(60_000)
+    // At 00:00 the sun is still sinking through astronomical twilight from the evening before.
+    expect(windows.astronomical.map((w) => w.kind)).toEqual(['evening', 'morning', 'evening'])
+    expect(windows.astronomical[0]).toMatchObject({ start: 0, fromPreviousDay: true })
+  })
+
+  it('handles windows the sun never passes through', () => {
+    // Tromsø at midwinter: the sun peaks at about −3°, below the horizon but inside golden hour,
+    // so golden hour and civil twilight are both one stretch around noon.
+    const winter = lightWindows(dayBands('2026-12-21', 'Europe/Oslo', 69.6492, 18.9553))
+    for (const w of [winter.golden, winter.civil]) {
+      expect(w).toHaveLength(1)
+      expect(w[0]).toMatchObject({ kind: 'span', fromPreviousDay: false, intoNextDay: false })
+    }
+    expect(winter.blue.map((w) => w.kind)).toEqual(['morning', 'evening'])
+
+    // Tromsø at midsummer: golden hour runs over midnight, cut at the day's edges, and there is no twilight.
+    const summer = lightWindows(dayBands('2026-06-21', 'Europe/Oslo', 69.6492, 18.9553))
+    expect(summer.civil).toEqual([])
+    expect(summer.golden).toHaveLength(2)
+    expect(summer.golden[0]).toMatchObject({ fromPreviousDay: true, kind: 'morning' })
+    expect(summer.golden[1]).toMatchObject({ intoNextDay: true, kind: 'evening' })
+
+    // Near the pole at the equinox the sun circles just above the horizon: golden hour all day.
+    const pole = lightWindows(dayBands('2026-03-22', 'UTC', 89.5, 0))
+    expect(pole.golden).toEqual([{ start: 0, end: 1440, fromPreviousDay: true, intoNextDay: true, kind: 'span' }])
+    expect(pole.civil).toEqual([])
+  })
+
+  it('recovers the geometric altitude from the apparent one', () => {
+    for (const loc of LOCATIONS) {
+      for (const t of INSTANTS) {
+        const observer = new Astronomy.Observer(loc.lat, loc.lon, 0)
+        const eq = Astronomy.Equator(Astronomy.Body.Sun, new Date(t), observer, true, true)
+        const airless = Astronomy.Horizon(new Date(t), observer, eq.ra, eq.dec).altitude
+        expect(Math.abs(geometricAltitude(t, loc.lat, loc.lon) - airless)).toBeLessThan(0.05)
+      }
+    }
+  })
+
+  it('classifies sky bands by altitude', () => {
+    expect(skyBand(-20)).toBe('night')
+    expect(skyBand(-15)).toBe('astronomical')
+    expect(skyBand(-8)).toBe('nautical')
+    expect(skyBand(-5)).toBe('blue')
+    expect(skyBand(-2)).toBe('goldenTwilight')
+    expect(skyBand(3)).toBe('golden')
+    expect(skyBand(30)).toBe('day')
   })
 })

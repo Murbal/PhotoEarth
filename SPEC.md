@@ -273,7 +273,8 @@ The main use case is mountains casting long shadows when the sun is low. Real-ti
 
 - **Time-of-day slider** (00:00–23:59), shown in the **local time zone of the viewed location** (from the camera target's coordinates), with the UTC offset displayed.
   - Markers on the slider for **sunrise, solar noon, and sunset** on the selected date.
-  - The slider background is shaded for night and twilight.
+  - The slider background is shaded in hard-edged bands by geometric sun altitude: night (below −18°), astronomical twilight (−18° to −12°), nautical twilight (−12° to −6°), blue hour (−6° to −4°), golden hour (−4° to +6°, darker while the sun is still below the horizon, so civil twilight reads as blue hour plus that part) and day.
+  - The panel lists the morning and evening start and end times of golden hour, blue hour and civil, nautical and astronomical twilight. A window that runs past midnight is marked "…" at the cut; one the sun never passes through (it peaks or bottoms out inside it) is shown once across both rows. The windows the sun is in now are highlighted.
 - **Date slider** (Jan 1–Dec 31) plus a year selector, with markers for **solstices and equinoxes**.
 - A precise date/time picker for typing an exact value.
 - **Playback**: play/pause animation through the day at selectable speeds (e.g. 1 min/s, 10 min/s, 1 h/s). Playback can also step through days at a fixed time of day, to see how light changes across the season.
@@ -327,7 +328,6 @@ These will get their own spec later:
 - **Camera / lens simulation**: place a virtual camera, choose sensor and focal length, and preview the framing and field-of-view frustum on the map. *First slice done: the viewfinder (§11.1).*
 - **Shot planning**: lines from a camera position to a subject, alignment with the sun or moon azimuth, and line-of-sight / visibility checks.
 - **Moon simulation**: position, phase, rise and set.
-- **Golden hour / blue hour** bands and twilight phases.
 - **Milky Way / galactic core** position.
 - **Viewshed analysis**: what is visible from a point.
 - Saved scouting locations with notes, photos, and tags. KML/GPX import and export.

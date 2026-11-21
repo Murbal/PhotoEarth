@@ -18,7 +18,7 @@ import {
 } from 'cesium'
 import type { LightingMode, MapMode } from '@shared/types'
 import { SUN, type CelestialBody } from '../lib/celestial'
-import { altitudeProfile, sunDirectionENU, type SunDay } from '../lib/sun'
+import { dayBands, sunDirectionENU, type BandSegment, type SunDay } from '../lib/sun'
 import { addDays, addMinutes, isValidTimeZone, offsetMinutes, utcToZoned, zoneAbbreviation, zonedToUtc } from '../lib/time'
 import { lookupTimeZone } from '../lib/timezone'
 import { appState, useAppStore, type PlaybackSpeedId, type SunInfo } from '../store/appStore'
@@ -45,8 +45,8 @@ export class SunController {
   private raf: number | null = null
   private lastFrame = 0
   private dayAccumulator = 0
-  private profileKey = ''
-  private profile: number[] = []
+  private bandsKey = ''
+  private bands: BandSegment[] = []
   private dayKey = ''
   private day: SunDay | null = null
   private indicator: Entity[] = []
@@ -188,9 +188,9 @@ export class SunController {
     }
     const day = this.day
     const key = `${sim.date}|${sim.timeZone}|${lat.toFixed(2)}|${lon.toFixed(2)}`
-    if (key !== this.profileKey) {
-      this.profileKey = key
-      this.profile = altitudeProfile(sim.date, sim.timeZone, lat, lon, 96)
+    if (key !== this.bandsKey) {
+      this.bandsKey = key
+      this.bands = dayBands(sim.date, sim.timeZone, lat, lon)
     }
     const info: SunInfo = {
       utc,
@@ -205,7 +205,7 @@ export class SunController {
       noonAltitude: day.noonAltitude,
       offsetMinutes: offsetMinutes(utc, sim.timeZone),
       zoneName: zoneAbbreviation(utc, sim.timeZone),
-      profile: this.profile
+      bands: this.bands
     }
     set({ sun: info })
     this.applyLighting()

@@ -3,7 +3,15 @@ import { getEngine } from '../engine/instance'
 import { PLAYBACK_SPEEDS } from '../engine/SunController'
 import { sunlitBands } from '../lib/horizon'
 import { seasonEvents } from '../lib/seasons'
-import { markerMinutes } from '../lib/sun'
+import {
+  LIGHT_WINDOWS,
+  lightWindows,
+  markerMinutes,
+  type BandSegment,
+  type LightWindow,
+  type LightWindowDef,
+  type SkyBand
+} from '../lib/sun'
 import {
   dateFromDayOfYear,
   dayOfYear,
@@ -21,20 +29,22 @@ import { useAppStore, type PlaybackSpeedId } from '../store/appStore'
 import { Icon } from './Icon'
 import { TrackSlider, type SliderMarker } from './Slider'
 
-/** Sky color for a sun altitude, used to shade the time-of-day slider. */
-function skyColor(alt: number): string {
-  if (alt < -18) return '#0a0f1f'
-  if (alt < -12) return '#121a36'
-  if (alt < -6) return '#1f2b55'
-  if (alt < -0.833) return '#4a4a7a'
-  if (alt < 6) return '#d9925a'
-  if (alt < 15) return '#8fb6d8'
-  return '#a9d1f2'
+/** Slider shading for each sky band. */
+const BAND_COLORS: Record<SkyBand, string> = {
+  night: '#0a0f1f',
+  astronomical: '#151d3b',
+  nautical: '#24336b',
+  blue: '#3a68c4',
+  goldenTwilight: '#c77b5a',
+  golden: '#eca956',
+  day: '#9cc6ea'
 }
 
-function dayGradient(profile: number[]): string {
-  if (profile.length === 0) return 'var(--panel-hover)'
-  const stops = profile.map((alt, i) => `${skyColor(alt)} ${((i / (profile.length - 1)) * 100).toFixed(2)}%`)
+/** Swatch for a light window: its bands side by side. */
+function windowSwatch(def: LightWindowDef): string {
+  const colors = def.bands.map((b) => BAND_COLORS[b])
+  if (colors.length === 1) return colors[0]
+  const stops = colors.map((c, i) => `${c} ${(i / colors.length) * 100}%, ${c} ${((i + 1) / colors.length) * 100}%`)
   return `linear-gradient(90deg, ${stops.join(', ')})`
 }
 
@@ -55,10 +65,96 @@ function sunlitGradient(bands: Array<[number, number]>): string {
   return `linear-gradient(90deg, ${stops.join(', ')})`
 }
 
+/** Hard-edged bands, so the start and end of each window can be read off the slider. */
+function dayGradient(bands: readonly BandSegment[]): string {
+  if (bands.length === 0) return 'var(--panel-hover)'
+  const pct = (m: number) => `${((m / 1440) * 100).toFixed(3)}%`
+  const stops = bands.map((b) => `${BAND_COLORS[b.band]} ${pct(b.start)} ${pct(b.end)}`)
+  return `linear-gradient(90deg, ${stops.join(', ')})`
+}
+
+const formatDegrees = (d: number) => `${d > 0 ? '+' : d < 0 ? '−' : ''}${Math.abs(d)}°`
+
+function windowRange(w: LightWindow): string {
+  return `${w.fromPreviousDay ? '…' : formatClock(w.start)}–${w.intoNextDay ? '…' : formatClock(w.end)}`
+}
+
+function windowTitle(def: LightWindowDef, w: LightWindow): string {
+  const notes = [`${def.label}: ${formatClock(w.start)}–${formatClock(w.end)} (${formatDuration((w.end - w.start) * 60000)})`]
+  if (w.fromPreviousDay) notes.push('started the previous day')
+  if (w.intoNextDay) notes.push('continues into the next day')
+  if (w.kind === 'span') notes.push('the sun does not pass through it')
+  return notes.join(' · ')
+}
+
+/**
+ * Morning and evening times of golden hour, blue hour and the three twilights, one column each.
+ * The columns the sun is in right now are highlighted.
+ */
+function LightWindowsTable({ bands, minutes }: { bands: readonly BandSegment[]; minutes: number }) {
+  const windows = useMemo(() => lightWindows(bands), [bands])
+  // From the bands themselves, so the highlight flips exactly where the slider shading does.
+  const current = bands.find((b) => minutes >= b.start && minutes < b.end)?.band ?? null
+  const cell = (def: LightWindowDef, list: LightWindow[]) =>
+    list.length === 0 ? '—' : list.map((w, i) => (
+      <span key={i} title={windowTitle(def, w)}>
+        {i > 0 ? ', ' : ''}
+        {windowRange(w)}
+      </span>
+    ))
+  return (
+    <div className="light-windows" role="table" aria-label="Golden hour, blue hour and twilight times">
+      <span className="k" role="columnheader" />
+      {LIGHT_WINDOWS.map((def, i) => (
+        <span
+          key={def.id}
+          role="columnheader"
+          className={`k${current && def.bands.includes(current) ? ' now' : ''}`}
+          style={{ gridColumn: i + 2 }}
+          title={`Sun between ${formatDegrees(def.from)} and ${formatDegrees(def.to)}`}
+        >
+          <span className="band-swatch" style={{ background: windowSwatch(def) }} aria-hidden="true" />
+          {def.label}
+        </span>
+      ))}
+      <span className="k" role="rowheader" style={{ gridRow: 2 }}>
+        Morning
+      </span>
+      <span className="k" role="rowheader" style={{ gridRow: 3 }}>
+        Evening
+      </span>
+      {LIGHT_WINDOWS.map((def, i) => {
+        const list = windows[def.id]
+        const now = current && def.bands.includes(current) ? ' now' : ''
+        const spans = list.filter((w) => w.kind === 'span')
+        const column = i + 2
+        // A window the sun never passes through (it peaks or bottoms out inside it) fills both rows.
+        if (spans.length > 0 && spans.length === list.length) {
+          return (
+            <span key={def.id} role="cell" className={`mono span${now}`} style={{ gridColumn: column, gridRow: '2 / 4' }}>
+              {spans.length === 1 && spans[0].fromPreviousDay && spans[0].intoNextDay ? 'all day' : cell(def, spans)}
+            </span>
+          )
+        }
+        return [
+          <span key={`${def.id}-m`} role="cell" className={`mono${now}`} style={{ gridColumn: column, gridRow: 2 }}>
+            {cell(def, list.filter((w) => w.kind !== 'evening'))}
+          </span>,
+          <span key={`${def.id}-e`} role="cell" className={`mono${now}`} style={{ gridColumn: column, gridRow: 3 }}>
+            {cell(def, list.filter((w) => w.kind === 'evening'))}
+          </span>
+        ]
+      })}
+    </div>
+  )
+}
+
 /** ~100 m precision: plenty for sun times, and short enough to fit the header. */
 function shortLatLon(lat: number, lon: number): string {
   return `${Math.abs(lat).toFixed(3)}° ${lat < 0 ? 'S' : 'N'}, ${Math.abs(lon).toFixed(3)}° ${lon < 0 ? 'W' : 'E'}`
 }
+
+const NO_BANDS: BandSegment[] = []
 
 const MONTH_STARTS = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
 const MONTHS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
@@ -106,8 +202,8 @@ export function TimePanel() {
     const clock = (m: number | null) => (m === null ? '—' : formatClock(m))
     return { markers, rise: clock(rise), noon: clock(noon), set: clock(set) }
   }, [sunrise, solarNoon, sunset, sim.date, sim.timeZone])
-  const profile = sun?.profile
-  const dayBackground = useMemo(() => dayGradient(profile ?? []), [profile])
+  const bands = sun?.bands ?? NO_BANDS
+  const dayBackground = useMemo(() => dayGradient(bands), [bands])
 
   // With a marker whose terrain sun times are known, the slider shows direct sun on it.
   const spot = spotSun?.status === 'ready' && spotSun.date === sim.date && spotSun.timeZone === sim.timeZone ? spotSun : null
@@ -272,6 +368,8 @@ export function TimePanel() {
         </div>
         <div className="small muted">Day length {dayLength}</div>
       </div>
+
+      <LightWindowsTable bands={bands} minutes={sim.minutes} />
 
       <div className="row" style={{ marginTop: 10, gap: 14, flexWrap: 'wrap' }}>
         <div className="segmented">

@@ -847,6 +847,9 @@ test('time zone follows the viewed location', async () => {
   // It says which point the sun is calculated for, and marks it on the map.
   await expect(page.locator('.time-panel')).toContainText('For the view center')
   await expect(page.locator('.sun-target')).toBeVisible()
+  // Golden hour, blue hour and twilight times for the day.
+  await expect(page.locator('.light-windows')).toContainText('Golden hour')
+  await expect(page.locator('.light-windows')).toContainText(/\d\d:\d\d–\d\d:\d\d|all day/)
 })
 
 test('bookmarks persist across a restart', async () => {
