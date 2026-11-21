@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { getEngine } from '../engine/instance'
 import { PLAYBACK_SPEEDS } from '../engine/SunController'
+import { sunlitBands } from '../lib/horizon'
 import { seasonEvents } from '../lib/seasons'
 import { markerMinutes } from '../lib/sun'
 import {
@@ -37,6 +38,23 @@ function dayGradient(profile: number[]): string {
   return `linear-gradient(90deg, ${stops.join(', ')})`
 }
 
+const SPOT_SUN = '#a9d1f2'
+const SPOT_SHADE = '#1f2b55'
+
+/** Two tones only, sun on the marker or not: twilight and golden hour are flat-horizon ideas. */
+function sunlitGradient(bands: Array<[number, number]>): string {
+  if (bands.length === 0) return SPOT_SHADE
+  const pct = (m: number) => `${((m / 1440) * 100).toFixed(2)}%`
+  const stops: string[] = []
+  let at = 0
+  for (const [start, end] of bands) {
+    stops.push(`${SPOT_SHADE} ${pct(at)}`, `${SPOT_SHADE} ${pct(start)}`, `${SPOT_SUN} ${pct(start)}`, `${SPOT_SUN} ${pct(end)}`)
+    at = end
+  }
+  stops.push(`${SPOT_SHADE} ${pct(at)}`, `${SPOT_SHADE} 100%`)
+  return `linear-gradient(90deg, ${stops.join(', ')})`
+}
+
 /** ~100 m precision: plenty for sun times, and short enough to fit the header. */
 function shortLatLon(lat: number, lon: number): string {
   return `${Math.abs(lat).toFixed(3)}° ${lat < 0 ? 'S' : 'N'}, ${Math.abs(lon).toFixed(3)}° ${lon < 0 ? 'W' : 'E'}`
@@ -56,6 +74,8 @@ export function TimePanel() {
   const terrainShadows = useAppStore((s) => s.terrainShadows)
   const mode = useAppStore((s) => s.mode)
   const target = useAppStore((s) => s.target)
+  const spotSun = useAppStore((s) => s.spotSun)
+  const inspect = useAppStore((s) => s.inspect)
 
   const { year } = parseDate(sim.date)
   const yearDays = daysInYear(year)
@@ -89,6 +109,25 @@ export function TimePanel() {
   const profile = sun?.profile
   const dayBackground = useMemo(() => dayGradient(profile ?? []), [profile])
 
+  // With a marker whose terrain sun times are known, the slider shows direct sun on it.
+  const spot = spotSun?.status === 'ready' && spotSun.date === sim.date && spotSun.timeZone === sim.timeZone ? spotSun : null
+  const spotSlider = useMemo(() => {
+    if (!spot) return null
+    const bands = sunlitBands(spot.spans, spot.date, spot.timeZone)
+    const markers: SliderMarker[] = []
+    const rise = markerMinutes(spot.firstLight, spot.date, spot.timeZone)
+    const set = markerMinutes(spot.lastLight, spot.date, spot.timeZone)
+    if (rise !== null) markers.push({ value: rise, label: `↑ ${formatClock(rise)}`, title: 'First light on the marker', className: 'spot' })
+    if (set !== null) markers.push({ value: set, label: `↓ ${formatClock(set)}`, title: 'Last light on the marker', className: 'spot' })
+    const summary =
+      bands.length === 0
+        ? 'no direct sun on this date'
+        : rise === null && set === null && bands.length === 1
+          ? 'direct sun all day'
+          : `direct sun ${formatDuration(spot.sunlitMs)}${bands.length > 1 ? ` in ${bands.length} periods` : ''}`
+    return { background: sunlitGradient(bands), markers, summary }
+  }, [spot])
+
   if (!open) return null
   const engine = getEngine()
   const dayLength =
@@ -112,6 +151,15 @@ export function TimePanel() {
             <span className="sun-target-key" aria-hidden="true" />
             For the view center{target ? ` · ${shortLatLon(target.latitude, target.longitude)}` : ''}
           </div>
+          {spotSlider && inspect && (
+            <div
+              className="small muted time-location"
+              title="The time slider shows when the sun shines directly on the marker, over the real terrain (light: sun, dark: shade). Remove the marker to see the view center's sky again."
+            >
+              <span className="spot-key" aria-hidden="true" />
+              Slider for the marker · {shortLatLon(inspect.latitude, inspect.longitude)} · {spotSlider.summary}
+            </div>
+          )}
         </div>
         <div className="time-controls">
           <input
@@ -167,8 +215,8 @@ export function TimePanel() {
           value={Math.min(1439, sim.minutes)}
           valueText={formatClock(sim.minutes)}
           onChange={(minutes) => patchSim({ minutes })}
-          background={dayBackground}
-          markers={dayTimes.markers}
+          background={spotSlider?.background ?? dayBackground}
+          markers={spotSlider?.markers ?? dayTimes.markers}
         />
         <div className="slider-ticks">
           {['00', '03', '06', '09', '12', '15', '18', '21', '24'].map((t) => (

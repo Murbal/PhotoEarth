@@ -52,7 +52,7 @@ They're loaded in the main process only, so they never end up in the renderer bu
 | Trackpad: two-finger scroll / pinch | Pan (look around at eye level) / zoom toward the cursor |
 | Trackpad: `Alt`/`⌥` + two-finger scroll | Orbit around the point under the cursor |
 | Double-click | Fly closer to the point |
-| Click | Inspect a point (coordinates and elevation, copyable) |
+| Click | Inspect a point: coordinates, elevation, and when the sun actually reaches it over the terrain |
 | `W A S D`, `Q`/`E`, arrows | Move (ground-relative), descend/ascend, look. Hold `Shift` for faster, `Alt` for precise |
 | `F` | First-person fly mode (pointer lock; `Esc` exits) |
 | `G` | Eye level (1.7 m) at the cursor; WASD then walks along the ground |

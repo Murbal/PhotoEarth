@@ -1,7 +1,8 @@
 import { getEngine } from '../engine/instance'
 import { formatLatLon, formatLatLonPlain } from '../lib/coords'
+import { formatClock, formatDuration, formatShortDate, utcToZoned } from '../lib/time'
 import { formatElevation } from '../lib/units'
-import { appState, useAppStore } from '../store/appStore'
+import { appState, useAppStore, type SpotSunInfo } from '../store/appStore'
 import { Icon } from './Icon'
 
 export function StatusChips() {
@@ -118,6 +119,81 @@ export function InspectCard() {
           <Icon name="close" size={14} />
         </button>
       </div>
+      <SpotSunTimes />
+    </div>
+  )
+}
+
+const SPOT_SUN_NOTES: Partial<Record<SpotSunInfo['status'], string>> = {
+  'no-terrain': 'Add a Cesium ion token for sun times that account for the terrain.',
+  unavailable: 'Terrain heights could not be loaded here.'
+}
+
+/** Flat-horizon sunrise and sunset next to when the sun actually reaches the inspected point. */
+function SpotSunTimes() {
+  const spot = useAppStore((s) => s.spotSun)
+  if (!spot) return null
+  const clock = (utc: number | null): string => {
+    if (utc === null) return '—'
+    const z = utcToZoned(utc, spot.timeZone)
+    return z.date === spot.date ? formatClock(z.minutes) : '—'
+  }
+  const ready = spot.status === 'ready'
+  const noSun = ready && spot.spans.length === 0
+  const allDay = ready && spot.spans.length === 1 && spot.firstLight === null && spot.lastLight === null
+  const terrain = (utc: number | null, label: string) => {
+    if (spot.status === 'loading') return <span className="faint">…</span>
+    if (!ready || utc === null) return <span className="mono faint">—</span>
+    return (
+      <button
+        className="time-link mono"
+        title={`${label} on this spot. Click to set the time to ${clock(utc)}.`}
+        onClick={() => getEngine()?.sun.setInstant(utc, spot.timeZone)}
+      >
+        {clock(utc)}
+      </button>
+    )
+  }
+  const flatRise = spot.polar === 'day' ? 'polar day' : spot.polar === 'night' ? 'polar night' : clock(spot.sunrise)
+  const flatSet = spot.polar ? '—' : clock(spot.sunset)
+  const periods = spot.spans.length
+  const note = SPOT_SUN_NOTES[spot.status]
+    ?? (noSun
+      ? 'No direct sun on this date: the terrain hides it all day.'
+      : allDay
+        ? 'Direct sun all day.'
+        : ready
+          ? `Direct sun ${formatDuration(spot.sunlitMs)}${periods > 1 ? ` in ${periods} periods` : ''}`
+          : null)
+  const spans = spot.spans.map((p) => `${clock(p.start)}–${clock(p.end)}`).join(', ')
+  return (
+    <div className="spot-sun">
+      <div className="spot-sun-grid">
+        <span className="k">{formatShortDate(spot.date)}</span>
+        <span
+          className="k"
+          title="SunCalc sunrise and sunset: the sun's upper edge on a flat, sea-level horizon. Ignores mountains."
+        >
+          Flat horizon
+        </span>
+        <span
+          className="k"
+          title="When the center of the sun clears, or drops behind, the real skyline seen from this point: terrain out to 80 km, with earth curvature and refraction, as in the terrain shadows."
+        >
+          Sun on this spot
+        </span>
+        <span className="k">Sunrise</span>
+        <span className="mono">{flatRise}</span>
+        {terrain(spot.firstLight, 'First light')}
+        <span className="k">Sunset</span>
+        <span className="mono">{flatSet}</span>
+        {terrain(spot.lastLight, 'Last light')}
+      </div>
+      {note && (
+        <div className="small faint" style={{ marginTop: 4 }} title={periods > 1 ? `Direct sun ${spans}` : undefined}>
+          {note}
+        </div>
+      )}
     </div>
   )
 }

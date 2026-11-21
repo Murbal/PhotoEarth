@@ -801,6 +801,10 @@ input[type='color'] {
   border-left: 1.5px solid rgba(255, 255, 255, 0.55);
 }
 
+.slider-track .marker.spot {
+  border-left: 1.5px solid #ff6b6b;
+}
+
 .slider-track .marker span {
   position: absolute;
   top: -15px;
@@ -1177,6 +1181,50 @@ input[type='color'] {
   border-bottom: 1px solid var(--panel-border);
 }
 
+.spot-sun {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--panel-border);
+  max-width: 260px;
+}
+
+.spot-sun-grid {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  justify-content: start;
+  align-items: baseline;
+  gap: 3px 14px;
+}
+
+.spot-sun-grid .k {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.time-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sun);
+  /* Family and numerals come from .mono. */
+  font-size: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.time-link:hover {
+  text-decoration-style: solid;
+}
+
+.time-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 /* ───────────── dialogs ───────────── */
 
 .scrim {
@@ -1483,6 +1531,17 @@ input[type='color'] {
 
 .time-location {
   display: block;
+}
+
+.time-location .spot-key {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin: 0 6px 0 1px;
+  border-radius: 50%;
+  background: #ff6b6b;
+  box-shadow: 0 0 0 1.5px #fff;
+  vertical-align: 0;
 }
 
 .time-location .sun-target-key {

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { defaultSettings } from '@shared/settings'
 import type { ApiKeys, Bookmark, MapMode, SecretsStatus, Settings } from '@shared/types'
+import type { SunlitSpan } from '../lib/horizon'
 import type { ProfileSample, ProfileStats, GeoPoint } from '../lib/profile'
 
 export type BannerLevel = 'error' | 'warning' | 'info'
@@ -90,6 +91,24 @@ export interface InspectInfo {
   screen: { x: number; y: number } | null
 }
 
+/** Sun times at the inspected point: flat-horizon rise/set vs. the terrain's skyline. */
+export interface SpotSunInfo {
+  /** `no-terrain`: no terrain heights without a Cesium ion token. */
+  status: 'loading' | 'ready' | 'unavailable' | 'no-terrain'
+  /** Civil date and zone the times are for (the simulation's). */
+  date: string
+  timeZone: string
+  /** Flat-horizon (SunCalc) times at the point. */
+  sunrise: number | null
+  sunset: number | null
+  polar: 'day' | 'night' | null
+  /** The sun clears / drops behind the skyline (when `status` is `ready`). */
+  firstLight: number | null
+  lastLight: number | null
+  spans: SunlitSpan[]
+  sunlitMs: number
+}
+
 /** Where the last search (place or coordinates) took the camera. */
 export interface Destination {
   name: string
@@ -135,6 +154,7 @@ export interface AppState {
   onboardingOpen: boolean
   profile: ProfileState
   inspect: InspectInfo | null
+  spotSun: SpotSunInfo | null
   destination: Destination | null
   pendingTiles: number
   fps: number | null
@@ -193,6 +213,7 @@ export const useAppStore = create<AppState>()(
     onboardingOpen: false,
     profile: emptyProfile,
     inspect: null,
+    spotSun: null,
     destination: null,
     pendingTiles: 0,
     fps: null,

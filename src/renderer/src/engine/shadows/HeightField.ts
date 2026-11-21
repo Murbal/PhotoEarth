@@ -81,7 +81,7 @@ const TILE_TIMEOUT_MS = 20000
 const SLICE_MS = 4
 
 /** Yields to pending input and rendering; scheduler.yield resumes ahead of other tasks. */
-function yieldToMain(): Promise<void> {
+export function yieldToMain(): Promise<void> {
   const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler
   return scheduler?.yield ? scheduler.yield() : new Promise((resolve) => setTimeout(resolve, 0))
 }
@@ -92,6 +92,18 @@ function yieldToMain(): Promise<void> {
  * rasterized triangle by triangle into the grid.
  */
 export class HeightField {
+  private static readonly shared = new WeakMap<TerrainProvider, HeightField>()
+
+  /** One field per provider, so the shadow pass and point tools share fetched tiles. */
+  static for(provider: TerrainProvider): HeightField {
+    let field = HeightField.shared.get(provider)
+    if (!field) {
+      field = new HeightField(provider)
+      HeightField.shared.set(provider, field)
+    }
+    return field
+  }
+
   private readonly cache = new Map<string, Promise<TileResult | null>>()
   private active = 0
   private readonly waiting: Array<() => void> = []

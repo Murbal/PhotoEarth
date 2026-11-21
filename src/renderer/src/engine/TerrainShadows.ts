@@ -190,7 +190,7 @@ export class TerrainShadows {
     const provider = this.getProvider()
     if (!provider) return
     if (!this.field || this.field.provider !== provider) {
-      this.field = new HeightField(provider)
+      this.field = HeightField.for(provider)
       this.resetLevels()
     }
     const field = this.field

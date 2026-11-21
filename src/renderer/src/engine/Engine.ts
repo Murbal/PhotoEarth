@@ -28,6 +28,7 @@ import { resolveQuality } from './quality'
 import { Readouts } from './Readouts'
 import { SearchMarker } from './SearchMarker'
 import { installDetailShadowPatch } from './shadows/detailShadowPatch'
+import { SpotSun } from './SpotSun'
 import { SunController } from './SunController'
 import { TerrainManager } from './TerrainManager'
 import { TerrainShadows } from './TerrainShadows'
@@ -68,6 +69,7 @@ export class Engine {
   readonly styler: ElevationStyler
   readonly profile: ProfileTool
   readonly inspector: PointInspector
+  readonly spotSun: SpotSun
   readonly searchMarker: SearchMarker
   readonly readouts: Readouts
   readonly terrainShadows: TerrainShadows
@@ -177,6 +179,7 @@ export class Engine {
     this.styler = new ElevationStyler(scene, this.terrainShadows)
     this.profile = new ProfileTool(this.widget, (points) => this.sampleProfile(points))
     this.inspector = new PointInspector(this.widget, (lon, lat) => this.preciseGround(lon, lat))
+    this.spotSun = new SpotSun(() => this.terrain?.provider ?? null)
     this.searchMarker = new SearchMarker(this.widget, (lon, lat) => this.preciseGround(lon, lat))
     this.readouts = new Readouts(scene, (target) => this.onTarget(target))
     this.preloader = new TilePreloader(scene, () => {
@@ -227,6 +230,7 @@ export class Engine {
     this.viewfinder.destroy()
     this.camera.destroy()
     this.sun.destroy()
+    this.spotSun.destroy()
     this.readouts.destroy()
     this.imagery.destroy()
     this.labels.destroy()
@@ -475,7 +479,10 @@ export class Engine {
     this.clickTimer = window.setTimeout(() => {
       this.clickTimer = null
       const hit = pickSurface(this.scene, p.x, p.y)
-      if (hit) void this.inspector.inspect(hit)
+      if (hit) {
+        void this.inspector.inspect(hit)
+        void this.spotSun.inspect(hit)
+      }
     }, 260)
   }
 
