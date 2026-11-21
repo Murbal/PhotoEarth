@@ -144,17 +144,23 @@ export interface TileRange {
   y1: number
 }
 
-/** The tiles at whole zoom `tileZoom` covering a `width` × `height` view, plus `margin` tiles. */
-export function tileRange(view: MapView, tileZoom: number, width: number, height: number, margin = 0): TileRange {
+/**
+ * The tiles at whole zoom `tileZoom` covering a `width` × `height` view, plus `margin` tiles.
+ * `centerX` (world pixels at `tileZoom`) picks which copy of the world the columns are
+ * counted in; by default the one from −180° to 180°. A layer must count its columns in the
+ * same copy it is drawn in.
+ */
+export function tileRange(view: MapView, tileZoom: number, width: number, height: number, margin = 0, centerX?: number): TileRange {
   const scale = 2 ** (view.zoom - tileZoom)
   const c = project(view, tileZoom)
+  const cx = centerX ?? c.x
   const halfW = width / 2 / scale
   const halfH = height / 2 / scale
   const n = 2 ** tileZoom
   return {
     zoom: tileZoom,
-    x0: Math.floor((c.x - halfW) / TILE) - margin,
-    x1: Math.floor((c.x + halfW - 1e-9) / TILE) + margin,
+    x0: Math.floor((cx - halfW) / TILE) - margin,
+    x1: Math.floor((cx + halfW - 1e-9) / TILE) + margin,
     y0: Math.max(0, Math.floor((c.y - halfH) / TILE) - margin),
     y1: Math.min(n - 1, Math.floor((c.y + halfH - 1e-9) / TILE) + margin)
   }
@@ -169,6 +175,21 @@ export function tileZoomFor(zoom: number, current: number | null = null): number
   const z = clampZoom(zoom)
   if (current !== null && Math.abs(z - current) <= 0.65) return current
   return Math.round(z)
+}
+
+/** How many zooms below the drawn tiles the always-loaded backdrop is. */
+export const BACKDROP_LEVELS = 3
+
+/** The zoom of the coarse backdrop under tile zoom `tileZoom`, or null at the coarsest zooms. */
+export function backdropZoomFor(tileZoom: number): number | null {
+  const b = Math.max(MIN_MAP_ZOOM, tileZoom - BACKDROP_LEVELS)
+  return b < tileZoom ? b : null
+}
+
+/** The view's center x in the copy of the world nearest `anchorX` (world pixels at `zoom`). */
+export function centerNear(view: MapView, zoom: number, anchorX: number): number {
+  const x = project(view, zoom).x
+  return x + Math.round((anchorX - x) / worldSize(zoom)) * worldSize(zoom)
 }
 
 /** Wraps an unwrapped tile column into the server's range. */

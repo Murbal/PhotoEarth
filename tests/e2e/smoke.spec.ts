@@ -1171,14 +1171,15 @@ test('Map mode: a full-window Google map over the paused 3D view; drag, wheel, k
     await page.keyboard.up('ArrowRight')
     expect((await settledMap()).longitude).toBeGreaterThan(zoomed.longitude)
 
-    // No flashing while zooming across tile levels: the middle of the map stays covered by
-    // visible tiles the whole time (the previous level stays until the new one has decoded).
+    // No flashing while zooming across tile levels, even a quick zoom out by two: the whole map
+    // stays covered by visible tiles the whole time (previous levels and the coarse backdrop
+    // stay underneath until the new level covers the view).
     const sampling = page.evaluate(async () => {
       const root = document.querySelector('.map-mode') as HTMLElement
       const W = root.clientWidth
       const H = root.clientHeight
       const points: Array<[number, number]> = []
-      for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) points.push([W * (0.3 + 0.1 * i), H * (0.3 + 0.1 * j)])
+      for (let i = 0; i < 9; i++) for (let j = 0; j < 9; j++) points.push([W * (0.05 + 0.1125 * i), H * (0.05 + 0.1125 * j)])
       const visible = () =>
         [...document.querySelectorAll<HTMLImageElement>('.map-tile')]
           .filter((img) => {
@@ -1189,7 +1190,7 @@ test('Map mode: a full-window Google map over the paused 3D view; drag, wheel, k
       let worst = 0
       let samples = 0
       const start = performance.now()
-      while (performance.now() - start < 3200) {
+      while (performance.now() - start < 4200) {
         const rects = visible()
         const missing = points.filter(([x, y]) => !rects.some((r) => x >= r.left && x < r.right && y >= r.top && y < r.bottom)).length
         worst = Math.max(worst, missing)
@@ -1199,7 +1200,7 @@ test('Map mode: a full-window Google map over the paused 3D view; drag, wheel, k
       return { worst, samples }
     })
     await page.mouse.move(720, 450)
-    for (const dy of [-100, -100, 100, 100]) {
+    for (const dy of [-100, -100, 100, 100, 200]) {
       await page.mouse.wheel(0, dy)
       await page.waitForTimeout(700)
     }
@@ -1217,6 +1218,8 @@ test('Map mode: a full-window Google map over the paused 3D view; drag, wheel, k
     await page.keyboard.type('46.5, 8.0')
     await page.keyboard.press('Enter')
     await expect(page.locator('.map-pin.destination')).toHaveCount(1)
+    // (The map eases there; in this hidden test window frames are throttled.)
+    await expect.poll(async () => Math.abs((await mapView()).latitude - 46.5), { timeout: 10_000 }).toBeLessThan(1e-4)
     const searched = await settledMap()
     expect(searched.latitude).toBeCloseTo(46.5, 4)
     expect(searched.longitude).toBeCloseTo(8.0, 4)
@@ -1360,17 +1363,18 @@ test('Map mode: no seams between tiles at fractional zooms', async () => {
       await e.mapTiles.configure('test-key', 'roadmap')
     })
     await page.mouse.move(700, 450)
-    // Ctrl+wheel to fractional zooms (100 px a zoom): tiles drawn at ~123 %, ~84 % and ~146 %.
+    // Ctrl+wheel to fractional zooms (100 px a zoom): tiles drawn at ~123 %, ~84 % and ~146 %,
+    // and the whole world (narrower than the window: drawn twice side by side).
     const base = Math.floor((await mapView()).zoom)
-    for (const target of [base + 0.3, base + 0.75, base + 1.45]) {
+    for (const target of [base + 0.3, base + 0.75, base + 1.45, 2.3]) {
       const dy = Math.round(((await mapView()).zoom - target) * 100)
       await page.keyboard.down('Control')
       await page.mouse.wheel(0, dy)
       await page.keyboard.up('Control')
-      // Stood still, one layer left (no previous zoom underneath), every tile in view decoded.
+      // Stood still, no previous zoom left underneath (the backdrop stays), every tile decoded.
       await settledMap()
       await expect
-        .poll(() => page.evaluate(() => document.querySelectorAll('.map-layer').length === 1 && document.querySelectorAll('.map-tile:not(.ready)').length === 0))
+        .poll(() => page.evaluate(() => document.querySelectorAll('.map-layer').length <= 2 && document.querySelectorAll('.map-tile:not(.ready)').length === 0))
         .toBe(true)
       const zoom = await mapView().then((v) => v.zoom)
       expect(Math.abs(zoom - Math.round(zoom))).toBeGreaterThan(0.05)

@@ -2279,14 +2279,20 @@ input[type='color'] {
   inset: 0;
   z-index: 5;
   overflow: hidden;
-  background: #e8e4dc;
+  /* Close to the map's own colors, whatever the UI theme: anything not yet covered by tiles
+     mustn't flash dark against a light map (or light against satellite). */
+  background: #eceff1;
   cursor: grab;
   touch-action: none;
   contain: strict;
 }
 
-[data-theme='dark'] .map-mode {
-  background: #1b222b;
+.map-mode[data-type='terrain'] {
+  background: #e7ebdf;
+}
+
+.map-mode[data-type='satellite'] {
+  background: #1f2620;
 }
 
 .map-mode:active {

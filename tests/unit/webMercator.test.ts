@@ -18,6 +18,8 @@ import {
   project,
   sameView,
   TILE,
+  backdropZoomFor,
+  centerNear,
   tileRange,
   tileUrl,
   tileZoomFor,
@@ -146,6 +148,27 @@ describe('map view: screen, pan and zoom', () => {
     expect(pole.y0).toBe(0)
     expect(wrapColumn(-1, 3)).toBe(7)
     expect(wrapColumn(9, 3)).toBe(1)
+  })
+
+  it('counts columns in a chosen copy of the world (a world narrower than the window)', () => {
+    const world = { longitude: 170, latitude: 0, zoom: 2.3 }
+    const size = worldSize(2)
+    const c = project(world, 2).x
+    // The copy one world to the east: the same tiles, columns shifted by 2^z.
+    const east = tileRange(world, 2, W, H, 0, c + size)
+    const home = tileRange(world, 2, W, H, 0, c)
+    expect(east.x0 - home.x0).toBe(4)
+    expect(east.x1 - home.x1).toBe(4)
+    // 1440 px of a 1260 px world: more columns than the world has, wrapped for the server.
+    expect(home.x1 - home.x0 + 1).toBeGreaterThan(4)
+    expect(centerNear(world, 2, c + size + 100)).toBeCloseTo(c + size, 9)
+    expect(centerNear(world, 2, c - size * 3)).toBeCloseTo(c - size * 3, 9)
+  })
+
+  it('keeps a coarse backdrop three zooms down', () => {
+    expect(backdropZoomFor(14)).toBe(11)
+    expect(backdropZoomFor(4)).toBe(2)
+    expect(backdropZoomFor(2)).toBeNull()
   })
 
   it('bounds the view for attribution', () => {

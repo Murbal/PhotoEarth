@@ -14,6 +14,8 @@ import {
   project,
   sameView,
   TILE,
+  backdropZoomFor,
+  centerNear,
   tileRange,
   tileUrl,
   tileZoomFor,
@@ -39,6 +41,8 @@ const CLICK_SLOP = 4
 const STALE_MS = 2500
 /** At most this many other zooms are kept underneath (the nearest to the current one). */
 const MAX_STALE_LAYERS = 3
+/** A new zoom's tiles show as a whole when they cover the view, or after this long anyway. */
+const REVEAL_MS = 600
 /** The view is saved and its attribution fetched once it stands still this long. */
 const SETTLE_MS = 250
 /** One mouse-wheel notch (100 px) zooms one level. */
@@ -73,6 +77,10 @@ interface Layer {
   /** World pixel (at this zoom) of the element's top-left corner. */
   originX: number
   originY: number
+  /** The view's center x when the layer was made: picks its copy of the world. */
+  anchorX: number
+  /** The current zoom is hidden until it covers the view (or REVEAL_MS), then shown whole. */
+  shown: boolean
   tiles: Map<string, TileImage>
   /** When this zoom last became the drawn one. */
   currentSince: number
@@ -115,6 +123,8 @@ class MapRenderer implements MapControl {
   private template: string | null = null
   /** The whole zoom whose tiles are drawn on top. */
   private tileZoom: number | null = null
+  /** The zoom of the always-loaded coarse backdrop. */
+  private backdropZoom: number | null = null
   private raf: number | null = null
   private lastFrame = 0
   private animation: Animation | null = null
@@ -309,6 +319,14 @@ class MapRenderer implements MapControl {
 
   // ───────────── tiles ─────────────
 
+  /**
+   * Three kinds of layers, so the map never shows bare background:
+   * - the current zoom's tiles on top, revealed as a whole once they cover the view (no
+   *   patchwork of sharp and blurry tiles), or after REVEAL_MS;
+   * - the previous zooms underneath, scaled, until then;
+   * - a coarse backdrop BACKDROP_LEVELS zooms down, always loaded (a handful of tiles), for
+   *   whatever the others don't cover (a quick zoom out, a fast pan).
+   */
   private placeTiles(view: MapView): void {
     const session = appState().mapSession
     if (session?.template !== this.template) {
@@ -317,24 +335,72 @@ class MapRenderer implements MapControl {
       this.tileZoom = null
     }
     if (!this.template) return
+    const now = performance.now()
     const tz = tileZoomFor(view.zoom, this.tileZoom)
-    const range = tileRange(view, tz, this.width, this.height)
-    let layer = this.layers.get(tz)
-    if (!layer) {
-      const el = document.createElement('div')
-      el.className = 'map-layer'
-      this.tilesEl.appendChild(el)
-      layer = { zoom: tz, el, originX: range.x0 * TILE, originY: range.y0 * TILE, tiles: new Map(), currentSince: performance.now(), overlap: 0 }
-      this.layers.set(tz, layer)
-    } else if (tz !== this.tileZoom) {
-      layer.currentSince = performance.now()
+    const current = this.ensureLayer(tz, view)
+    if (tz !== this.tileZoom) {
+      current.currentSince = now
+      current.shown = false
     }
     this.tileZoom = tz
-    const current = layer
+    const bz = backdropZoomFor(tz)
+    this.backdropZoom = bz
+    const backdrop = bz === null ? null : this.ensureLayer(bz, view)
+    // (It may have been a hidden current zoom before.)
+    if (backdrop) backdrop.el.style.visibility = ''
+    const backdropCovers = backdrop ? this.fill(backdrop, view, 1) : false
+    const covered = this.fill(current, view, 0)
+    const others = [...this.layers.values()]
+      .filter((l) => l.zoom !== tz && l.zoom !== bz)
+      .sort((a, b) => Math.abs(a.zoom - tz) - Math.abs(b.zoom - tz))
+    const waited = now - current.currentSince
+    // Nothing else to look at (first tiles): show tiles as they come.
+    const alone = others.length === 0 && !backdropCovers
+    if (!current.shown && (covered || alone || waited > REVEAL_MS)) current.shown = true
+    current.el.style.visibility = current.shown ? '' : 'hidden'
+    others.forEach((other, i) => {
+      if ((current.shown && covered) || waited > STALE_MS || i >= MAX_STALE_LAYERS) this.removeLayer(other.zoom)
+    })
+    // Waiting for tiles: look again next frame (decodes also invalidate).
+    if (!covered && waited <= STALE_MS) this.invalidate()
+  }
+
+  private ensureLayer(zoom: number, view: MapView): Layer {
+    let layer = this.layers.get(zoom)
+    if (layer) return layer
+    const c = project(view, zoom)
+    const el = document.createElement('div')
+    el.className = 'map-layer'
+    this.tilesEl.appendChild(el)
+    layer = {
+      zoom,
+      el,
+      originX: Math.floor(c.x / TILE) * TILE,
+      originY: Math.floor(c.y / TILE) * TILE,
+      anchorX: c.x,
+      tiles: new Map(),
+      currentSince: performance.now(),
+      shown: true,
+      overlap: 0
+    }
+    this.layers.set(zoom, layer)
+    return layer
+  }
+
+  /**
+   * Creates `layer`'s tiles over the view plus `margin` tiles and drops those further than a
+   * ring beyond. Returns whether decoded tiles cover the view.
+   */
+  private fill(layer: Layer, view: MapView, margin: number): boolean {
+    const template = this.template!
+    const z = layer.zoom
+    // Columns counted in the copy of the world the layer is drawn in (see positionLayer).
+    const cx = centerNear(view, z, layer.anchorX)
+    const range = tileRange(view, z, this.width, this.height, margin, cx)
     for (let y = range.y0; y <= range.y1; y++) {
       for (let x = range.x0; x <= range.x1; x++) {
         const key = `${x}/${y}`
-        if (current.tiles.has(key)) continue
+        if (layer.tiles.has(key)) continue
         const img = document.createElement('img')
         img.className = 'map-tile'
         img.alt = ''
@@ -342,10 +408,10 @@ class MapRenderer implements MapControl {
         img.decoding = 'async'
         img.width = TILE
         img.height = TILE
-        img.style.transform = `translate(${x * TILE - current.originX}px, ${y * TILE - current.originY}px)`
+        img.style.transform = `translate(${x * TILE - layer.originX}px, ${y * TILE - layer.originY}px)`
         const tile: TileImage = { img, ready: false }
         img.onerror = () => this.onTileError(img.src)
-        img.src = tileUrl(this.template, tz, wrapColumn(x, tz), y)
+        img.src = tileUrl(template, z, wrapColumn(x, z), y)
         // Shown, and counted as covering, only once decoded: an image that has loaded but not
         // decoded paints nothing, and dropping the tiles underneath then would flash.
         img
@@ -357,46 +423,33 @@ class MapRenderer implements MapControl {
             this.invalidate()
           })
           .catch(() => undefined)
-        current.tiles.set(key, tile)
-        current.el.appendChild(img)
+        layer.tiles.set(key, tile)
+        layer.el.appendChild(img)
       }
     }
     // Tiles well out of view go; a ring of one tile stays, so small pans back don't refetch.
-    for (const [key, tile] of current.tiles) {
+    for (const [key, tile] of layer.tiles) {
       const [x, y] = key.split('/').map(Number)
       if (x < range.x0 - 1 || x > range.x1 + 1 || y < range.y0 - 1 || y > range.y1 + 1) {
         tile.img.onerror = null
         tile.img.remove()
-        current.tiles.delete(key)
+        layer.tiles.delete(key)
       }
     }
-    // Other zooms stay underneath, scaled, until the current one covers the view, then go.
-    let covered = true
-    for (let y = range.y0; y <= range.y1 && covered; y++) {
-      for (let x = range.x0; x <= range.x1; x++) {
-        if (!current.tiles.get(`${x}/${y}`)?.ready) {
-          covered = false
-          break
-        }
-      }
+    const inner = margin === 0 ? range : tileRange(view, z, this.width, this.height, 0, cx)
+    for (let y = inner.y0; y <= inner.y1; y++) {
+      for (let x = inner.x0; x <= inner.x1; x++) if (!layer.tiles.get(`${x}/${y}`)?.ready) return false
     }
-    const others = [...this.layers.values()].filter((l) => l.zoom !== tz).sort((a, b) => Math.abs(a.zoom - tz) - Math.abs(b.zoom - tz))
-    const expired = performance.now() - current.currentSince > STALE_MS
-    others.forEach((other, i) => {
-      if (covered || expired || i >= MAX_STALE_LAYERS) this.removeLayer(other.zoom)
-    })
-    // Waiting for tiles: look again next frame (decodes also invalidate).
-    if (!covered && !expired) this.invalidate()
+    return true
   }
 
   private positionLayer(layer: Layer, view: MapView): void {
     const scale = 2 ** (view.zoom - layer.zoom)
-    const c = project(view, layer.zoom)
-    // Keep the layer's copy of the world nearest the view (panning across the antimeridian).
-    const size = worldSize(layer.zoom)
-    const cx = c.x + Math.round((layer.originX - c.x) / size) * size
+    // The same copy of the world as the layer's columns (fill), so tiles land where counted.
+    const cx = centerNear(view, layer.zoom, layer.anchorX)
+    const cy = project(view, layer.zoom).y
     const tx = this.width / 2 + (layer.originX - cx) * scale
-    const ty = this.height / 2 + (layer.originY - c.y) * scale
+    const ty = this.height / 2 + (layer.originY - cy) * scale
     layer.el.style.transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) scale(${scale.toFixed(5)})`
     // Scaled by a fraction, tile edges fall between pixels and each image's edge is blended
     // with transparency: a hairline seam. Each tile reaches one screen pixel into its right
@@ -407,8 +460,11 @@ class MapRenderer implements MapControl {
       layer.overlap = overlap
       layer.el.style.setProperty('--tile-overlap', `${overlap}px`)
     }
-    // The current zoom on top, then the nearest others (z-index must be a whole number).
-    layer.el.style.zIndex = String(layer.zoom === this.tileZoom ? 100 : 50 - Math.abs(layer.zoom - (this.tileZoom ?? layer.zoom)))
+    // The current zoom on top, then the previous ones by nearness, the backdrop at the bottom
+    // (z-index must be a whole number).
+    const z =
+      layer.zoom === this.tileZoom ? 100 : layer.zoom === this.backdropZoom ? 10 : 50 - Math.abs(layer.zoom - (this.tileZoom ?? layer.zoom))
+    layer.el.style.zIndex = String(z)
   }
 
   private removeLayer(zoom: number): void {
@@ -733,6 +789,7 @@ function MapModeView() {
   const rendererRef = useRef<MapRenderer | null>(null)
   const [copyright, setCopyright] = useState<string | null>(null)
   const session = useAppStore((s) => s.mapSession)
+  const mapType = useAppStore((s) => s.settings.map.type)
   const hasKey = useAppStore((s) => !!s.keys.googleApiKey)
 
   useEffect(() => {
@@ -752,6 +809,7 @@ function MapModeView() {
     <div
       ref={rootRef}
       className="map-mode"
+      data-type={mapType}
       data-testid="map-mode"
       role="application"
       aria-label="Map: drag to move, scroll to zoom, arrow keys to pan. Switch to Photorealistic or Elevation to see the map's center in 3D."
