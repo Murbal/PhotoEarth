@@ -65,18 +65,17 @@ const PAN_KEYS: Record<string, Point> = {
 }
 
 interface TileImage {
+  /** Not in the DOM: only drawn into the canvas. */
   img: HTMLImageElement
-  /** Downloaded and decoded: it paints in the next frame. */
+  x: number
+  y: number
+  /** Downloaded and decoded: drawable without a stall. */
   ready: boolean
 }
 
-/** All tiles of one whole zoom, in one element that is moved and scaled as a whole. */
+/** The tiles of one whole zoom. */
 interface Layer {
   zoom: number
-  el: HTMLDivElement
-  /** World pixel (at this zoom) of the element's top-left corner. */
-  originX: number
-  originY: number
   /** The view's center x when the layer was made: picks its copy of the world. */
   anchorX: number
   /** The current zoom is hidden until it covers the view (or REVEAL_MS), then shown whole. */
@@ -84,8 +83,16 @@ interface Layer {
   tiles: Map<string, TileImage>
   /** When this zoom last became the drawn one. */
   currentSince: number
-  /** How far tiles reach into their right and bottom neighbors, in layer pixels. */
-  overlap: number
+}
+
+/** A tile drawn in the last frame, in CSS pixels (for tests). */
+export interface DrawnTile {
+  zoom: number
+  url: string
+  left: number
+  top: number
+  right: number
+  bottom: number
 }
 
 interface Animation {
@@ -110,10 +117,12 @@ function isTyping(target: EventTarget | null): boolean {
 const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2)
 
 /**
- * The map's drawing and input, outside React (SPEC §5.5). Tiles are plain <img> elements on
- * one layer per whole zoom; a frame only rewrites the layers' transforms (and adds or drops
- * tiles at the edges), and frames run only while something moves. It never touches the
- * WebGL context, which is paused under the map.
+ * The map's drawing and input, outside React (SPEC §5.5). Decoded tile images are drawn into
+ * one 2D canvas the size of the window: a frame clears it and draws a few dozen images, and
+ * frames run only while something moves. One canvas means one compositor surface whatever
+ * the zoom or the levels kept underneath (CSS-scaled layers of <img> tiles each became a
+ * window-sized GPU raster, and ran out of Chromium's tile memory), and nothing reads back.
+ * It never touches the WebGL context, which is paused under the map.
  */
 class MapRenderer implements MapControl {
   private current: MapView
@@ -123,6 +132,8 @@ class MapRenderer implements MapControl {
   private template: string | null = null
   /** The whole zoom whose tiles are drawn on top. */
   private tileZoom: number | null = null
+  /** The current zoom is revealed and covers the view: nothing under it needs drawing. */
+  private currentCovers = false
   /** The zoom of the always-loaded coarse backdrop. */
   private backdropZoom: number | null = null
   private raf: number | null = null
@@ -148,13 +159,17 @@ class MapRenderer implements MapControl {
   private probing = false
   /** A drag just ended with movement: the click that follows it isn't one. */
   dragged = false
+  private readonly ctx: CanvasRenderingContext2D
+  private dpr = 1
+  /** What the last frame drew, kept only when asked for (tests). */
+  private drawn: DrawnTile[] | null = null
   private pins = new Map<string, Pin>()
   private destination: Pin | null = null
   private readonly disposers: Array<() => void> = []
 
   constructor(
     private readonly root: HTMLDivElement,
-    private readonly tilesEl: HTMLDivElement,
+    private readonly canvas: HTMLCanvasElement,
     private readonly pinsEl: HTMLDivElement,
     private readonly wedge: SVGPathElement,
     private readonly marker: SVGGElement,
@@ -162,14 +177,19 @@ class MapRenderer implements MapControl {
   ) {
     const { longitude, latitude, zoom } = appState().settings.map
     this.current = { longitude, latitude, zoom: clampZoom(zoom) }
-    const resize = new ResizeObserver(() => {
+    this.ctx = canvas.getContext('2d', { alpha: true })!
+    const resize = () => {
       this.width = Math.max(1, root.clientWidth)
       this.height = Math.max(1, root.clientHeight)
+      this.dpr = window.devicePixelRatio || 1
+      // Device pixels, so tiles are drawn sharp and their edges snapped to whole pixels.
+      canvas.width = Math.round(this.width * this.dpr)
+      canvas.height = Math.round(this.height * this.dpr)
       this.invalidate()
-    })
-    resize.observe(root)
-    this.width = Math.max(1, root.clientWidth)
-    this.height = Math.max(1, root.clientHeight)
+    }
+    const observer = new ResizeObserver(resize)
+    observer.observe(root)
+    resize()
     const onWheel = (e: WheelEvent) => this.onWheel(e)
     const onKey = (e: KeyboardEvent) => this.onKey(e, e.type === 'keydown')
     const onBlur = () => this.keys.clear()
@@ -178,7 +198,7 @@ class MapRenderer implements MapControl {
     window.addEventListener('keyup', onKey)
     window.addEventListener('blur', onBlur)
     this.disposers.push(
-      () => resize.disconnect(),
+      () => observer.disconnect(),
       () => root.removeEventListener('wheel', onWheel),
       () => window.removeEventListener('keydown', onKey),
       () => window.removeEventListener('keyup', onKey),
@@ -313,8 +333,80 @@ class MapRenderer implements MapControl {
   private draw(): void {
     const view = this.current
     this.placeTiles(view)
-    for (const layer of this.layers.values()) this.positionLayer(layer, view)
+    this.drawTiles(view)
     this.positionOverlay(view)
+  }
+
+  /** Test builds: what the last frame drew (from now on). */
+  drawnTiles(): DrawnTile[] {
+    if (!this.drawn) {
+      this.drawn = []
+      this.invalidate()
+    }
+    return this.drawn
+  }
+
+  /** Test builds: tile and layer counts. */
+  tileState(): { layers: number; tiles: number; ready: number; urls: string[] } {
+    let tiles = 0
+    let ready = 0
+    const urls: string[] = []
+    for (const layer of this.layers.values()) {
+      for (const t of layer.tiles.values()) {
+        tiles++
+        if (t.ready) ready++
+        urls.push(t.img.src)
+      }
+    }
+    return { layers: this.layers.size, tiles, ready, urls }
+  }
+
+  /**
+   * Draws the backdrop, then the previous zooms from the farthest to the nearest, then the
+   * current zoom (once revealed). Each tile's edges are rounded to whole device pixels from
+   * the same formula as its neighbor's, so tiles meet exactly: no seams, at any scale.
+   */
+  private drawTiles(view: MapView): void {
+    const ctx = this.ctx
+    const dpr = this.dpr
+    const cw = this.canvas.width
+    const ch = this.canvas.height
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, cw, ch)
+    const tz = this.tileZoom
+    const backdrop = this.backdropZoom
+    // Bottom to top: the backdrop, the previous zooms from the farthest, the current zoom.
+    const rank = (l: Layer): number => (l.zoom === tz ? -1 : l.zoom === backdrop ? 1000 : tz === null ? 0 : Math.abs(l.zoom - tz))
+    // When the current zoom covers the view, the layers under it would only be painted over.
+    const order = this.currentCovers
+      ? [...this.layers.values()].filter((l) => l.zoom === tz)
+      : [...this.layers.values()].filter((l) => l.zoom !== tz || l.shown).sort((a, b) => rank(b) - rank(a))
+    const drawn: DrawnTile[] | null = this.drawn ? [] : null
+    ctx.imageSmoothingEnabled = true
+    // Bilinear: tiles are drawn at 64–157 % (the backdrop larger), where mipmapped filtering
+    // ('medium' / 'high') costs far more and looks the same.
+    ctx.imageSmoothingQuality = 'low'
+    for (const layer of order) {
+      const scale = 2 ** (view.zoom - layer.zoom)
+      const cx = centerNear(view, layer.zoom, layer.anchorX)
+      const cy = project(view, layer.zoom).y
+      const size = TILE * scale
+      const ox = this.width / 2 - cx * scale
+      const oy = this.height / 2 - cy * scale
+      for (const t of layer.tiles.values()) {
+        if (!t.ready) continue
+        const left = ox + t.x * size
+        const top = oy + t.y * size
+        if (left > this.width || top > this.height || left + size < 0 || top + size < 0) continue
+        const x0 = Math.round(left * dpr)
+        const y0 = Math.round(top * dpr)
+        const x1 = Math.round((left + size) * dpr)
+        const y1 = Math.round((top + size) * dpr)
+        ctx.drawImage(t.img, x0, y0, x1 - x0, y1 - y0)
+        drawn?.push({ zoom: layer.zoom, url: t.img.src, left: x0 / dpr, top: y0 / dpr, right: x1 / dpr, bottom: y1 / dpr })
+      }
+    }
+    if (drawn) this.drawn = drawn
   }
 
   // ───────────── tiles ─────────────
@@ -333,6 +425,7 @@ class MapRenderer implements MapControl {
       for (const zoom of [...this.layers.keys()]) this.removeLayer(zoom)
       this.template = session?.template ?? null
       this.tileZoom = null
+      this.currentCovers = false
     }
     if (!this.template) return
     const now = performance.now()
@@ -346,8 +439,7 @@ class MapRenderer implements MapControl {
     const bz = backdropZoomFor(tz)
     this.backdropZoom = bz
     const backdrop = bz === null ? null : this.ensureLayer(bz, view)
-    // (It may have been a hidden current zoom before.)
-    if (backdrop) backdrop.el.style.visibility = ''
+    if (backdrop) backdrop.shown = true
     const backdropCovers = backdrop ? this.fill(backdrop, view, 1) : false
     const covered = this.fill(current, view, 0)
     const others = [...this.layers.values()]
@@ -357,7 +449,7 @@ class MapRenderer implements MapControl {
     // Nothing else to look at (first tiles): show tiles as they come.
     const alone = others.length === 0 && !backdropCovers
     if (!current.shown && (covered || alone || waited > REVEAL_MS)) current.shown = true
-    current.el.style.visibility = current.shown ? '' : 'hidden'
+    this.currentCovers = covered && current.shown
     others.forEach((other, i) => {
       if ((current.shown && covered) || waited > STALE_MS || i >= MAX_STALE_LAYERS) this.removeLayer(other.zoom)
     })
@@ -368,21 +460,7 @@ class MapRenderer implements MapControl {
   private ensureLayer(zoom: number, view: MapView): Layer {
     let layer = this.layers.get(zoom)
     if (layer) return layer
-    const c = project(view, zoom)
-    const el = document.createElement('div')
-    el.className = 'map-layer'
-    this.tilesEl.appendChild(el)
-    layer = {
-      zoom,
-      el,
-      originX: Math.floor(c.x / TILE) * TILE,
-      originY: Math.floor(c.y / TILE) * TILE,
-      anchorX: c.x,
-      tiles: new Map(),
-      currentSince: performance.now(),
-      shown: true,
-      overlap: 0
-    }
+    layer = { zoom, anchorX: project(view, zoom).x, tiles: new Map(), currentSince: performance.now(), shown: true }
     this.layers.set(zoom, layer)
     return layer
   }
@@ -401,30 +479,22 @@ class MapRenderer implements MapControl {
       for (let x = range.x0; x <= range.x1; x++) {
         const key = `${x}/${y}`
         if (layer.tiles.has(key)) continue
-        const img = document.createElement('img')
-        img.className = 'map-tile'
-        img.alt = ''
-        img.draggable = false
+        const img = new Image()
         img.decoding = 'async'
-        img.width = TILE
-        img.height = TILE
-        img.style.transform = `translate(${x * TILE - layer.originX}px, ${y * TILE - layer.originY}px)`
-        const tile: TileImage = { img, ready: false }
+        const tile: TileImage = { img, x, y, ready: false }
         img.onerror = () => this.onTileError(img.src)
         img.src = tileUrl(template, z, wrapColumn(x, z), y)
-        // Shown, and counted as covering, only once decoded: an image that has loaded but not
-        // decoded paints nothing, and dropping the tiles underneath then would flash.
+        // Drawn, and counted as covering, only once decoded: drawing an undecoded image would
+        // decode it on the frame, and dropping the tiles underneath before then would flash.
         img
           .decode()
           .then(() => {
-            if (!img.isConnected) return
+            if (layer.tiles.get(key) !== tile) return
             tile.ready = true
-            img.classList.add('ready')
             this.invalidate()
           })
           .catch(() => undefined)
         layer.tiles.set(key, tile)
-        layer.el.appendChild(img)
       }
     }
     // Tiles well out of view go; a ring of one tile stays, so small pans back don't refetch.
@@ -432,7 +502,8 @@ class MapRenderer implements MapControl {
       const [x, y] = key.split('/').map(Number)
       if (x < range.x0 - 1 || x > range.x1 + 1 || y < range.y0 - 1 || y > range.y1 + 1) {
         tile.img.onerror = null
-        tile.img.remove()
+        // Stops a download in flight.
+        tile.img.src = ''
         layer.tiles.delete(key)
       }
     }
@@ -443,35 +514,13 @@ class MapRenderer implements MapControl {
     return true
   }
 
-  private positionLayer(layer: Layer, view: MapView): void {
-    const scale = 2 ** (view.zoom - layer.zoom)
-    // The same copy of the world as the layer's columns (fill), so tiles land where counted.
-    const cx = centerNear(view, layer.zoom, layer.anchorX)
-    const cy = project(view, layer.zoom).y
-    const tx = this.width / 2 + (layer.originX - cx) * scale
-    const ty = this.height / 2 + (layer.originY - cy) * scale
-    layer.el.style.transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) scale(${scale.toFixed(5)})`
-    // Scaled by a fraction, tile edges fall between pixels and each image's edge is blended
-    // with transparency: a hairline seam. Each tile reaches one screen pixel into its right
-    // and bottom neighbor (drawn over it), so edges always overlap. Stretching a tile by one
-    // pixel is invisible; the variable only changes with the scale.
-    const overlap = Math.round((1 / scale) * 20) / 20
-    if (overlap !== layer.overlap) {
-      layer.overlap = overlap
-      layer.el.style.setProperty('--tile-overlap', `${overlap}px`)
-    }
-    // The current zoom on top, then the previous ones by nearness, the backdrop at the bottom
-    // (z-index must be a whole number).
-    const z =
-      layer.zoom === this.tileZoom ? 100 : layer.zoom === this.backdropZoom ? 10 : 50 - Math.abs(layer.zoom - (this.tileZoom ?? layer.zoom))
-    layer.el.style.zIndex = String(z)
-  }
-
   private removeLayer(zoom: number): void {
     const layer = this.layers.get(zoom)
     if (!layer) return
-    for (const tile of layer.tiles.values()) tile.img.onerror = null
-    layer.el.remove()
+    for (const tile of layer.tiles.values()) {
+      tile.img.onerror = null
+      if (!tile.ready) tile.img.src = ''
+    }
     this.layers.delete(zoom)
   }
 
@@ -782,7 +831,7 @@ export function MapMode() {
 
 function MapModeView() {
   const rootRef = useRef<HTMLDivElement>(null)
-  const tilesRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const pinsRef = useRef<HTMLDivElement>(null)
   const wedgeRef = useRef<SVGPathElement>(null)
   const markerRef = useRef<SVGGElement>(null)
@@ -794,11 +843,14 @@ function MapModeView() {
 
   useEffect(() => {
     const root = rootRef.current
-    if (!root || !tilesRef.current || !pinsRef.current || !wedgeRef.current || !markerRef.current) return
-    const renderer = new MapRenderer(root, tilesRef.current, pinsRef.current, wedgeRef.current, markerRef.current, setCopyright)
+    if (!root || !canvasRef.current || !pinsRef.current || !wedgeRef.current || !markerRef.current) return
+    const renderer = new MapRenderer(root, canvasRef.current, pinsRef.current, wedgeRef.current, markerRef.current, setCopyright)
     rendererRef.current = renderer
     setMapControl(renderer)
+    const test = import.meta.env.VITE_PHOTOEARTH_TEST === '1'
+    if (test) (window as unknown as { __photoearthMap?: MapRenderer }).__photoearthMap = renderer
     return () => {
+      if (test) delete (window as unknown as { __photoearthMap?: MapRenderer }).__photoearthMap
       setMapControl(null)
       renderer.destroy()
       rendererRef.current = null
@@ -820,7 +872,7 @@ function MapModeView() {
       onPointerLeave={() => rendererRef.current?.leave()}
       onDoubleClick={(e) => rendererRef.current?.doubleClick(e)}
     >
-      <div ref={tilesRef} className="map-tiles" />
+      <canvas ref={canvasRef} className="map-tiles" />
       <svg className="map-camera" aria-hidden="true">
         <path ref={wedgeRef} className="map-wedge" />
         <g ref={markerRef} className="map-marker">

@@ -1129,9 +1129,11 @@ test('Map mode: a full-window Google map over the paused 3D view; drag, wheel, k
       e.keys.googleApiKey = 'test-key'
       await e.mapTiles.configure('test-key', 'roadmap')
     })
-    await expect.poll(() => page.locator('.map-tile.ready').count()).toBeGreaterThan(4)
+    const tileState = () =>
+      page.evaluate(() => (window as unknown as { __photoearthMap: any }).__photoearthMap.tileState() as { layers: number; tiles: number; ready: number; urls: string[] })
+    await expect.poll(async () => (await tileState()).ready).toBeGreaterThan(4)
     expect(mock.sessions.at(-1)).toMatchObject({ mapType: 'roadmap' })
-    for (const src of await page.locator('.map-tile').evaluateAll((els) => els.map((el) => (el as HTMLImageElement).src))) {
+    for (const src of (await tileState()).urls) {
       expect(src).toMatch(/^https:\/\/tile\.googleapis\.com\/v1\/2dtiles\/\d+\/\d+\/\d+\?session=s\d+&key=test-key$/)
     }
     const attribution = page.getByTestId('map-attribution')
@@ -1174,19 +1176,17 @@ test('Map mode: a full-window Google map over the paused 3D view; drag, wheel, k
     // No flashing while zooming across tile levels, even a quick zoom out by two: the whole map
     // stays covered by visible tiles the whole time (previous levels and the coarse backdrop
     // stay underneath until the new level covers the view).
+    // What each frame drew into the canvas, as screen rectangles.
+    await page.evaluate(() => (window as unknown as { __photoearthMap: any }).__photoearthMap.drawnTiles())
+    await page.waitForTimeout(300)
     const sampling = page.evaluate(async () => {
+      const map = (window as unknown as { __photoearthMap: any }).__photoearthMap
       const root = document.querySelector('.map-mode') as HTMLElement
       const W = root.clientWidth
       const H = root.clientHeight
       const points: Array<[number, number]> = []
       for (let i = 0; i < 9; i++) for (let j = 0; j < 9; j++) points.push([W * (0.05 + 0.1125 * i), H * (0.05 + 0.1125 * j)])
-      const visible = () =>
-        [...document.querySelectorAll<HTMLImageElement>('.map-tile')]
-          .filter((img) => {
-            const cs = getComputedStyle(img)
-            return img.complete && cs.visibility === 'visible' && Number(cs.opacity) === 1
-          })
-          .map((img) => img.getBoundingClientRect())
+      const visible = () => map.drawnTiles() as Array<{ left: number; top: number; right: number; bottom: number }>
       let worst = 0
       let samples = 0
       const start = performance.now()
@@ -1374,7 +1374,12 @@ test('Map mode: no seams between tiles at fractional zooms', async () => {
       // Stood still, no previous zoom left underneath (the backdrop stays), every tile decoded.
       await settledMap()
       await expect
-        .poll(() => page.evaluate(() => document.querySelectorAll('.map-layer').length <= 2 && document.querySelectorAll('.map-tile:not(.ready)').length === 0))
+        .poll(() =>
+          page.evaluate(() => {
+            const t = (window as unknown as { __photoearthMap: any }).__photoearthMap.tileState()
+            return t.layers <= 2 && t.ready === t.tiles
+          })
+        )
         .toBe(true)
       const zoom = await mapView().then((v) => v.zoom)
       expect(Math.abs(zoom - Math.round(zoom))).toBeGreaterThan(0.05)
