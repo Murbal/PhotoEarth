@@ -72,7 +72,12 @@ export function ProfilePanel() {
             <button className="btn ghost" onClick={() => getEngine()?.profile.undo()} title="Remove last point (Backspace)">
               <Icon name="undo" size={14} /> Undo
             </button>
-            <button className="btn primary" onClick={() => getEngine()?.profile.finish()} title="Finish (Enter)">
+            <button
+              className="btn primary"
+              onClick={() => getEngine()?.profile.finish()}
+              disabled={profile.points.length < 2}
+              title={profile.points.length < 2 ? 'Add at least two points to finish' : 'Finish (Enter)'}
+            >
               Finish
             </button>
           </>
@@ -88,7 +93,11 @@ export function ProfilePanel() {
       {profile.error && <div className="notice">{profile.error}</div>}
       {!geometry && !profile.error && (
         <div className="muted" style={{ padding: '18px 0' }}>
-          {profile.points.length < 2 ? 'Click at least two points on the map to draw a path across the terrain.' : 'Sampling elevations…'}
+          {profile.points.length === 0
+            ? 'Click at least two points on the map to draw a path across the terrain.'
+            : profile.points.length === 1
+              ? 'Start point set. Click a second point on the map to draw the path.'
+              : 'Sampling elevations…'}
         </div>
       )}
       {geometry && stats && (

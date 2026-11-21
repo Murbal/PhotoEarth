@@ -213,3 +213,12 @@ export function formatLongDate(date: string): string {
 export function localMinutesOf(utcMs: number, timeZone: string): number {
   return utcToZoned(utcMs, timeZone).minutes
 }
+
+/** "8 h 59 min", "24 h", "45 min": rounded to the nearest minute, never "8 h 60 min". */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 60000))
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  if (h === 0) return `${m} min`
+  return m === 0 ? `${h} h` : `${h} h ${m} min`
+}

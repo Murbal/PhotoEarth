@@ -385,10 +385,12 @@ test('a fast-moving camera preloads tiles where it is heading', async () => {
 })
 
 test('coordinates in the palette fly the camera there', async () => {
-  await page.keyboard.press('Control+k')
+  await page.keyboard.press('ControlOrMeta+k')
   await page.keyboard.type('37.7456, -119.5936')
   await expect(page.locator('.palette-item').first()).toContainText('37.74560° N')
   await page.keyboard.press('Enter')
+  // The destination stays marked and named after the palette closes.
+  await expect(page.locator('.chip.destination')).toContainText('37.74560° N')
   await expect
     .poll(async () => page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.currentView().longitude), { timeout: 15_000 })
     .toBeLessThan(-119)
@@ -587,13 +589,190 @@ test('trackpad scroll pans with the fingers, pinch and Alt+scroll keep the grabb
   expect(result.mouseReached, r).toBe(true)
 }))
 
+test('the search pin is removed with its close button', async () => {
+  await page.getByRole('button', { name: 'Remove search pin' }).click()
+  await expect(page.locator('.chip.destination')).toHaveCount(0)
+  expect(await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.searchMarker.entity)).toBeNull()
+})
+
+test('the palette explains invalid coordinates and exposes the highlighted result', async () => {
+  await page.keyboard.press('ControlOrMeta+k')
+  const input = page.getByRole('combobox', { name: 'Search' })
+  await expect(input).toBeFocused()
+  await page.keyboard.type('91, 181')
+  await expect(page.locator('.palette-notice')).toContainText('Latitude 91° is outside −90° to 90°')
+  await expect(page.getByText('No matches.')).toHaveCount(0)
+
+  await input.fill('zoom')
+  const activeText = () =>
+    page.evaluate(() => {
+      const id = document.activeElement?.getAttribute('aria-activedescendant')
+      const el = id ? document.getElementById(id) : null
+      return el?.getAttribute('aria-selected') === 'true' && el.getAttribute('role') === 'option' ? el.textContent : null
+    })
+  await expect.poll(activeText).toContain('Zoom in')
+  await page.keyboard.press('ArrowDown')
+  await expect.poll(activeText).toContain('Zoom out')
+
+  // Tab never leaves the dialog for the toolbar behind it.
+  for (let i = 0; i < 4; i++) await page.keyboard.press('Tab')
+  expect(await page.evaluate(() => !!document.activeElement?.closest('.palette'))).toBe(true)
+  await expect(page.locator('.overlay-root')).toHaveAttribute('inert', '')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.palette')).toHaveCount(0)
+  await expect(page.locator('.overlay-root')).not.toHaveAttribute('inert', '')
+})
+
+test('Tab stays inside the settings dialog', async () => {
+  await page.keyboard.press('ControlOrMeta+,')
+  const dialog = page.getByRole('dialog', { name: 'Settings' })
+  await expect(dialog).toBeVisible()
+  for (let i = 0; i < 40; i++) {
+    await page.keyboard.press(i % 7 === 6 ? 'Shift+Tab' : 'Tab')
+    expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]')), `after Tab ${i + 1}`).toBe(true)
+  }
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+})
+
+/** Adds profile points on the ground near the view center. */
+async function addProfilePoints(offsets: Array<[number, number]>): Promise<void> {
+  await page.evaluate((offs) => {
+    const w = window as unknown as { Cesium: Record<string, any>; __photoearth: any }
+    const e = w.__photoearth
+    const t = e.currentView()
+    for (const [dLat, dLon] of offs) e.profile.addPoint(w.Cesium.Cartesian3.fromDegrees(t.longitude + dLon, t.latitude + dLat, 0))
+  }, offsets)
+}
+
+test('finishing a profile with only a start point keeps it and explains why', async () => {
+  await page.keyboard.press('p')
+  await addProfilePoints([[0, 0]])
+  await expect(page.getByRole('button', { name: 'Finish' })).toBeDisabled()
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.toast')).toContainText('second point')
+  const profile = () => page.evaluate(() => {
+    const p = (window as unknown as { __photoearth: any }).__photoearth
+    return { drawing: p.profile.drawing, points: p.profile.vertices.length }
+  })
+  expect(await profile()).toEqual({ drawing: true, points: 1 })
+  await addProfilePoints([[0.01, 0.01]])
+  await expect(page.getByRole('button', { name: 'Finish' })).toBeEnabled()
+  await page.keyboard.press('Enter')
+  expect(await profile()).toEqual({ drawing: false, points: 2 })
+})
+
+test('side panels never cover the profile and time panels', async () => {
+  const rects = () =>
+    page.evaluate(() => {
+      const r = (sel: string) => Array.from(document.querySelectorAll(sel)).map((el) => el.getBoundingClientRect().toJSON() as DOMRect)
+      return { side: r('.side-panel'), bottom: r('.bottom-stack > .panel') }
+    })
+  const overlaps = (a: DOMRect, b: DOMRect) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+  await page.keyboard.press('l')
+  await page.keyboard.press('t')
+  await page.getByRole('button', { name: 'Bookmarks' }).click()
+  try {
+    for (const [width, height] of [[1440, 900], [1920, 1080], [1100, 900], [1280, 760]]) {
+      await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setContentSize(size[0], size[1]), [width, height])
+      await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width)
+      await page.waitForTimeout(100)
+      const { side, bottom } = await rects()
+      expect(side).toHaveLength(2)
+      expect(bottom).toHaveLength(2)
+      for (const s of side) for (const b of bottom) expect(overlaps(s, b), `${width}×${height}: ${JSON.stringify({ s, b })}`).toBe(false)
+    }
+  } finally {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1440, 900))
+    await page.keyboard.press('l')
+    await page.keyboard.press('t')
+    await page.getByRole('button', { name: 'Bookmarks' }).click()
+    await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.profile.clear())
+  }
+})
+
+test('eye level stands at a dropped pin, and the same button leaves it again', () => awayFromView(async () => {
+  type Pos = { lon: number; lat: number; height: number }
+  const state = () =>
+    page.evaluate(() => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      const v = e.currentView()
+      return { eyeLevel: e.camera.isEyeLevel as boolean, lon: v.longitude as number, lat: v.latitude as number, height: v.height as number }
+    })
+  const start = await state()
+  // Drop an inspection pin away from the view center (and from the cursor).
+  const pin: Pos = await page.evaluate(() => {
+    const w = window as unknown as { Cesium: Record<string, any>; __photoearth: any }
+    const e = w.__photoearth
+    const t = e.currentView()
+    const pos = { lon: t.longitude + 0.004, lat: t.latitude + 0.003, height: 0 }
+    void e.inspector.inspect(w.Cesium.Cartesian3.fromDegrees(pos.lon, pos.lat, 0))
+    return pos
+  })
+  const button = page.getByRole('button', { name: 'Eye level at the pin (1.7 m)' })
+  await button.click()
+  await expect.poll(async () => (await state()).eyeLevel, { timeout: 10_000 }).toBe(true)
+  const there = await state()
+  expect(Math.abs(there.lon - pin.lon)).toBeLessThan(1e-6)
+  expect(Math.abs(there.lat - pin.lat)).toBeLessThan(1e-6)
+  await expect(page.getByRole('button', { name: 'Leave eye level' })).toHaveAttribute('aria-pressed', 'true')
+
+  // At eye level, clicking the map drops a new marker; the button then walks over to it.
+  const canvas = page.locator('.map canvas')
+  const box = (await canvas.boundingBox())!
+  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.75)
+  await expect.poll(() => page.evaluate(() => {
+    const e = (window as unknown as { __photoearth: any }).__photoearth
+    return !!e.inspector.point && e.inspector.point.x
+  })).not.toBe(false)
+  const pin2 = await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.inspector.point)
+  expect(pin2).not.toBeNull()
+  await expect.poll(() => page.locator('.rail-btn[aria-keyshortcuts="G"]').getAttribute('aria-label')).toBe('Eye level at the pin (1.7 m)')
+  await page.locator('.rail-btn[aria-keyshortcuts="G"]').click()
+  await expect.poll(async () => {
+    const s = await state()
+    return s.eyeLevel && (Math.abs(s.lon - there.lon) > 1e-6 || Math.abs(s.lat - there.lat) > 1e-6)
+  }, { timeout: 10_000 }).toBe(true)
+  await expect(page.locator('.rail-btn[aria-keyshortcuts="G"]')).toHaveAttribute('aria-label', 'Leave eye level')
+
+  // Clicking it again leaves eye level and returns to the earlier view.
+  await page.getByRole('button', { name: 'Leave eye level' }).click()
+  await expect(page.getByRole('button', { name: 'Eye level at the pin (1.7 m)' })).toHaveAttribute('aria-pressed', 'false')
+  await expect
+    .poll(async () => {
+      const s = await state()
+      return Math.abs(s.lon - start.lon) + Math.abs(s.lat - start.lat) + Math.abs(s.height - start.height) / 1e5
+    }, { timeout: 10_000 })
+    .toBeLessThan(1e-6)
+  expect((await state()).eyeLevel).toBe(false)
+  await page.evaluate(() => (window as unknown as { __photoearth: any }).__photoearth.inspector.clear())
+}))
+
+test('rising well above the ground ends eye level, so the button enters it again', () => awayFromView(async () => {
+  const button = page.locator('.rail-btn[aria-keyshortcuts="G"]')
+  await button.click()
+  await expect(button).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 })
+  // Rise 200 m (as holding E would) and let the readouts see it.
+  await page.evaluate(() => {
+    const e = (window as unknown as { __photoearth: any }).__photoearth
+    const v = e.currentView()
+    e.scene.camera.setView({ destination: (window as any).Cesium.Cartesian3.fromDegrees(v.longitude, v.latitude, v.height + 200) })
+    e.readouts.refresh()
+  })
+  await expect(button).toHaveAttribute('aria-pressed', 'false')
+  await expect(button).toHaveAttribute('aria-label', 'Eye level at cursor (1.7 m)')
+}))
+
 test('time zone follows the viewed location', async () => {
   await page.keyboard.press('t')
   await expect(page.locator('.time-panel')).toContainText('America/Los_Angeles', { timeout: 10_000 })
+  // It says which point the sun is calculated for, and marks it on the map.
+  await expect(page.locator('.time-panel')).toContainText('For the view center')
+  await expect(page.locator('.sun-target')).toBeVisible()
 })
 
 test('bookmarks persist across a restart', async () => {
-  await page.keyboard.press('Control+b')
+  await page.keyboard.press('ControlOrMeta+b')
   await expect(page.locator('.bookmark')).toHaveCount(1)
   const saved = await page.evaluate(() => window.photoearth.bookmarks.list())
   expect(saved).toHaveLength(1)

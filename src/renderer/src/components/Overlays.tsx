@@ -10,6 +10,7 @@ export function StatusChips() {
   const eyeLevel = useAppStore((s) => s.eyeLevel)
   const flyMode = useAppStore((s) => s.flyMode)
   const profileDrawing = useAppStore((s) => s.profile.active)
+  const profilePoints = useAppStore((s) => s.profile.points.length)
   const patchSettings = useAppStore((s) => s.patchSettings)
   return (
     <div className="chip-row">
@@ -24,8 +25,37 @@ export function StatusChips() {
       {lighting === 'flat' && <span className="panel chip">Flat lighting</span>}
       {eyeLevel && !flyMode && <span className="panel chip">Eye level · 1.7 m — WASD to walk</span>}
       {flyMode && <span className="panel chip">Fly mode — WASD move · Q/E down/up · mouse look · Esc exit</span>}
-      {profileDrawing && <span className="panel chip">Click to add points · Enter or double-click to finish · Backspace undo</span>}
+      {profileDrawing && (
+        <span className="panel chip" role="status">
+          {profilePoints === 0
+            ? 'Elevation profile: click the map to set the start point · Esc cancel'
+            : profilePoints === 1
+              ? 'Start point set: click a second point · Backspace undo · Esc cancel'
+              : 'Click to add points · Enter or double-click to finish · Backspace undo'}
+        </span>
+      )}
+      <DestinationChip />
     </div>
+  )
+}
+
+/** Names where the last search landed, matching the pin on the map. */
+function DestinationChip() {
+  const destination = useAppStore((s) => s.destination)
+  const format = useAppStore((s) => s.settings.coordFormat)
+  if (!destination) return null
+  const coords = formatLatLon(destination.latitude, destination.longitude, format)
+  const showCoords = coords !== destination.name
+  return (
+    <span className="panel chip destination" role="status" aria-label={`Search result: ${destination.name}${destination.detail ? `, ${destination.detail}` : ''}`}>
+      <Icon name="pin" size={14} style={{ color: '#ff5d5d', flex: 'none' }} />
+      <span className="name">{destination.name}</span>
+      {destination.detail && <span className="detail">{destination.detail}</span>}
+      {showCoords && <span className="mono faint">{coords}</span>}
+      <button className="icon-btn small" style={{ width: 22, height: 22 }} aria-label="Remove search pin" title="Remove search pin (Esc)" onClick={() => getEngine()?.searchMarker.clear()}>
+        <Icon name="close" size={12} />
+      </button>
+    </span>
   )
 }
 
@@ -48,7 +78,10 @@ export function LoadingBar() {
 
 export function Crosshair() {
   const flyMode = useAppStore((s) => s.flyMode)
-  return flyMode ? <div className="crosshair" /> : null
+  const timePanel = useAppStore((s) => s.panels.time)
+  if (flyMode) return <div className="crosshair" />
+  // The point the time & sun panel calculates for (the view center).
+  return timePanel ? <div className="sun-target" aria-hidden="true" /> : null
 }
 
 export function Toast() {

@@ -1,6 +1,7 @@
 import type { ImageryType, QualityPreset } from '@shared/types'
 import { getEngine } from './engine/instance'
 import { saveCurrentView } from './lib/bookmarks'
+import { shortcutLabel } from './lib/platform'
 import { appState } from './store/appStore'
 
 export type CommandGroup = 'View' | 'Navigation' | 'Time & sun' | 'Elevation' | 'Tools' | 'App'
@@ -68,20 +69,28 @@ export function getCommands(): Command[] {
     { id: 'time-now', title: 'Set time to now', group: 'Time & sun', run: () => engine()?.sun.setNow() },
     { id: 'time-back', title: 'Time −15 min', group: 'Time & sun', keys: '[', run: () => engine()?.sun.nudgeMinutes(-15) },
     { id: 'time-forward', title: 'Time +15 min', group: 'Time & sun', keys: ']', run: () => engine()?.sun.nudgeMinutes(15) },
-    { id: 'day-back', title: 'Date −1 day', group: 'Time & sun', keys: 'Shift+[', run: () => engine()?.sun.nudgeDays(-1) },
-    { id: 'day-forward', title: 'Date +1 day', group: 'Time & sun', keys: 'Shift+]', run: () => engine()?.sun.nudgeDays(1) },
+    { id: 'day-back', title: 'Date −1 day', group: 'Time & sun', keys: shortcutLabel('Shift+['), run: () => engine()?.sun.nudgeDays(-1) },
+    { id: 'day-forward', title: 'Date +1 day', group: 'Time & sun', keys: shortcutLabel('Shift+]'), run: () => engine()?.sun.nudgeDays(1) },
     { id: 'reset-north', title: 'Reset heading to north', group: 'Navigation', keys: 'N', run: () => void engine()?.camera.resetNorth() },
     { id: 'reset-tilt', title: 'Top-down view', group: 'Navigation', keys: 'U', run: () => void engine()?.camera.resetTilt() },
     { id: 'level-horizon', title: 'Level horizon', group: 'Navigation', keys: 'R', run: () => void engine()?.camera.levelHorizon() },
-    { id: 'eye-level', title: 'Eye level at cursor (1.7 m)', group: 'Navigation', keys: 'G', keywords: 'ground standing walk', run: () => void engine()?.camera.goToEyeLevel() },
+    {
+      id: 'eye-level',
+      title: 'Eye level on / off (1.7 m, at the pin or cursor)',
+      group: 'Navigation',
+      keys: 'G',
+      keywords: 'ground standing walk marker',
+      run: () => void engine()?.toggleEyeLevel()
+    },
     { id: 'fly-mode', title: 'Toggle first-person fly mode', group: 'Navigation', keys: 'F', run: () => engine()?.camera.toggleFlyMode() },
     { id: 'zoom-in', title: 'Zoom in', group: 'Navigation', keys: '+', run: () => void engine()?.camera.zoomBy(0.5) },
     { id: 'zoom-out', title: 'Zoom out', group: 'Navigation', keys: '−', run: () => void engine()?.camera.zoomBy(2) },
-    { id: 'save-bookmark', title: 'Save bookmark of current view', group: 'Tools', keys: 'Ctrl+B', run: () => void saveCurrentView() },
+    { id: 'save-bookmark', title: 'Save bookmark of current view', group: 'Tools', keys: shortcutLabel('Mod+B'), run: () => void saveCurrentView() },
     { id: 'toggle-bookmarks', title: 'Show / hide bookmarks', group: 'Tools', run: () => appState().togglePanel('bookmarks') },
     { id: 'profile-start', title: 'Draw elevation profile', group: 'Tools', keys: 'P', keywords: 'path chart distance', run: () => engine()?.startProfile() },
     { id: 'profile-clear', title: 'Clear elevation profile', group: 'Tools', run: () => engine()?.profile.clear() },
     { id: 'clear-marker', title: 'Clear inspection marker', group: 'Tools', keys: 'Esc', run: () => engine()?.inspector.clear() },
+    { id: 'clear-search-pin', title: 'Clear search result pin', group: 'Tools', keywords: 'destination marker', run: () => engine()?.searchMarker.clear() },
     { id: 'toggle-elevation-panel', title: 'Show / hide elevation styling', group: 'Elevation', keys: 'L', run: () => appState().togglePanel('elevation') },
     { id: 'toggle-tint', title: 'Toggle hypsometric tint', group: 'Elevation', run: toggleSetting((d) => void (d.elevation.tint.enabled = !d.elevation.tint.enabled)) },
     { id: 'toggle-contours', title: 'Toggle contour lines', group: 'Elevation', run: toggleSetting((d) => void (d.elevation.contours.enabled = !d.elevation.contours.enabled)) },
@@ -105,7 +114,7 @@ export function getCommands(): Command[] {
     { id: 'toggle-units', title: 'Switch units: metric / imperial', group: 'App', run: toggleSetting((d) => void (d.units = d.units === 'metric' ? 'imperial' : 'metric')) },
     { id: 'toggle-coord-format', title: 'Switch coordinates: decimal / DMS', group: 'App', run: toggleSetting((d) => void (d.coordFormat = d.coordFormat === 'decimal' ? 'dms' : 'decimal')) },
     { id: 'toggle-theme', title: 'Switch theme: dark / light', group: 'App', run: toggleSetting((d) => void (d.theme = d.theme === 'dark' ? 'light' : 'dark')) },
-    { id: 'open-settings', title: 'Open settings', group: 'App', keys: 'Ctrl+,', keywords: 'api key preferences', run: () => appState().set({ settingsOpen: true }) },
+    { id: 'open-settings', title: 'Open settings', group: 'App', keys: shortcutLabel('Mod+,'), keywords: 'api key preferences', run: () => appState().set({ settingsOpen: true }) },
     { id: 'open-shortcuts', title: 'Keyboard shortcuts', group: 'App', keys: '?', run: () => appState().set({ shortcutsOpen: true }) },
     { id: 'retry-providers', title: 'Retry loading map data', group: 'App', run: () => void engine()?.retryProviders() }
   ]

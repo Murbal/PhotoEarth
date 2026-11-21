@@ -13,7 +13,7 @@ import {
 } from 'cesium'
 import { DEFAULT_VIEW } from '@shared/settings'
 import type { ApiCheck, ApiKeys, Bookmark, CameraView, MapMode, NewBookmark, PlaceDetails } from '@shared/types'
-import type { ParsedLocation } from '../lib/coords'
+import { formatLatLon, type ParsedLocation } from '../lib/coords'
 import { loadGeoid } from '../lib/geoid'
 import type { GeoPoint } from '../lib/profile'
 import { haversine } from '../lib/profile'
@@ -26,6 +26,7 @@ import { PointInspector } from './PointInspector'
 import { ProfileTool } from './ProfileTool'
 import { resolveQuality } from './quality'
 import { Readouts } from './Readouts'
+import { SearchMarker } from './SearchMarker'
 import { installDetailShadowPatch } from './shadows/detailShadowPatch'
 import { SunController } from './SunController'
 import { TerrainManager } from './TerrainManager'
@@ -35,6 +36,10 @@ import { TilesetManager } from './TilesetManager'
 import { cartographicDeg, currentView, pickSurface, surfaceHeight } from './util'
 
 type ProviderKey = 'tiles' | 'terrain' | 'imagery' | 'labels'
+
+// The engine is created once and kept across React refreshes, so a hot update of engine code
+// would leave the old instance running: reload the page instead (dev only).
+if (import.meta.hot) import.meta.hot.accept(() => window.location.reload())
 
 function subscribeJson<T>(selector: (s: AppState) => T, listener: (value: T) => void): () => void {
   return useAppStore.subscribe(selector, listener, {
@@ -62,6 +67,7 @@ export class Engine {
   readonly styler: ElevationStyler
   readonly profile: ProfileTool
   readonly inspector: PointInspector
+  readonly searchMarker: SearchMarker
   readonly readouts: Readouts
   readonly terrainShadows: TerrainShadows
   readonly preloader: TilePreloader
@@ -168,6 +174,7 @@ export class Engine {
     this.styler = new ElevationStyler(scene, this.terrainShadows)
     this.profile = new ProfileTool(this.widget, (points) => this.sampleProfile(points))
     this.inspector = new PointInspector(this.widget, (lon, lat) => this.preciseGround(lon, lat))
+    this.searchMarker = new SearchMarker(this.widget, (lon, lat) => this.preciseGround(lon, lat))
     this.readouts = new Readouts(scene, (target) => this.onTarget(target))
     this.preloader = new TilePreloader(scene, () => {
       const cam = appState().camera
@@ -341,7 +348,15 @@ export class Engine {
       )
     )
     s.push(useAppStore.subscribe((st) => st.sun, () => this.updateTerrainSun()))
-    s.push(useAppStore.subscribe((st) => st.camera?.heightAgl ?? null, (agl) => this.sun.setCameraHeight(agl)))
+    s.push(
+      useAppStore.subscribe(
+        (st) => st.camera?.heightAgl ?? null,
+        (agl) => {
+          this.sun.setCameraHeight(agl)
+          this.camera.noteHeightAboveGround(agl)
+        }
+      )
+    )
     s.push(useAppStore.subscribe((st) => st.profile.hoverIndex, () => this.requestRender()))
   }
 
@@ -589,7 +604,8 @@ export class Engine {
     await this.camera.flyToView(b.camera)
   }
 
-  async goToPlace(place: PlaceDetails): Promise<void> {
+  /** Flies to a searched place and pins it, labeled with the name the user picked. */
+  async goToPlace(place: PlaceDetails, label?: { name: string; detail: string }): Promise<void> {
     const { latitude, longitude } = place.location
     let range = 6000
     if (place.viewport) {
@@ -600,11 +616,30 @@ export class Engine {
       range = Math.min(4.0e6, Math.max(1200, diag * 1.1))
     }
     const groundHeight = await this.groundHeight(longitude, latitude)
+    const marker = this.searchMarker.show(
+      {
+        name: label?.name || place.name || formatLatLon(latitude, longitude, appState().settings.coordFormat),
+        detail: label?.detail ?? place.formattedAddress,
+        latitude,
+        longitude
+      },
+      groundHeight
+    )
     await this.camera.flyToLocation(latitude, longitude, { range, groundHeight })
+    await this.searchMarker.refine(marker)
   }
 
-  async goToCoordinates(loc: ParsedLocation): Promise<void> {
+  async goToCoordinates(loc: ParsedLocation, detail = 'Coordinates'): Promise<void> {
     const groundHeight = await this.groundHeight(loc.longitude, loc.latitude)
+    const marker = this.searchMarker.show(
+      {
+        name: formatLatLon(loc.latitude, loc.longitude, appState().settings.coordFormat),
+        detail,
+        latitude: loc.latitude,
+        longitude: loc.longitude
+      },
+      groundHeight
+    )
     await this.camera.flyToLocation(loc.latitude, loc.longitude, {
       range: loc.range ?? 4000,
       altitude: loc.altitude,
@@ -612,6 +647,17 @@ export class Engine {
       pitch: loc.tilt !== undefined ? loc.tilt - 90 : undefined,
       groundHeight
     })
+    await this.searchMarker.refine(marker)
+  }
+
+  /** Where Eye level stands: a dropped pin (inspect marker, then search pin), if any. */
+  get eyeLevelSpot(): Cartesian3 | null {
+    return this.inspector.point ?? this.searchMarker.point
+  }
+
+  /** Eye level on/off: at the dropped pin if there is one, else under the cursor. */
+  toggleEyeLevel(): Promise<void> {
+    return this.camera.toggleEyeLevel(this.eyeLevelSpot ?? undefined)
   }
 
   startProfile(): void {

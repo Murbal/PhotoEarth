@@ -14,6 +14,11 @@ export class PointInspector {
     private readonly sampleGround: (longitude: number, latitude: number) => Promise<number | undefined>
   ) {}
 
+  /** The marked ground point, if any. */
+  get point(): Cartesian3 | null {
+    return this.position
+  }
+
   async inspect(position: Cartesian3): Promise<void> {
     const id = ++this.request
     this.position = position

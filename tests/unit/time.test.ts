@@ -5,6 +5,7 @@ import {
   dateFromDayOfYear,
   dayOfYear,
   formatClock,
+  formatDuration,
   formatOffset,
   offsetMinutes,
   utcToZoned,
@@ -117,5 +118,16 @@ describe('calendar helpers', () => {
     expect(formatClock(0)).toBe('00:00')
     expect(formatClock(1439.99)).toBe('23:59')
     expect(formatClock(605.5, true)).toBe('10:05:30')
+  })
+})
+
+describe('formatDuration', () => {
+  it('rounds to whole minutes without ever showing 60 min', () => {
+    // 8 h 59 min 40 s used to render as "8 h 60 min".
+    expect(formatDuration((8 * 60 + 59) * 60000 + 40000)).toBe('9 h')
+    expect(formatDuration((8 * 60 + 59) * 60000 + 20000)).toBe('8 h 59 min')
+    expect(formatDuration((15 * 60 + 2) * 60000)).toBe('15 h 2 min')
+    expect(formatDuration(45 * 60000)).toBe('45 min')
+    expect(formatDuration(0)).toBe('0 min')
   })
 })

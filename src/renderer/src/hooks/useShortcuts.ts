@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { runCommand } from '../commands'
 import { getEngine } from '../engine/instance'
+import { hasPrimaryModifier } from '../lib/platform'
 import { appState } from '../store/appStore'
 
 function isTyping(target: EventTarget | null): boolean {
@@ -14,7 +15,8 @@ export function useShortcuts(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const s = appState()
-      const mod = e.ctrlKey || e.metaKey
+      // ⌘ on macOS, Ctrl elsewhere (Ctrl+K on a Mac is a text-editing key).
+      const mod = hasPrimaryModifier(e)
       const key = e.key.toLowerCase()
       if (mod && key === 'k') {
         e.preventDefault()
@@ -31,8 +33,9 @@ export function useShortcuts(): void {
         if (s.paletteOpen) s.set({ paletteOpen: false })
         else if (s.shortcutsOpen) s.set({ shortcutsOpen: false })
         else if (s.settingsOpen) s.set({ settingsOpen: false })
-        else if (s.profile.active) getEngine()?.profile.finish()
+        else if (s.profile.active) getEngine()?.profile.cancelOrFinish()
         else if (s.inspect) getEngine()?.inspector.clear()
+        else if (s.destination) getEngine()?.searchMarker.clear()
         return
       }
       if (modal || isTyping(e.target)) return
@@ -41,7 +44,7 @@ export function useShortcuts(): void {
         runCommand('save-bookmark')
         return
       }
-      if (mod || e.altKey) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
       if (s.profile.active && (e.key === 'Enter' || e.key === 'Backspace')) {
         e.preventDefault()
         if (e.key === 'Enter') getEngine()?.profile.finish()

@@ -13,16 +13,21 @@ const PATHS: Record<string, ReactElement> = {
       <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
     </>
   ),
+  /** Topographic contour rings: elevation styling (tint, contours, slope, hillshade). */
   layers: (
     <>
-      <path d="m3 17 6-9 4 6 2-3 6 6z" />
-      <path d="M3 21h18" />
+      <path d="M12 3.5c4.8 0 8.5 2.8 8.5 7.4S17 20.5 11.6 20.5C6.4 20.5 3.5 17 3.5 12.8 3.5 7.4 7.3 3.5 12 3.5z" />
+      <path d="M12 7.8c2.5 0 4.2 1.5 4.2 3.8 0 2.5-1.9 4.8-4.6 4.8-2.5 0-3.8-1.8-3.8-3.8 0-2.7 1.8-4.8 4.2-4.8z" />
+      <circle cx="12" cy="12.1" r="0.8" fill="currentColor" />
     </>
   ),
+  /** A chart of a path between two points: the elevation profile tool. */
   profile: (
     <>
-      <path d="M3 18 8 9l4 5 3-6 6 10" />
-      <path d="M3 21h18" />
+      <path d="M3.5 3.5v17h17" />
+      <path d="m7.5 15.5 3.5-5 3 3 4.5-7" />
+      <circle cx="7.5" cy="15.5" r="1.6" fill="currentColor" />
+      <circle cx="18.5" cy="6.5" r="1.6" fill="currentColor" />
     </>
   ),
   bookmark: <path d="M6 3h12v18l-6-4-6 4z" />,
@@ -59,10 +64,12 @@ const PATHS: Record<string, ReactElement> = {
       <path d="M12 7v5l3 2" />
     </>
   ),
+  /** A person standing on the ground: eye level. */
   person: (
     <>
-      <circle cx="12" cy="5" r="2" />
-      <path d="M12 8v7M9 21l3-6 3 6M8 11h8" />
+      <circle cx="12" cy="4.5" r="2.2" />
+      <path d="M12 8v6.5M8 11h8M9.5 20l2.5-5.5 2.5 5.5" />
+      <path d="M5 21h14" />
     </>
   ),
   plane: <path d="M2 16.5 22 9l-9 13-2.5-6.5z" />,
@@ -103,10 +110,11 @@ const PATHS: Record<string, ReactElement> = {
   chevronLeft: <path d="m15 6-6 6 6 6" />,
   chevronRight: <path d="m9 6 6 6-6 6" />,
   undo: <path d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3" />,
+  /** An attitude indicator with a level horizon: level the horizon (remove roll). */
   horizon: (
     <>
-      <path d="M3 15h18" />
-      <path d="M7 15a5 5 0 0 1 10 0" />
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17M12 3.5v3" />
     </>
   ),
   now: (

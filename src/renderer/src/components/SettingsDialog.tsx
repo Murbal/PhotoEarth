@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { EMPTY_OVERRIDES, QUALITY_PRESETS } from '@shared/settings'
 import type { QualityOverrides, QualityPreset } from '@shared/types'
 import { PRESETS } from '../engine/quality'
 import { useAppInfo } from '../hooks/useAppInfo'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import { saveKeys } from '../lib/keys'
 import { useAppStore } from '../store/appStore'
 import { Icon } from './Icon'
@@ -127,13 +128,15 @@ function SettingsContent() {
   const set = useAppStore((s) => s.set)
   const info = useAppInfo()
   const close = () => set({ settingsOpen: false })
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const nav = settings.navigation
   const o: QualityOverrides = settings.quality.overrides
   const hasOverrides = Object.values(o).some((v) => v !== null)
 
   return (
     <div className="scrim center" onPointerDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="panel dialog" role="dialog" aria-label="Settings" style={{ width: 'min(820px, calc(100% - 32px))' }}>
+      <div ref={dialogRef} tabIndex={-1} className="panel dialog" role="dialog" aria-modal="true" aria-label="Settings" style={{ width: 'min(820px, calc(100% - 32px))' }}>
         <div className="dialog-header">
           <h2>Settings</h2>
           <button className="icon-btn small" title="Close" onClick={close}>
@@ -151,7 +154,7 @@ function SettingsContent() {
                 ['about', 'About']
               ] as Array<[Section, string]>
             ).map(([id, label]) => (
-              <button key={id} className={section === id ? 'active' : ''} onClick={() => setSection(id)}>
+              <button key={id} className={section === id ? 'active' : ''} aria-current={section === id ? 'page' : undefined} onClick={() => setSection(id)}>
                 {label}
               </button>
             ))}

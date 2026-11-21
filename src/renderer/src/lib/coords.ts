@@ -63,9 +63,12 @@ function component(
   return { value: d < 0 || deg.startsWith('-') ? -magnitude : magnitude, hemisphere, hasMinutes: min !== undefined }
 }
 
-/** Parses "46.5577, 7.9586", "46°33'27.7\"N 7°57'31.0\"E", "N 46° 33.46' E 7° 57.52'" etc. */
-export function parseCoordinatePair(input: string): ParsedLocation | null {
+type PairResult = { location: ParsedLocation } | { problem: string }
+
+/** Matches a coordinate pair; null when the input doesn't look like one at all. */
+function analyzeCoordinatePair(input: string): PairResult | null {
   const text = normalize(input)
+  let problem: string | null = null
   for (const re of PAIRS) {
     const m = re.exec(text)
     if (!m) continue
@@ -74,18 +77,50 @@ export function parseCoordinatePair(input: string): ParsedLocation | null {
     const b = component(g(6), m[7], g(8), g(9), g(10))
     if (!a || !b) continue
     const result = combine(a, b)
-    if (result) return result
+    if ('location' in result) return result
+    problem ??= result.problem
   }
-  return null
+  return problem ? { problem } : null
 }
 
-function combine(a: Component, b: Component): ParsedLocation | null {
+/** Parses "46.5577, 7.9586", "46°33'27.7\"N 7°57'31.0\"E", "N 46° 33.46' E 7° 57.52'" etc. */
+export function parseCoordinatePair(input: string): ParsedLocation | null {
+  const result = analyzeCoordinatePair(input)
+  return result && 'location' in result ? result.location : null
+}
+
+/**
+ * Why input that reads as a coordinate pair isn't a valid location ("Latitude 91° is
+ * outside −90° to 90°"), or null when it is valid or isn't a coordinate pair at all.
+ */
+export function coordinateProblem(input: string): string | null {
+  if (parseLocationInput(input)) return null
+  const result = analyzeCoordinatePair(input)
+  return result && 'problem' in result ? result.problem : null
+}
+
+function degrees(value: number): string {
+  return `${value < 0 ? '−' : ''}${Number(Math.abs(value).toFixed(6))}°`
+}
+
+function rangeProblem(latitude: number, longitude: number, hemispheres: boolean): string | null {
+  const parts: string[] = []
+  if (Math.abs(latitude) > 90) parts.push(`latitude ${degrees(latitude)} is outside −90° to 90°`)
+  if (Math.abs(longitude) > 180) parts.push(`longitude ${degrees(longitude)} is outside −180° to 180°`)
+  if (parts.length === 0) return null
+  const text = parts.join(' and ')
+  const swapped = !hemispheres && Math.abs(longitude) <= 90 && Math.abs(latitude) <= 180
+  return `${text[0].toUpperCase()}${text.slice(1)}.${swapped ? ' Enter latitude first, then longitude.' : ''}`
+}
+
+function combine(a: Component, b: Component): PairResult {
   let lat: Component
   let lon: Component
   const isLat = (c: Component) => c.hemisphere === 'N' || c.hemisphere === 'S'
   const isLon = (c: Component) => c.hemisphere === 'E' || c.hemisphere === 'W'
   if (a.hemisphere || b.hemisphere) {
-    if ((isLat(a) && isLat(b)) || (isLon(a) && isLon(b))) return null
+    if (isLat(a) && isLat(b)) return { problem: 'Both values are latitudes (N/S). Add a longitude (E/W).' }
+    if (isLon(a) && isLon(b)) return { problem: 'Both values are longitudes (E/W). Add a latitude (N/S).' }
     if (isLon(a) || isLat(b)) [lat, lon] = [b, a]
     else [lat, lon] = [a, b]
   } else {
@@ -93,8 +128,9 @@ function combine(a: Component, b: Component): ParsedLocation | null {
   }
   const latitude = lat.hemisphere === 'S' ? -lat.value : lat.value
   const longitude = lon.hemisphere === 'W' ? -lon.value : lon.value
-  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return null
-  return { latitude, longitude, source: a.hasMinutes || b.hasMinutes ? 'dms' : 'decimal' }
+  const problem = rangeProblem(latitude, longitude, !!(a.hemisphere || b.hemisphere))
+  if (problem) return { problem }
+  return { location: { latitude, longitude, source: a.hasMinutes || b.hasMinutes ? 'dms' : 'decimal' } }
 }
 
 /** Approximate camera distance for a Google Maps web zoom level on a ~900 px tall view. */

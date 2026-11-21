@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  coordinateProblem,
   formatLatLon,
   isShortMapsLink,
   parseCoordinatePair,
@@ -103,5 +104,29 @@ describe('formatting', () => {
     const p = parseCoordinatePair(text)
     close(p?.latitude, -50.9423, 1e-4)
     close(p?.longitude, -73.4068, 1e-4)
+  })
+})
+
+describe('coordinate problems', () => {
+  it('explains out-of-range values instead of treating them as an address', () => {
+    expect(parseLocationInput('91, 181')).toBeNull()
+    expect(coordinateProblem('91, 181')).toBe('Latitude 91° is outside −90° to 90° and longitude 181° is outside −180° to 180°.')
+    expect(coordinateProblem('-95.5 100')).toBe('Latitude −95.5° is outside −90° to 90°.')
+    expect(coordinateProblem('45, 200')).toBe('Longitude 200° is outside −180° to 180°.')
+  })
+
+  it('hints at swapped latitude and longitude', () => {
+    expect(coordinateProblem('151.2, -33.8')).toBe('Latitude 151.2° is outside −90° to 90°. Enter latitude first, then longitude.')
+  })
+
+  it('explains two values in the same hemisphere axis', () => {
+    expect(coordinateProblem('46 N 7 N')).toMatch(/Both values are latitudes/)
+  })
+
+  it('is silent for valid coordinates and for text that is not coordinates', () => {
+    expect(coordinateProblem('46.5577, 7.9586')).toBeNull()
+    expect(coordinateProblem('Vienna')).toBeNull()
+    expect(coordinateProblem('Paris 75001')).toBeNull()
+    expect(coordinateProblem('')).toBeNull()
   })
 })

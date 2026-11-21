@@ -1,4 +1,6 @@
+import { useRef } from 'react'
 import { useAppInfo } from '../hooks/useAppInfo'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import { saveKeys } from '../lib/keys'
 import { useAppStore } from '../store/appStore'
 import { KeyFields, useKeyFields } from './KeyFields'
@@ -15,6 +17,8 @@ function OnboardingDialog() {
   const patchSettings = useAppStore((s) => s.patchSettings)
   const info = useAppInfo()
   const { keys, setKeys, result, validating, validate } = useKeyFields(initial)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
 
   const finish = async () => {
     await saveKeys(keys)
@@ -24,7 +28,7 @@ function OnboardingDialog() {
 
   return (
     <div className="scrim center">
-      <div className="panel onboarding" role="dialog" aria-label="Welcome to PhotoEarth">
+      <div ref={dialogRef} tabIndex={-1} className="panel onboarding" role="dialog" aria-modal="true" aria-label="Welcome to PhotoEarth">
         <h1>Welcome to PhotoEarth</h1>
         <p>
           Scout photo locations on a photorealistic 3D globe: read the terrain, then simulate the sun for any date and time to see

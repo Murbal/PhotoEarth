@@ -109,16 +109,35 @@ export class ProfileTool {
     this.widget.scene.requestRender()
   }
 
-  /** Stops adding points; the profile stays until cleared. */
+  /**
+   * Stops adding points; the profile stays until cleared. A path needs two points: with only
+   * a start point, drawing continues (with a hint) rather than silently discarding it.
+   */
   finish(): void {
     if (!this.drawing) return
-    this.rubber = null
-    if (this.vertices.length < 2) {
+    if (this.vertices.length === 0) {
       this.clear()
       return
     }
+    if (this.vertices.length < 2) {
+      appState().showToast('Click a second point on the map to finish the profile (Esc cancels).')
+      return
+    }
+    this.rubber = null
     appState().patchProfile({ active: false })
     this.widget.scene.requestRender()
+  }
+
+  /** Esc: finishes a drawable path, otherwise cancels drawing and says so. */
+  cancelOrFinish(): void {
+    if (!this.drawing) return
+    if (this.vertices.length >= 2) {
+      this.finish()
+      return
+    }
+    const hadPoint = this.vertices.length > 0
+    this.clear()
+    if (hadPoint) appState().showToast('Elevation profile cancelled')
   }
 
   clear(): void {

@@ -1,3 +1,6 @@
+import { useRef } from 'react'
+import { useDialogFocus } from '../hooks/useDialogFocus'
+import { shortcutLabel } from '../lib/platform'
 import { useAppStore } from '../store/appStore'
 import { Icon } from './Icon'
 
@@ -30,7 +33,7 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
       ['Arrow keys', 'Look around'],
       ['Shift / Alt (hold)', 'Faster / precise'],
       ['F', 'First-person fly mode (Esc exits)'],
-      ['G', 'Eye level at the cursor'],
+      ['G', 'Eye level at the pin or cursor (again to leave)'],
       ['N', 'Face north'],
       ['U', 'Top-down view'],
       ['R', 'Level the horizon'],
@@ -41,14 +44,15 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
   [
     'Tools & time',
     [
-      ['Ctrl+K', 'Search & command palette'],
-      ['Ctrl+B', 'Save bookmark'],
+      [shortcutLabel('Mod+K'), 'Search & command palette'],
+      [shortcutLabel('Mod+B'), 'Save bookmark'],
+      [shortcutLabel('Mod+,'), 'Settings'],
       ['T', 'Time & sun panel'],
       ['L', 'Elevation styling panel'],
       ['P', 'Elevation profile'],
       ['Space', 'Play / pause sun (time panel open)'],
       ['[ / ]', 'Time ±15 min'],
-      ['Shift+[ / ]', 'Date ±1 day'],
+      [shortcutLabel('Shift+[ / ]'), 'Date ±1 day'],
       ['Esc', 'Close / finish / clear marker'],
       ['?', 'This overlay']
     ]
@@ -57,12 +61,17 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
 
 export function ShortcutsOverlay() {
   const open = useAppStore((s) => s.shortcutsOpen)
+  return open ? <ShortcutsDialog /> : null
+}
+
+function ShortcutsDialog() {
   const set = useAppStore((s) => s.set)
-  if (!open) return null
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   const close = () => set({ shortcutsOpen: false })
   return (
     <div className="scrim center" onPointerDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="panel dialog" role="dialog" aria-label="Keyboard shortcuts" style={{ width: 'min(760px, calc(100% - 32px))' }}>
+      <div ref={dialogRef} tabIndex={-1} className="panel dialog" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" style={{ width: 'min(760px, calc(100% - 32px))' }}>
         <div className="dialog-header">
           <h2>Controls & shortcuts</h2>
           <button className="icon-btn small" title="Close" onClick={close}>

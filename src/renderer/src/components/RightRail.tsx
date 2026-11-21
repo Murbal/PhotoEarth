@@ -1,7 +1,51 @@
 import { useRef } from 'react'
 import { getEngine } from '../engine/instance'
+import { shortcutLabel } from '../lib/platform'
+import { haversine } from '../lib/profile'
 import { useAppStore } from '../store/appStore'
-import { Icon } from './Icon'
+import { Icon, type IconName } from './Icon'
+
+/** A rail button whose name and shortcut appear beside it at once on hover or focus. */
+function RailButton({
+  icon,
+  label,
+  keys,
+  active,
+  pressed,
+  small,
+  onClick
+}: {
+  icon: IconName
+  label: string
+  keys?: string
+  active?: boolean
+  /** For toggles: exposes the on/off state. */
+  pressed?: boolean
+  small?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      className={`icon-btn rail-btn ${small ? 'small' : ''} ${active ? 'active' : ''}`}
+      aria-label={label}
+      aria-keyshortcuts={keys}
+      aria-pressed={pressed}
+      onClick={onClick}
+    >
+      <Icon name={icon} size={small ? 16 : 18} />
+      <Tip label={label} keys={keys} />
+    </button>
+  )
+}
+
+function Tip({ label, keys }: { label: string; keys?: string }) {
+  return (
+    <span className="rail-tip" aria-hidden="true">
+      {label}
+      {keys && <span className="kbd">{keys}</span>}
+    </span>
+  )
+}
 
 function Compass() {
   const heading = useAppStore((s) => s.camera?.heading ?? 0)
@@ -16,8 +60,17 @@ function Compass() {
   return (
     <div
       ref={ref}
-      className="panel compass"
-      title="Heading — click to face north, drag to rotate"
+      className="panel compass rail-btn"
+      role="button"
+      tabIndex={0}
+      aria-label={`Heading ${Math.round(((heading % 360) + 360) % 360)}°. Face north`}
+      aria-keyshortcuts="N"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          void getEngine()?.camera.resetNorth()
+        }
+      }}
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture(e.pointerId)
         drag.current = { angle: angleOf(e), moved: false }
@@ -41,7 +94,7 @@ function Compass() {
         drag.current = null
       }}
     >
-      <svg viewBox="-30 -30 60 60">
+      <svg viewBox="-30 -30 60 60" aria-hidden="true">
         <circle r="27" fill="none" stroke="currentColor" strokeOpacity="0.15" strokeWidth="2" />
         {Array.from({ length: 12 }, (_, i) => (
           <line
@@ -71,6 +124,7 @@ function Compass() {
           N
         </text>
       </svg>
+      <Tip label="Face north · drag to rotate" keys="N" />
     </div>
   )
 }
@@ -79,19 +133,21 @@ function TiltWidget() {
   const pitch = useAppStore((s) => s.camera?.pitch ?? -45)
   const angle = Math.max(-90, Math.min(90, pitch))
   return (
-    <div
-      className="panel tilt-widget"
-      title={`Tilt ${Math.round(angle)}° — click to toggle top-down / oblique (U)`}
+    <button
+      className="panel tilt-widget rail-btn"
+      aria-label={`Tilt ${Math.round(angle)}°. Toggle top-down / oblique view`}
+      aria-keyshortcuts="U"
       onClick={() => void getEngine()?.camera.toggleTilt()}
     >
-      <svg width="30" height="30" viewBox="-15 -15 30 30">
+      <svg width="30" height="30" viewBox="-15 -15 30 30" aria-hidden="true">
         <path d="M-11 9 H11" stroke="currentColor" strokeOpacity="0.35" strokeWidth="1.5" />
         <g transform={`rotate(${-angle})`}>
           <path d="M-2 0 H11" stroke="var(--accent)" strokeWidth="2.2" strokeLinecap="round" />
           <circle r="3" fill="var(--accent)" />
         </g>
       </svg>
-    </div>
+      <Tip label={`Tilt ${Math.round(angle)}° · top-down / oblique`} keys="U" />
+    </button>
   )
 }
 
@@ -102,71 +158,81 @@ export function RightRail() {
   const profileOn = useAppStore((s) => s.profile.active || s.profile.samples.length > 0)
   const eyeLevel = useAppStore((s) => s.eyeLevel)
   const flyMode = useAppStore((s) => s.flyMode)
+  // Where Eye level stands (Engine.eyeLevelSpot): the inspect marker, then the search pin.
+  const pin = useAppStore((s) => s.inspect ?? s.destination)
+  const camera = useAppStore((s) => s.camera)
+  const pinElsewhere = !!pin && (!camera || haversine(pin, camera) > 5)
   const placeLabels = useAppStore((s) => s.settings.placeLabels)
   const patchSettings = useAppStore((s) => s.patchSettings)
 
   return (
     <div className="right-rail">
-      <div className="panel toolbar">
-        <button className={`icon-btn ${panels.time ? 'active' : ''}`} title="Time & sun (T)" onClick={() => togglePanel('time')}>
-          <Icon name="sun" />
-        </button>
-        <button className={`icon-btn ${panels.elevation ? 'active' : ''}`} title="Elevation styling (L)" onClick={() => togglePanel('elevation')}>
-          <Icon name="layers" />
-        </button>
-        <button
-          className={`icon-btn ${profileOn ? 'active' : ''}`}
-          title="Elevation profile (P)"
+      <div className="panel toolbar" role="toolbar" aria-label="Tools" aria-orientation="vertical">
+        <RailButton icon="sun" label="Time & sun" keys="T" active={panels.time} pressed={panels.time} onClick={() => togglePanel('time')} />
+        <RailButton
+          icon="layers"
+          label="Elevation styling: tint, contours, slope"
+          keys="L"
+          active={panels.elevation}
+          pressed={panels.elevation}
+          onClick={() => togglePanel('elevation')}
+        />
+        <RailButton
+          icon="profile"
+          label={profileOn ? 'Elevation profile: clear path' : 'Elevation profile: draw a path'}
+          keys="P"
+          active={profileOn}
+          pressed={profileOn}
           onClick={() => {
             const e = getEngine()
             if (!e) return
             if (profileOn) e.profile.clear()
             else e.startProfile()
           }}
-        >
-          <Icon name="profile" />
-        </button>
-        <button
-          className={`icon-btn ${placeLabels ? 'active' : ''}`}
-          title="Place names (M)"
-          aria-pressed={placeLabels}
+        />
+        <RailButton
+          icon="labels"
+          label="Place names"
+          keys="M"
+          active={placeLabels}
+          pressed={placeLabels}
           onClick={() => patchSettings((d) => void (d.placeLabels = !d.placeLabels))}
-        >
-          <Icon name="labels" />
-        </button>
-        <button className={`icon-btn ${panels.bookmarks ? 'active' : ''}`} title="Bookmarks" onClick={() => togglePanel('bookmarks')}>
-          <Icon name="bookmark" />
-        </button>
+        />
+        <RailButton icon="bookmark" label="Bookmarks" active={panels.bookmarks} pressed={panels.bookmarks} onClick={() => togglePanel('bookmarks')} />
         <div className="divider" />
-        <button className="icon-btn" title="Settings (Ctrl+,)" onClick={() => set({ settingsOpen: true })}>
-          <Icon name="settings" />
-        </button>
-        <button className="icon-btn" title="Keyboard shortcuts (?)" onClick={() => set({ shortcutsOpen: true })}>
-          <Icon name="help" />
-        </button>
+        <RailButton icon="settings" label="Settings" keys={shortcutLabel('Mod+,')} onClick={() => set({ settingsOpen: true })} />
+        <RailButton icon="help" label="Controls & shortcuts" keys="?" onClick={() => set({ shortcutsOpen: true })} />
       </div>
 
-      <div className="nav-widgets">
+      <div className="nav-widgets" role="toolbar" aria-label="Camera" aria-orientation="vertical">
         <Compass />
         <TiltWidget />
         <div className="panel zoom-widget">
-          <button className={`icon-btn small ${eyeLevel ? 'active' : ''}`} title="Eye level at cursor (G)" onClick={() => void getEngine()?.camera.goToEyeLevel()}>
-            <Icon name="person" size={16} />
-          </button>
-          <button className={`icon-btn small ${flyMode ? 'active' : ''}`} title="Fly mode (F)" onClick={() => getEngine()?.camera.toggleFlyMode()}>
-            <Icon name="plane" size={16} />
-          </button>
-          <button className="icon-btn small" title="Level horizon (R)" onClick={() => void getEngine()?.camera.levelHorizon()}>
-            <Icon name="horizon" size={16} />
-          </button>
+          <RailButton
+            small
+            icon="person"
+            label={
+              eyeLevel && !pinElsewhere ? 'Leave eye level' : pin ? 'Eye level at the pin (1.7 m)' : 'Eye level at cursor (1.7 m)'
+            }
+            keys="G"
+            active={eyeLevel}
+            pressed={eyeLevel}
+            onClick={() => void getEngine()?.toggleEyeLevel()}
+          />
+          <RailButton
+            small
+            icon="plane"
+            label="Fly mode (first person)"
+            keys="F"
+            active={flyMode}
+            pressed={flyMode}
+            onClick={() => getEngine()?.camera.toggleFlyMode()}
+          />
+          <RailButton small icon="horizon" label="Level horizon" keys="R" onClick={() => void getEngine()?.camera.levelHorizon()} />
         </div>
         <div className="panel zoom-widget">
-          <button className="icon-btn small" title="Zoom in" onClick={() => void getEngine()?.camera.zoomBy(0.5)}>
-            <Icon name="plus" size={16} />
-          </button>
-          <button className="icon-btn small" title="Zoom out" onClick={() => void getEngine()?.camera.zoomBy(2)}>
-            <Icon name="minus" size={16} />
-          </button>
+          <RailButton small icon="plus" label="Zoom in" keys="+" onClick={() => void getEngine()?.camera.zoomBy(0.5)} />
+          <RailButton small icon="minus" label="Zoom out" keys="−" onClick={() => void getEngine()?.camera.zoomBy(2)} />
         </div>
       </div>
     </div>

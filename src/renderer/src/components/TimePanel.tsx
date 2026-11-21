@@ -8,6 +8,7 @@ import {
   dayOfYear,
   daysInYear,
   formatClock,
+  formatDuration,
   formatLongDate,
   formatOffset,
   parseDate,
@@ -36,6 +37,11 @@ function dayGradient(profile: number[]): string {
   return `linear-gradient(90deg, ${stops.join(', ')})`
 }
 
+/** ~100 m precision: plenty for sun times, and short enough to fit the header. */
+function shortLatLon(lat: number, lon: number): string {
+  return `${Math.abs(lat).toFixed(3)}° ${lat < 0 ? 'S' : 'N'}, ${Math.abs(lon).toFixed(3)}° ${lon < 0 ? 'W' : 'E'}`
+}
+
 const MONTH_STARTS = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
 const MONTHS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
 
@@ -49,6 +55,7 @@ export function TimePanel() {
   const togglePanel = useAppStore((s) => s.togglePanel)
   const terrainShadows = useAppStore((s) => s.terrainShadows)
   const mode = useAppStore((s) => s.mode)
+  const target = useAppStore((s) => s.target)
 
   const { year } = parseDate(sim.date)
   const yearDays = daysInYear(year)
@@ -85,60 +92,68 @@ export function TimePanel() {
   if (!open) return null
   const engine = getEngine()
   const dayLength =
-    sun?.sunrise && sun?.sunset ? `${Math.floor((sun.sunset - sun.sunrise) / 3600000)} h ${Math.round(((sun.sunset - sun.sunrise) % 3600000) / 60000)} min` : sun?.polar === 'day' ? '24 h' : sun?.polar === 'night' ? '0 h' : '—'
+    sun?.sunrise && sun?.sunset ? formatDuration(sun.sunset - sun.sunrise) : sun?.polar === 'day' ? '24 h' : sun?.polar === 'night' ? '0 h' : '—'
   const simulated = settings.lighting === 'sun'
 
   return (
     <div className="panel time-panel">
       <div className="time-header">
         <div className="time-big mono">{formatClock(sim.minutes)}</div>
-        <div>
+        <div className="time-title">
           <div>{formatLongDate(sim.date)}</div>
           <div className="small muted">
             {sim.timeZone} · {sun?.zoneName && !sun.zoneName.startsWith('GMT') ? `${sun.zoneName} · ` : ''}
             {formatOffset(sun?.offsetMinutes ?? 0)}
           </div>
+          <div
+            className="small muted time-location"
+            title="Sun position, sunrise, sunset and the time zone are calculated for the ground at the center of the view (the ring on the map). Pan the map to move it; the inspected point and search pin don't change it."
+          >
+            <span className="sun-target-key" aria-hidden="true" />
+            For the view center{target ? ` · ${shortLatLon(target.latitude, target.longitude)}` : ''}
+          </div>
         </div>
-        <div style={{ flex: 1 }} />
-        <input
-          className="input"
-          type="date"
-          value={sim.date}
-          aria-label="Date"
-          onChange={(e) => e.target.value && patchSim({ date: e.target.value })}
-          style={{ width: 140 }}
-        />
-        <input
-          className="input"
-          type="time"
-          value={formatClock(sim.minutes)}
-          aria-label="Local time"
-          onChange={(e) => {
-            const [h, m] = e.target.value.split(':').map(Number)
-            if (Number.isFinite(h) && Number.isFinite(m)) patchSim({ minutes: h * 60 + m })
-          }}
-          style={{ width: 128 }}
-        />
-        <button className="btn" onClick={() => engine?.sun.setNow()} title="Reset to the current real time">
-          Now
-        </button>
-        <button className="icon-btn" title={sim.playing ? 'Pause (Space)' : 'Play (Space)'} onClick={() => engine?.sun.togglePlay()}>
-          <Icon name={sim.playing ? 'pause' : 'play'} size={16} />
-        </button>
-        <select
-          className="input"
-          value={sim.speed}
-          aria-label="Playback speed"
-          onChange={(e) => patchSim({ speed: e.target.value as PlaybackSpeedId })}
-          style={{ width: 104 }}
-        >
-          {Object.entries(PLAYBACK_SPEEDS).map(([id, s]) => (
-            <option key={id} value={id}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-        <button className="icon-btn small" title="Close" onClick={() => togglePanel('time', false)}>
+        <div className="time-controls">
+          <input
+            className="input"
+            type="date"
+            value={sim.date}
+            aria-label="Date"
+            onChange={(e) => e.target.value && patchSim({ date: e.target.value })}
+            style={{ width: 140 }}
+          />
+          <input
+            className="input"
+            type="time"
+            value={formatClock(sim.minutes)}
+            aria-label="Local time"
+            onChange={(e) => {
+              const [h, m] = e.target.value.split(':').map(Number)
+              if (Number.isFinite(h) && Number.isFinite(m)) patchSim({ minutes: h * 60 + m })
+            }}
+            style={{ width: 128 }}
+          />
+          <button className="btn" onClick={() => engine?.sun.setNow()} title="Reset to the current real time">
+            Now
+          </button>
+          <button className="icon-btn" title={sim.playing ? 'Pause (Space)' : 'Play (Space)'} onClick={() => engine?.sun.togglePlay()}>
+            <Icon name={sim.playing ? 'pause' : 'play'} size={16} />
+          </button>
+          <select
+            className="input"
+            value={sim.speed}
+            aria-label="Playback speed"
+            onChange={(e) => patchSim({ speed: e.target.value as PlaybackSpeedId })}
+            style={{ width: 112 }}
+          >
+            {Object.entries(PLAYBACK_SPEEDS).map(([id, s]) => (
+              <option key={id} value={id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button className="icon-btn small time-close" title="Close" aria-label="Close time & sun" onClick={() => togglePanel('time', false)}>
           <Icon name="close" size={14} />
         </button>
       </div>

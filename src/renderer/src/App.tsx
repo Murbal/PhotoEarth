@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { BookmarksPanel } from './components/BookmarksPanel'
 import { Banners } from './components/Banners'
 import { CommandPalette } from './components/CommandPalette'
@@ -92,10 +92,55 @@ function useMenuCommands(): void {
   )
 }
 
+const EDGE = 70
+const SIDE_PANEL = 300
+const GAP = 12
+/** Right side panels sit left of the 60 px tool rail. */
+const RIGHT_PANEL_INSET = 60
+const MIN_STACK_WIDTH = 600
+const STACK_BOTTOM = 40
+const STATUS_CLEARANCE = 44
+
+/**
+ * Keeps the bottom stack (profile, time & sun) and the side panels (bookmarks, elevation
+ * styling) from covering each other. The stack narrows to the space between open side
+ * panels; only when that space is too small does it span the width, and the side panels
+ * then end above it instead.
+ */
+function useOverlayLayout(root: RefObject<HTMLDivElement | null>, stack: RefObject<HTMLDivElement | null>): void {
+  const left = useAppStore((s) => s.panels.bookmarks)
+  const right = useAppStore((s) => s.panels.elevation)
+  useLayoutEffect(() => {
+    const rootEl = root.current
+    const stackEl = stack.current
+    if (!rootEl || !stackEl) return
+    const apply = () => {
+      const width = rootEl.clientWidth
+      const leftInset = left ? GAP + SIDE_PANEL + GAP : EDGE
+      const rightInset = right ? RIGHT_PANEL_INSET + SIDE_PANEL + GAP : EDGE
+      const besidePanels = width - leftInset - rightInset >= MIN_STACK_WIDTH
+      const stackHeight = stackEl.offsetHeight
+      const style = rootEl.style
+      style.setProperty('--stack-left', `${besidePanels ? leftInset : EDGE}px`)
+      style.setProperty('--stack-right', `${besidePanels ? rightInset : EDGE}px`)
+      style.setProperty('--stack-height', `${stackHeight}px`)
+      const clearance = !besidePanels && stackHeight > 0 ? STACK_BOTTOM + stackHeight + GAP : STATUS_CLEARANCE
+      style.setProperty('--side-bottom', `${clearance}px`)
+    }
+    apply()
+    const observer = new ResizeObserver(apply)
+    observer.observe(rootEl)
+    observer.observe(stackEl)
+    return () => observer.disconnect()
+  }, [root, stack, left, right])
+}
+
 export function App() {
   const booted = useAppStore((s) => s.booted)
   const theme = useAppStore((s) => s.settings.theme)
-  const hasBottom = useAppStore((s) => s.panels.time || s.profile.active || s.profile.points.length > 1)
+  const modalOpen = useAppStore((s) => s.paletteOpen || s.settingsOpen || s.shortcutsOpen || s.onboardingOpen)
+  const overlayRef = useRef<HTMLDivElement>(null)
+  const stackRef = useRef<HTMLDivElement>(null)
   const [creditEl, setCreditEl] = useState<HTMLDivElement | null>(null)
   const [bootError, setBootError] = useState<string | null>(null)
 
@@ -108,6 +153,7 @@ export function App() {
   usePersistence()
   useMenuCommands()
   useShortcuts()
+  useOverlayLayout(overlayRef, stackRef)
 
   if (bootError) {
     return (
@@ -122,8 +168,9 @@ export function App() {
 
   return (
     <>
-      {booted && <MapView creditContainer={creditEl} />}
-      <div className={`overlay-root ${hasBottom ? 'has-bottom' : ''}`}>
+      {booted && <MapView creditContainer={creditEl} inert={modalOpen} />}
+      {/* While a dialog is open, everything behind it is inert: no focus, no clicks. */}
+      <div ref={overlayRef} className="overlay-root" inert={modalOpen}>
         <LoadingBar />
         <TopBar />
         <div className="top-center">
@@ -135,7 +182,7 @@ export function App() {
         <ElevationPanel />
         <InspectCard />
         <Crosshair />
-        <div className="bottom-stack">
+        <div ref={stackRef} className="bottom-stack">
           <ProfilePanel />
           <TimePanel />
         </div>

@@ -11,7 +11,7 @@ import { appState, useAppStore } from '../store/appStore'
 let pendingTeardown: { engine: Engine; container: HTMLElement; timer: number } | null = null
 
 /** Hosts the Cesium canvas. The engine is created once and lives for the app's lifetime. */
-export function MapView({ creditContainer }: { creditContainer: HTMLElement | null }) {
+export function MapView({ creditContainer, inert }: { creditContainer: HTMLElement | null; inert?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -60,5 +60,5 @@ export function MapView({ creditContainer }: { creditContainer: HTMLElement | nu
     }
   }, [creditContainer])
 
-  return <div className="map" ref={ref} />
+  return <div className="map" ref={ref} inert={inert} />
 }

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { MIN_QUERY_LENGTH } from '@shared/places'
 import type { PlaceSuggestion } from '@shared/types'
 import { getCommands, type Command } from '../commands'
 import { getEngine } from '../engine/instance'
+import { useDialogFocus } from '../hooks/useDialogFocus'
 import { flyToBookmark } from '../lib/bookmarks'
-import { formatLatLon, isShortMapsLink, parseLocationInput } from '../lib/coords'
+import { coordinateProblem, formatLatLon, isShortMapsLink, parseLocationInput } from '../lib/coords'
 import { DEBOUNCE_MS, PlacesSession } from '../lib/places'
 import { useAppStore } from '../store/appStore'
 import { Icon, type IconName } from './Icon'
@@ -32,6 +34,16 @@ export function CommandPalette() {
   return open ? <PaletteDialog /> : null
 }
 
+interface PlacesResult {
+  /** The trimmed query these results answer; '' when no search applies. */
+  query: string
+  places: PlaceSuggestion[]
+  error: string | null
+}
+
+const NO_SUGGESTIONS: PlaceSuggestion[] = []
+const NO_PLACES: PlacesResult = { query: '', places: NO_SUGGESTIONS, error: null }
+
 function PaletteDialog() {
   const set = useAppStore((s) => s.set)
   const bookmarks = useAppStore((s) => s.bookmarks)
@@ -39,43 +51,44 @@ function PaletteDialog() {
   const target = useAppStore((s) => s.target)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
-  const [places, setPlaces] = useState<PlaceSuggestion[]>([])
-  const [placesState, setPlacesState] = useState<{ loading: boolean; error: string | null }>({ loading: false, error: null })
+  const [result, setResult] = useState<PlacesResult>(NO_PLACES)
   const session = useMemo(() => new PlacesSession(), [])
+  const dialogRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const close = () => set({ paletteOpen: false })
+  useDialogFocus(dialogRef)
 
-  useEffect(() => inputRef.current?.focus(), [])
+  const q = query.trim()
+  const coords = useMemo(() => (q ? parseLocationInput(q) : null), [q])
+  // Text that reads as coordinates but isn't a valid location is explained, never sent to
+  // address search ("91, 181" is not a street address).
+  const coordError = q && !coords ? coordinateProblem(q) : null
+  const placesEligible = hasGoogleKey && q.length >= MIN_QUERY_LENGTH && !coords && !coordError && !isShortMapsLink(q)
+  // Pending from the first render after a keystroke, so "No matches" never flashes while a
+  // search is still on its way.
+  const searching = placesEligible && result.query !== q
+  // While a new search runs, keep showing the previous results rather than an empty list.
+  const places = placesEligible ? result.places : NO_SUGGESTIONS
+  const placesError = placesEligible && !searching ? result.error : null
 
   // Debounced place autocomplete.
   useEffect(() => {
-    const q = query.trim()
-    if (!hasGoogleKey || q.length < 3 || parseLocationInput(q)) {
-      setPlaces([])
-      setPlacesState({ loading: false, error: null })
+    if (!placesEligible) {
+      setResult(NO_PLACES)
       return
     }
-    setPlacesState((s) => ({ ...s, loading: true }))
     const timer = window.setTimeout(async () => {
       const bias = target ? { latitude: target.latitude, longitude: target.longitude } : undefined
       const res = await session.autocomplete(q, bias)
       if (!res) return
-      if (res.ok) {
-        setPlaces(res.data)
-        setPlacesState({ loading: false, error: null })
-      } else {
-        setPlaces([])
-        setPlacesState({ loading: false, error: res.error.message })
-      }
+      setResult(res.ok ? { query: q, places: res.data, error: null } : { query: q, places: [], error: res.error.message })
     }, DEBOUNCE_MS)
     return () => window.clearTimeout(timer)
-  }, [query, hasGoogleKey, session, target])
+  }, [q, placesEligible, session, target])
 
   const items = useMemo<Item[]>(() => {
     const out: Item[] = []
-    const q = query.trim()
-    const coords = q ? parseLocationInput(q) : null
     if (coords) {
       out.push({
         key: 'coords',
@@ -83,7 +96,7 @@ function PaletteDialog() {
         icon: 'pin',
         title: formatLatLon(coords.latitude, coords.longitude, 'decimal'),
         subtitle: coords.source === 'url' ? 'from Google Maps link' : coords.source === 'dms' ? 'DMS' : 'decimal degrees',
-        run: () => getEngine()?.goToCoordinates(coords)
+        run: () => getEngine()?.goToCoordinates(coords, coords.source === 'url' ? 'From Google Maps link' : 'Coordinates')
       })
     } else if (q && isShortMapsLink(q)) {
       out.push({
@@ -104,7 +117,7 @@ function PaletteDialog() {
         subtitle: p.secondaryText,
         run: async () => {
           const res = await session.details(p.placeId)
-          if (res.ok) await getEngine()?.goToPlace(res.data)
+          if (res.ok) await getEngine()?.goToPlace(res.data, { name: p.mainText, detail: p.secondaryText })
           else useAppStore.getState().showToast(res.error.message)
         }
       })
@@ -126,11 +139,11 @@ function PaletteDialog() {
       out.push({ key: `cmd-${c.id}`, group: 'Commands', icon: 'command', title: c.title, hint: c.keys, run: c.run })
     }
     return out
-  }, [query, places, bookmarks, session])
+  }, [q, coords, places, bookmarks, session])
 
-  useEffect(() => setSelected(0), [query, places.length])
+  useEffect(() => setSelected(0), [q, places.length])
   useEffect(() => {
-    listRef.current?.querySelector('.palette-item.selected')?.scrollIntoView({ block: 'nearest' })
+    listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
   }, [selected])
 
   const execute = (item: Item | undefined) => {
@@ -139,10 +152,28 @@ function PaletteDialog() {
     void item.run()
   }
 
-  let lastGroup = ''
+  // Grouped for the accessibility tree: options inside labelled groups.
+  const groups: Array<{ name: string; items: Array<{ item: Item; index: number }> }> = []
+  items.forEach((item, index) => {
+    const last = groups[groups.length - 1]
+    if (last?.name === item.group) last.items.push({ item, index })
+    else groups.push({ name: item.group, items: [{ item, index }] })
+  })
+  const optionId = (i: number) => `palette-option-${i}`
+  const active = items[selected]
+  const status = searching
+    ? 'Searching places…'
+    : coordError
+      ? `Invalid coordinates. ${coordError}`
+      : placesError
+        ? placesError
+        : items.length === 0
+          ? 'No matches'
+          : `${items.length} result${items.length === 1 ? '' : 's'}`
+
   return (
     <div className="scrim" onPointerDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="panel palette" role="dialog" aria-label="Search and commands">
+      <div ref={dialogRef} tabIndex={-1} className="panel palette" role="dialog" aria-modal="true" aria-label="Search and commands">
         <div className="palette-input">
           <Icon name="search" />
           <input
@@ -159,37 +190,65 @@ function PaletteDialog() {
               e.preventDefault()
               e.stopPropagation()
             }}
+            role="combobox"
             aria-label="Search"
+            aria-autocomplete="list"
+            aria-expanded={items.length > 0}
+            aria-controls="palette-listbox"
+            aria-activedescendant={active ? optionId(selected) : undefined}
+            aria-describedby="palette-status"
             spellCheck={false}
           />
-          {placesState.loading && <span className="small faint">searching…</span>}
+          {searching && (
+            <span className="small faint" aria-hidden="true">
+              searching…
+            </span>
+          )}
+        </div>
+        <div id="palette-status" className="sr-only" role="status" aria-live="polite">
+          {status}
         </div>
         <div className="palette-results" ref={listRef}>
-          {placesState.error && <div className="notice" style={{ margin: 6 }}>{placesState.error}</div>}
-          {items.length === 0 && <div className="muted" style={{ padding: 14 }}>No matches.</div>}
-          {items.map((item, i) => {
-            const header = item.group !== lastGroup ? <div className="palette-group">{item.group}</div> : null
-            lastGroup = item.group
-            return (
-              <div key={item.key}>
-                {header}
-                <div
-                  className={`palette-item ${i === selected ? 'selected' : ''}`}
-                  onMouseMove={() => setSelected(i)}
-                  onClick={() => execute(item)}
-                >
-                  <Icon name={item.icon} size={16} style={{ opacity: 0.7, flex: 'none' }} />
-                  <span className="title">
-                    {item.title}
-                    {item.subtitle && <span className="sub">{item.subtitle}</span>}
-                  </span>
-                  {item.hint && <span className="kbd">{item.hint}</span>}
+          {coordError && (
+            <div className="notice palette-notice">
+              <strong>Invalid coordinates.</strong> {coordError}
+            </div>
+          )}
+          {placesError && <div className="notice palette-notice">{placesError}</div>}
+          {items.length === 0 && !coordError && !placesError && (
+            <div className="muted" style={{ padding: 14 }}>
+              {searching ? 'Searching places…' : 'No matches.'}
+            </div>
+          )}
+          <div id="palette-listbox" role="listbox" aria-label="Results">
+            {groups.map((group, g) => (
+              <div key={group.name} role="group" aria-labelledby={`palette-group-${g}`}>
+                <div className="palette-group" id={`palette-group-${g}`} role="presentation">
+                  {group.name}
                 </div>
+                {group.items.map(({ item, index }) => (
+                  <div
+                    key={item.key}
+                    id={optionId(index)}
+                    role="option"
+                    aria-selected={index === selected}
+                    className={`palette-item ${index === selected ? 'selected' : ''}`}
+                    onMouseMove={() => setSelected(index)}
+                    onClick={() => execute(item)}
+                  >
+                    <Icon name={item.icon} size={16} style={{ opacity: 0.7, flex: 'none' }} />
+                    <span className="title">
+                      {item.title}
+                      {item.subtitle && <span className="sub">{item.subtitle}</span>}
+                    </span>
+                    {item.hint && <span className="kbd">{item.hint}</span>}
+                  </div>
+                ))}
               </div>
-            )
-          })}
+            ))}
+          </div>
         </div>
-        <div className="palette-footer">
+        <div className="palette-footer" aria-hidden="true">
           <span>
             <span className="kbd">↑</span> <span className="kbd">↓</span> select
           </span>

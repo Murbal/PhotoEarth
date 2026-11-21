@@ -1,4 +1,5 @@
 import { getEngine } from '../engine/instance'
+import { isMac, shortcutLabel } from '../lib/platform'
 import { useAppStore } from '../store/appStore'
 import { Icon } from './Icon'
 
@@ -8,10 +9,15 @@ export function TopBar() {
   const setMode = (m: 'photorealistic' | 'elevation') => getEngine()?.setMode(m)
   return (
     <div className="topbar">
-      <button className="panel search-pill" onClick={() => set({ paletteOpen: true })} title="Search (Ctrl+K)">
+      <button
+        className="panel search-pill"
+        onClick={() => set({ paletteOpen: true })}
+        title={`Search (${shortcutLabel('Mod+K')})`}
+        aria-keyshortcuts={isMac ? 'Meta+K' : 'Control+K'}
+      >
         <Icon name="search" size={16} />
         <span className="label">Search places, coordinates…</span>
-        <span className="kbd">Ctrl K</span>
+        <span className="kbd">{shortcutLabel('Mod+K')}</span>
       </button>
       <div className="panel mode-switch">
         <div className="segmented" role="tablist" aria-label="Map mode">

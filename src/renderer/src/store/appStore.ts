@@ -90,6 +90,15 @@ export interface InspectInfo {
   screen: { x: number; y: number } | null
 }
 
+/** Where the last search (place or coordinates) took the camera. */
+export interface Destination {
+  name: string
+  /** Address or other context, e.g. "Austria" or "from Google Maps link". */
+  detail: string
+  latitude: number
+  longitude: number
+}
+
 export interface Toast {
   id: number
   message: string
@@ -126,6 +135,7 @@ export interface AppState {
   onboardingOpen: boolean
   profile: ProfileState
   inspect: InspectInfo | null
+  destination: Destination | null
   pendingTiles: number
   fps: number | null
   flyMode: boolean
@@ -181,6 +191,7 @@ export const useAppStore = create<AppState>()(
     onboardingOpen: false,
     profile: emptyProfile,
     inspect: null,
+    destination: null,
     pendingTiles: 0,
     fps: null,
     flyMode: false,

@@ -27,6 +27,9 @@ export function buildMenu(): void {
         isMac ? { role: 'close' } : { role: 'quit' }
       ]
     },
+    // macOS routes ⌘A, ⌘C, ⌘V, ⌘Z… in text fields through the Edit menu's roles; without
+    // one, Select All does nothing in the search field and in the key inputs.
+    ...(isMac ? [{ role: 'editMenu' as const }] : []),
     {
       label: '&View',
       submenu: [

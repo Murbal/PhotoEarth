@@ -23,6 +23,10 @@ import { GESTURE_GAP_MS, WheelClassifier } from './WheelInput'
 
 /** Standing eye height for eye-level mode, meters. */
 export const EYE_HEIGHT = 1.7
+/** Standing within this of a pin counts as standing at it (eye-level toggle). */
+const PIN_REACHED_M = 5
+/** Higher above ground than this, the camera has left eye level. */
+const EYE_LEVEL_MAX_AGL = 30
 
 /**
  * Field of view across the long side of the view (how Cesium applies `fov`) for a
@@ -111,6 +115,8 @@ export class CameraController {
   private lastAgl: number | null = null
   private flyMode = false
   private eyeLevel = false
+  /** The view before dropping to eye level, and where we stood, for leaving it again. */
+  private eyeLevelReturn: { position: Cartesian3; heading: number; pitch: number; roll: number; spot: Cartesian3 } | null = null
   private settings: NavigationSettings = { inertia: 0.8, speedMultiplier: 1, invertFlyY: false, minClearance: 2, scrollGesture: 'auto' }
   private headingDrag: { pivot: Cartesian3; lastX: number; pointerId: number } | null = null
   private headingVelocity = 0
@@ -809,14 +815,40 @@ export class CameraController {
   }
 
   /**
-   * Drops the camera to standing height at the point under the cursor (or screen center)
-   * and levels the horizon — "what would I see from here".
+   * The rail button and G: stand at `spot` (a dropped pin) or under the cursor; when already
+   * standing there, leave eye level again. A pin dropped somewhere else while at eye level
+   * moves you to it rather than leaving.
    */
-  async goToEyeLevel(): Promise<void> {
+  toggleEyeLevel(spot?: Cartesian3): Promise<void> {
+    if (this.eyeLevel) {
+      const here = this.surfacePoint(this.scene.camera.positionWC)
+      const elsewhere = spot !== undefined && Cartesian3.distance(here, this.surfacePoint(spot)) > PIN_REACHED_M
+      if (!elsewhere) return this.leaveEyeLevel()
+    }
+    return this.goToEyeLevel(spot)
+  }
+
+  /**
+   * Readouts report the height above ground: well above standing height (rising with E,
+   * say), the camera is no longer at eye level even though no exit action ran.
+   */
+  noteHeightAboveGround(agl: number | null): void {
+    if (this.eyeLevel && agl !== null && agl > EYE_LEVEL_MAX_AGL) this.setEyeLevel(false)
+  }
+
+  /**
+   * Drops the camera to standing height and levels the horizon — "what would I see from
+   * here". Stands at `spot` when given (a dropped pin), else at the point under the cursor
+   * (or screen center).
+   */
+  async goToEyeLevel(spot?: Cartesian3): Promise<void> {
     this.endFollow()
-    const canvas = this.scene.canvas
-    const at = this.mouse ?? { x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 }
-    const hit = pickSurface(this.scene, at.x, at.y) ?? this.pivot()
+    let hit = spot
+    if (!hit) {
+      const canvas = this.scene.canvas
+      const at = this.mouse ?? { x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 }
+      hit = pickSurface(this.scene, at.x, at.y) ?? this.pivot()
+    }
     const c = Cartographic.fromCartesian(hit)
     let ground = c.height
     try {
@@ -826,6 +858,18 @@ export class CameraController {
       /* keep the picked height */
     }
     const cam = this.scene.camera
+    if (this.eyeLevel && this.eyeLevelReturn) {
+      // Moving between pins at eye level: leaving returns to the view from before the first.
+      this.eyeLevelReturn.spot = Cartesian3.fromRadians(c.longitude, c.latitude, ground)
+    } else {
+      this.eyeLevelReturn = {
+        position: Cartesian3.clone(cam.positionWC),
+        heading: cam.heading,
+        pitch: cam.pitch,
+        roll: cam.roll,
+        spot: Cartesian3.fromRadians(c.longitude, c.latitude, ground)
+      }
+    }
     const controller = this.scene.screenSpaceCameraController
     controller.minimumZoomDistance = EYE_HEIGHT * 0.8
     // Keep the heading so the view looks across the point, in the direction you were facing.
@@ -840,6 +884,46 @@ export class CameraController {
     })
     if (arrived) this.setEyeLevel(true)
     else controller.minimumZoomDistance = this.settings.minClearance
+  }
+
+  /**
+   * Back up from eye level: to the view you came from if you're still near where you stood,
+   * otherwise to an overview of where you are now (keeping the heading).
+   */
+  async leaveEyeLevel(): Promise<void> {
+    this.endFollow()
+    const cam = this.scene.camera
+    cam.cancelFlight()
+    const back = this.eyeLevelReturn
+    this.eyeLevelReturn = null
+    this.setEyeLevel(false)
+    const here = Cartographic.fromCartesian(cam.positionWC)
+    const stillThere = back && Cartesian3.distance(Cartesian3.fromRadians(here.longitude, here.latitude, 0), this.surfacePoint(back.spot)) < 200
+    await new Promise<void>((resolve) => {
+      if (back && stillThere) {
+        cam.flyTo({
+          destination: back.position,
+          orientation: { heading: back.heading, pitch: back.pitch, roll: back.roll },
+          duration: 1.4,
+          complete: () => resolve(),
+          cancel: () => resolve()
+        })
+      } else {
+        const ground = Cartesian3.fromRadians(here.longitude, here.latitude, Math.max(0, here.height - EYE_HEIGHT))
+        cam.flyToBoundingSphere(new BoundingSphere(ground, 0), {
+          offset: new HeadingPitchRange(cam.heading, toRad(-35), 600),
+          duration: 1.4,
+          complete: () => resolve(),
+          cancel: () => resolve()
+        })
+      }
+    })
+  }
+
+  /** The point at height 0 below a position (for horizontal distances). */
+  private surfacePoint(p: Cartesian3): Cartesian3 {
+    const c = Cartographic.fromCartesian(p)
+    return Cartesian3.fromRadians(c.longitude, c.latitude, 0)
   }
 
   // ───────────────────────────── flights ─────────────────────────────
