@@ -4,6 +4,7 @@ import { formatClock, formatDuration, formatShortDate, utcToZoned } from '../lib
 import { formatElevation } from '../lib/units'
 import { appState, useAppStore, type SpotSunInfo } from '../store/appStore'
 import { Icon } from './Icon'
+import { SkyReadout, skySummary } from './LightPollution'
 
 export function StatusChips() {
   const exaggeration = useAppStore((s) => s.settings.verticalExaggeration)
@@ -14,6 +15,8 @@ export function StatusChips() {
   const profilePoints = useAppStore((s) => s.profile.points.length)
   const patchSettings = useAppStore((s) => s.patchSettings)
   const horizonOpen = useAppStore((s) => s.horizon.open)
+  // The light pollution layer drapes on the globe, which Photorealistic mode hides (§7.5).
+  const lpHidden = useAppStore((s) => s.settings.lightPollution.enabled && s.mode === 'photorealistic' && s.tilesetReady)
   return (
     <div className="chip-row">
       {exaggeration !== 1 && (
@@ -39,6 +42,23 @@ export function StatusChips() {
       {horizonOpen && !profileDrawing && (
         <span className="panel chip" role="status">
           Horizon: click the map to move the observer · H or Esc closes
+        </span>
+      )}
+      {lpHidden && (
+        <span className="panel chip" role="status">
+          <Icon name="night" size={14} /> Light pollution: map in Elevation mode · click a point for its sky
+          <button className="btn ghost" style={{ height: 20, padding: '0 6px' }} onClick={() => getEngine()?.setMode('elevation')}>
+            Show map
+          </button>
+          <button
+            className="icon-btn small"
+            style={{ width: 22, height: 22 }}
+            aria-label="Turn off light pollution"
+            title="Turn off light pollution"
+            onClick={() => patchSettings((d) => void (d.lightPollution.enabled = false))}
+          >
+            <Icon name="close" size={12} />
+          </button>
         </span>
       )}
       <DestinationChip />
@@ -100,11 +120,13 @@ export function InspectCard() {
   const inspect = useAppStore((s) => s.inspect)
   const units = useAppStore((s) => s.settings.units)
   const format = useAppStore((s) => s.settings.coordFormat)
+  const sky = useAppStore((s) => s.sky?.estimate ?? null)
   if (!inspect || !inspect.screen) return null
   const copy = () => {
     const elev = inspect.elevation !== null ? `, ${Math.round(inspect.elevation)} m` : ''
+    const night = sky ? `, ${skySummary(sky)}` : ''
     void navigator.clipboard
-      .writeText(`${formatLatLonPlain(inspect.latitude, inspect.longitude)}${elev}`)
+      .writeText(`${formatLatLonPlain(inspect.latitude, inspect.longitude)}${elev}${night}`)
       .then(() => appState().showToast('Copied to clipboard'))
   }
   return (
@@ -121,7 +143,7 @@ export function InspectCard() {
         <button className="icon-btn small" title="Horizon panorama from here (H)" aria-label="Horizon panorama from here" onClick={() => void getEngine()?.openHorizon()}>
           <Icon name="panorama" size={14} />
         </button>
-        <button className="icon-btn small" title="Copy coordinates and elevation" onClick={copy}>
+        <button className="icon-btn small" title={sky ? 'Copy coordinates, elevation and sky brightness' : 'Copy coordinates and elevation'} onClick={copy}>
           <Icon name="copy" size={14} />
         </button>
         <button className="icon-btn small" title="Remove marker (Esc)" onClick={() => getEngine()?.inspector.clear()}>
@@ -129,6 +151,7 @@ export function InspectCard() {
         </button>
       </div>
       <SpotSunTimes />
+      <SkyReadout />
     </div>
   )
 }

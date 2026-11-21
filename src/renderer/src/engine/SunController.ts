@@ -53,6 +53,8 @@ export class SunController {
   private detailWanted = true
   /** Heightmap terrain shadows are shading the view (the shadow map then only adds detail). */
   private terrainShadows = false
+  /** A data overlay is on the globe: don't darken it by night (§7.5). */
+  private unlitGlobe = false
   private cameraNear = true
   private cameraAgl: number | null = null
   private detailDistance = 1200
@@ -117,6 +119,16 @@ export class SunController {
     this.lighting = lighting
     this.shadowsWanted = shadows
     this.detailWanted = detailShadows
+    this.applyLighting()
+  }
+
+  /**
+   * While a data overlay (light pollution) is drawn on the globe, the globe isn't shaded by
+   * day and night, so its colors read as its legend says, also for a night-time simulation.
+   */
+  setUnlitGlobe(unlit: boolean): void {
+    if (unlit === this.unlitGlobe) return
+    this.unlitGlobe = unlit
     this.applyLighting()
   }
 
@@ -211,9 +223,10 @@ export class SunController {
     const globe = scene.globe
     const simulated = this.lighting === 'sun'
     scene.light = this.sunLight
-    globe.enableLighting = simulated
-    globe.dynamicAtmosphereLighting = simulated
-    globe.dynamicAtmosphereLightingFromSun = simulated
+    const globeLit = simulated && !this.unlitGlobe
+    globe.enableLighting = globeLit
+    globe.dynamicAtmosphereLighting = globeLit
+    globe.dynamicAtmosphereLightingFromSun = globeLit
     scene.atmosphere.dynamicLighting = simulated
       ? DynamicAtmosphereLightingType.SUNLIGHT
       : DynamicAtmosphereLightingType.NONE

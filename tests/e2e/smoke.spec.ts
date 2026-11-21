@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { gzipSync } from 'node:zlib'
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
 
 // Requires a test build: `VITE_PHOTOEARTH_TEST=1 npm run build` (done by `npm run test:e2e`).
@@ -1027,6 +1028,89 @@ test('weather forecast: cloud bands, sunrise and sunset outlook, jumping to a su
   await expect(panel.locator('.cloud-lanes')).toHaveCount(0)
   await panel.getByText('Forecast', { exact: true }).click()
   await panel.getByRole('button', { name: 'Now' }).click()
+})
+
+test('light pollution: overlay layer, legend, and a sky brightness estimate at the inspected point', async () => {
+  // Offline and deterministic: color tiles are a 1×1 PNG, the data tiles a uniform field of
+  // 1.29× natural brightness (the 2025 atlas's value for Zermatt), gzipped as served.
+  const n = 600
+  const tile = new Int8Array(n * n + 1)
+  tile[0] = 1
+  tile[1] = 74 // 128 + 74 = 202 → (5/195)(e^(0.0195·202) − 1) = 1.291
+  const gz = gzipSync(Buffer.from(tile.buffer))
+  const png1x1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
+  const dataRequests: string[] = []
+  await page.route(/^https:\/\/(djlorenz\.github\.io|gibs\.earthdata\.nasa\.gov)\//, (route) => {
+    const url = route.request().url()
+    if (url.endsWith('.dat.gz')) {
+      dataRequests.push(url)
+      return route.fulfill({ status: 200, contentType: 'application/gzip', body: gz })
+    }
+    return route.fulfill({ status: 200, contentType: 'image/png', body: png1x1 })
+  })
+  const engineState = () =>
+    page.evaluate(() => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      const layers = e.scene.imageryLayers
+      const urls: string[] = []
+      for (let i = 0; i < layers.length; i++) urls.push(String(layers.get(i).imageryProvider.url ?? ''))
+      return { urls, shown: e.lightPollution.shown, globeLit: e.scene.globe.enableLighting }
+    })
+  const before = await engineState()
+  expect(before.urls.some((u) => u.includes('djlorenz'))).toBe(false)
+
+  // On from the rail (K is the shortcut; focus may sit in a panel control here).
+  await page.getByRole('button', { name: 'Light pollution: sky brightness & Bortle estimate' }).click()
+  await expect(page.getByRole('button', { name: 'Light pollution: hide' })).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(async () => (await engineState()).urls.filter((u) => u.includes('djlorenz')).length).toBe(1)
+  // Without a Google key the globe is the backdrop, so the layer is drawn, and unlit so it
+  // reads as its legend at any simulated time.
+  const on = await engineState()
+  expect(on.urls.length).toBe(before.urls.length + 1)
+  expect(on.shown).toBe(true)
+  expect(on.globeLit).toBe(false)
+
+  // Legend: one chip per zone.
+  if (!(await page.locator('.light-pollution').isVisible())) await page.keyboard.press('l')
+  await expect(page.locator('.light-pollution .lp-zones > div')).toHaveCount(15)
+  await expect(page.locator('.light-pollution')).toContainText('mag/arcsec²')
+
+  // Inspect the view center.
+  const tileUrl = await page.evaluate(() => {
+    const e = (window as unknown as { __photoearth: any }).__photoearth
+    const C = (window as unknown as { Cesium: any }).Cesium
+    const canvas = e.scene.canvas
+    const p = e.scene.camera.pickEllipsoid(new C.Cartesian2(canvas.clientWidth / 2, canvas.clientHeight / 2))
+    void e.inspector.inspect(p)
+    const { longitude, latitude } = e.scene.globe.ellipsoid.cartesianToCartographic(p)
+    const lon = (longitude * 180) / Math.PI
+    const lat = (latitude * 180) / Math.PI
+    const x = Math.floor(((((lon + 180) % 360) + 360) % 360) / 5) + 1
+    const y = Math.floor((lat + 65) / 5) + 1
+    return `https://djlorenz.github.io/astronomy/binary_tiles/2025/binary_tile_${x}_${y}.dat.gz`
+  })
+  const readout = page.locator('.inspect-card .sky-readout')
+  await expect(readout).toContainText('21.10 mag/arcsec²')
+  await expect(readout).toContainText('≈ 4')
+  await expect(readout).toContainText('4a')
+  await expect(readout).toContainText('Estimate')
+  expect(dataRequests).toEqual([tileUrl])
+
+  // Black Marble replaces the layer; readouts keep using the atlas (no refetch).
+  await page.getByRole('combobox', { name: 'Light pollution source' }).selectOption('black-marble')
+  await expect.poll(async () => (await engineState()).urls.filter((u) => u.includes('gibs.earthdata')).length).toBe(1)
+  expect((await engineState()).urls.some((u) => u.includes('djlorenz'))).toBe(false)
+  await expect(page.locator('.light-pollution')).toContainText('not sky brightness')
+  await expect(readout).toContainText('21.10 mag/arcsec²')
+  expect(dataRequests).toHaveLength(1)
+
+  // Off: the layer and the readout are gone, globe lighting is back.
+  await page.getByRole('button', { name: 'Light pollution: hide' }).click()
+  await expect.poll(async () => (await engineState()).urls.length).toBe(before.urls.length)
+  await expect(readout).toHaveCount(0)
+  expect((await engineState()).globeLit).toBe(before.globeLit)
+  await page.keyboard.press('Escape')
+  await page.unroute(/^https:\/\/(djlorenz\.github\.io|gibs\.earthdata\.nasa\.gov)\//)
 })
 
 test('bookmarks persist across a restart', async () => {

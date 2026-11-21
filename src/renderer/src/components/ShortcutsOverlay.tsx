@@ -13,7 +13,7 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
       ['Middle-drag / Shift+Left-drag', 'Rotate heading around the point'],
       ['Scroll wheel', 'Zoom toward the cursor'],
       ['Double-click', 'Fly closer to the point'],
-      ['Click', 'Inspect point (coordinates, elevation)']
+      ['Click', 'Inspect point (coordinates, elevation, sky brightness)']
     ]
   ],
   [
@@ -38,7 +38,8 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
       ['U', 'Top-down view'],
       ['R', 'Level the horizon'],
       ['1 / 2', 'Photorealistic / Elevation mode'],
-      ['M', 'Place names on / off']
+      ['M', 'Place names on / off'],
+      ['K', 'Light pollution overlay on / off']
     ]
   ],
   [

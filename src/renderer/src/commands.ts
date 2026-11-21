@@ -58,6 +58,34 @@ export function getCommands(): Command[] {
       run: toggleSetting((d) => void (d.placeLabels = !d.placeLabels))
     },
     {
+      id: 'toggle-light-pollution',
+      title: 'Light pollution overlay on / off (sky brightness, Bortle estimate)',
+      group: 'View',
+      keys: 'K',
+      keywords: 'night sky dark sky astrophotography astro milky way stars bortle sqm viirs black marble atlas',
+      run: toggleSetting((d) => void (d.lightPollution.enabled = !d.lightPollution.enabled))
+    },
+    {
+      id: 'light-pollution-atlas',
+      title: 'Light pollution: sky brightness atlas (2025)',
+      group: 'View',
+      keywords: 'night sky bortle lorenz falchi zenith',
+      run: toggleSetting((d) => {
+        d.lightPollution.enabled = true
+        d.lightPollution.source = 'atlas-2025'
+      })
+    },
+    {
+      id: 'light-pollution-black-marble',
+      title: 'Light pollution: NASA Black Marble night lights',
+      group: 'View',
+      keywords: 'night sky viirs city lights emitted',
+      run: toggleSetting((d) => {
+        d.lightPollution.enabled = true
+        d.lightPollution.source = 'black-marble'
+      })
+    },
+    {
       id: 'toggle-viewfinder',
       title: 'Viewfinder on / off (lens, crop frame, guides)',
       group: 'View',

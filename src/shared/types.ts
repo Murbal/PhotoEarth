@@ -92,6 +92,26 @@ export interface ViewfinderSettings {
   guide: CompositionGuide
 }
 
+/**
+ * Where the light pollution overlay comes from (§7.5). `atlas-YYYY`: David Lorenz's Light
+ * Pollution Atlas for that year (modeled zenith sky brightness from VIIRS); `black-marble`:
+ * NASA's VIIRS Black Marble 2016 (light emitted upward, not sky brightness).
+ */
+export type LightPollutionSourceId =
+  | 'atlas-2025'
+  | 'atlas-2024'
+  | 'atlas-2023'
+  | 'atlas-2022'
+  | 'atlas-2020'
+  | 'atlas-2016'
+  | 'black-marble'
+
+export interface LightPollutionSettings {
+  enabled: boolean
+  opacity: number
+  source: LightPollutionSourceId
+}
+
 /** Horizon panorama: what the strip chart draws over the skyline. */
 export interface HorizonSettings {
   /** The moon's path for the same date. */
@@ -113,6 +133,8 @@ export interface Settings {
   /** Google place names on the map (a labels-only Map Tiles layer). */
   placeLabels: boolean
   elevation: ElevationStyleSettings
+  /** Artificial night sky brightness overlay (§7.5). */
+  lightPollution: LightPollutionSettings
   verticalExaggeration: number
   lighting: LightingMode
   shadows: boolean

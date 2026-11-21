@@ -106,7 +106,7 @@ Point elevation readouts in Photorealistic mode come from sampling the 3D tilese
 ### 4.1 Security
 
 - `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`.
-- A strict Content Security Policy that allows only the required Google / Cesium / terrain origins.
+- A strict Content Security Policy that allows only the required Google / Cesium / terrain origins, plus the light pollution tile hosts (§7.5).
 - API keys are never written in plaintext. They are encrypted with `safeStorage` in the main process and sent to the renderer only when needed. Tile requests necessarily include the key, so the user should **restrict the key by API** (Map Tiles API, Places, etc.) in Google Cloud Console.
 - Google API keys restricted by HTTP referrer don't work from `file://`. Either document using API restrictions instead, or set a fixed `Referer` header with `session.webRequest.onBeforeSendHeaders` for Google origins and document the referrer to allow.
 
@@ -242,6 +242,33 @@ These can be toggled and combined:
 
 - Click a point to drop a temporary marker that shows coordinates and elevation. It can be copied to the clipboard.
 - The marker also shows **terrain-aware sun times** for the simulated date: the flat-horizon sunrise and sunset (SunCalc) next to when the sun actually clears and drops behind the skyline seen from that point ("first light / last light"), plus the total direct sun. The skyline is traced once per point on its own heightmap levels (±80 km, the terrain shadow geometry of §8.1.1: earth curvature, refraction, the center of the sun's disc), so changing the date is instant. Clicking a terrain time sets the simulation to it. Needs a Cesium ion token. While the marker is set, the time-of-day slider shows direct sun on the marker instead of the view center's sky: two tones (sun / shade, no twilight or golden-hour bands) with first and last light marked.
+
+### 7.5 Light pollution overlay
+
+For scouting dark skies (astrophotography): where the artificial sky glow is low enough, and roughly how dark the sky is at a given spot.
+
+- **Source**: **Light Pollution Atlas** by David Lorenz ([djlorenz.github.io/astronomy/lp](https://djlorenz.github.io/astronomy/lp/)). It recomputes Cinzano and Falchi's *World Atlas of the Artificial Night Sky Brightness* light-propagation model from the annual VIIRS night-lights composites of the Earth Observation Group (Colorado School of Mines). Years 2016, 2020 and 2022–2025 are available; 2025 is the default. It is served from GitHub Pages with `Access-Control-Allow-Origin: *` and needs no key, and covers 65° S to 75° N.
+  - **Color tiles**: Web Mercator XYZ tiles of 1024 px, native zoom 0–6 (~600 m pixels at the equator), drawn as 4-bit palette PNGs in the atlas's 15 zone colors. Tiles with no light (open sea) are missing; the globe keeps the coarser parent tile.
+  - **Data tiles**: gzipped 5° × 5° grids of 600 × 600 cells (1/120°, ~1 km), holding the ratio of artificial to natural zenith brightness. The south-west cell is stored as two bytes and every other cell as a signed one-byte step from its neighbor. They are fetched on demand, inflated with `DecompressionStream`, and kept for the last 8 tiles.
+  - **Alternative**: **NASA Black Marble 2016** (VIIRS, via NASA GIBS WMTS, public domain, zoom 0–8). It shows light *emitted* upward rather than sky brightness, so it is offered as a second layer for finding light sources, and readouts still come from the atlas.
+  - **Rejected**: lightpollutionmap.info, which serves Falchi 2015 tiles and a point-value API, refuses third-party tile requests (HTTP 403) and needs an API key for values. The Falchi et al. 2016 GeoTIFF (GFZ Data Services) would have to be bundled or self-tiled; Lorenz's atlas is a newer run of the same model. Lorenz notes that the 2015 atlas is biased dark in rural areas.
+  - **Licensing**: the atlas has no explicit license; its author asks that sites using the maps credit it and not present zenith brightness as the Bortle scale. Both credits show in the attribution while the layer is on screen.
+- **Pluggable**: sources are entries in `lib/lightPollutionSources.ts`. Each entry has an XYZ template, tile size, zoom range, coverage, credit, and optionally a data-tile URL or the flag that its tiles use the atlas palette. A new source needs its entry, its id in `LIGHT_POLLUTION_SOURCES`, and its origin in the CSP (§4.1).
+- **Layer**: one `ImageryLayer` on the globe, above the Google imagery. It therefore draws in Elevation mode, and wherever the globe is the backdrop. Draping it on the Photorealistic 3D Tiles would need Cesium's model imagery, which maps every tile's vertices on the CPU (a GPU readback, §5.3) and rebuilds every tile's draw commands when the opacity changes, so it isn't done.
+  - In Photorealistic mode a status chip says where the map shows and offers to switch.
+  - The layer exists only while the overlay is on, so off costs nothing; nothing of it runs per frame.
+  - While it is drawn, the globe isn't shaded by day and night, so its colors match the legend at a night-time simulation.
+  - The hypsometric tint and slope shading of §7.2 draw over it, and the panel says so.
+- **Controls**: an on/off switch, an opacity slider and the source (atlas year or Black Marble) in the Elevation panel. Also the rail button, `K`, and the command palette.
+  - **Legend**: the 15 zones (0, 1a … 7b) as color chips, with total zenith brightness (mag/arcsec²) marked at 22.00, 21.25 (artificial = natural), 19.50 and 17.80. Each chip's tooltip gives its range, ratio and Bortle estimate. Black Marble gets a dark-to-bright ramp and a note that it isn't sky brightness.
+  - Settings: `settings.lightPollution` (`enabled`, `opacity`, `source`).
+- **Point readout**: while the overlay is on (in either mode), the §7.4 inspect card adds the night sky at the marker. It shows the total zenith brightness in mag/arcsec², the zone, the artificial ÷ natural ratio, and a Bortle class, marked as an estimate.
+  - Brightness is `22.0 − 2.5·log10(1 + ratio)`, with the atlas's natural sky of 22.0 mag/arcsec².
+  - **Bortle** comes from the commonly quoted SQM range of each class: 1 ≥ 21.76, 2 ≥ 21.6, 3 ≥ 21.3, 4 ≥ 20.8, 4.5 ≥ 20.3, 5 ≥ 19.25, 6 ≥ 18.5, 7 ≥ 18.0, else 8–9.
+  - The card notes that the value is modeled for a clear, moonless night, and that Bortle rates the whole sky by eye, so light domes on the horizon can make it a class worse.
+  - The value comes from the data tile's ~1 km cell. If that tile can't be loaded, the pixel of the most detailed color tile is decoded (`createImageBitmap` without color conversion, read on a 1×1 `OffscreenCanvas`, on the CPU) back to its zone, by nearest palette color within a small tolerance. The card then shows the zone's brightness range and the geometric middle of its ratio range.
+  - On a sample of 20,000 random points over the Alps the colors agree with the data in 96% of points, and the rest differ by one zone at zone edges. Outside 65° S – 75° N the card says there is no data. The copy button includes the estimate.
+- **Tests**: unit tests cover the brightness conversions, zone boundaries, color decoding (every palette color, tolerance, rejection), the Bortle table and its monotonicity, the data tile decoder against a port of the atlas viewer's own lookup, Web Mercator tile math, the source registry, the CSP and settings sanitization. An end-to-end test serves synthetic tiles: it checks the layer is added and removed, the globe is unlit while it shows, the legend renders, the readout at an inspected point reads the gzipped data tile, and switching to Black Marble replaces the layer but keeps the readout.
 
 ## 8. Sun Simulation & Shadows
 

@@ -90,6 +90,7 @@ export function useShortcuts(): void {
         t: 'toggle-time-panel',
         l: 'toggle-elevation-panel',
         m: 'toggle-place-labels',
+        k: 'toggle-light-pollution',
         v: 'toggle-viewfinder',
         '+': 'zoom-in',
         '=': 'zoom-in',

@@ -1,4 +1,5 @@
 import { session, shell, type Session, type WebContents } from 'electron'
+import { LIGHT_POLLUTION_ORIGINS } from '@shared/settings'
 import { GOOGLE_REFERER } from './network'
 
 export const APP_SCHEME = 'app'
@@ -22,8 +23,8 @@ export function contentSecurityPolicy(devServer?: string): string {
     'script-src': ["'self'", "'wasm-unsafe-eval'", ...(dev ? ["'unsafe-inline'", "'unsafe-eval'", devHttp] : [])],
     'worker-src': ["'self'", 'blob:'],
     'style-src': ["'self'", "'unsafe-inline'"],
-    'img-src': ["'self'", 'data:', 'blob:', ...TILE_ORIGINS, ...ION_ORIGINS],
-    'connect-src': ["'self'", 'data:', 'blob:', ...TILE_ORIGINS, ...ION_ORIGINS, ...(dev ? [devHttp, devWs] : [])],
+    'img-src': ["'self'", 'data:', 'blob:', ...TILE_ORIGINS, ...ION_ORIGINS, ...LIGHT_POLLUTION_ORIGINS],
+    'connect-src': ["'self'", 'data:', 'blob:', ...TILE_ORIGINS, ...ION_ORIGINS, ...LIGHT_POLLUTION_ORIGINS, ...(dev ? [devHttp, devWs] : [])],
     'font-src': ["'self'", 'data:'],
     'media-src': ["'none'"],
     'object-src': ["'none'"],
