@@ -1323,6 +1323,87 @@ test('Map mode: only map controls, saved locations as pins, and 3D tools take yo
   }
 })
 
+test('Map mode: no seams between tiles at fractional zooms', async () => {
+  // Solid tiles: any pixel of another color inside the map is a gap between tiles.
+  const tileColor = [0x3a, 0x7b, 0xd5]
+  const solid = Buffer.from(
+    await page.evaluate(async () => {
+      const canvas = new OffscreenCanvas(256, 256)
+      const ctx = canvas.getContext('2d')!
+      ctx.fillStyle = '#3a7bd5'
+      ctx.fillRect(0, 0, 256, 256)
+      const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer())
+      let s = ''
+      for (const b of bytes) s += String.fromCharCode(b)
+      return btoa(s)
+    }),
+    'base64'
+  )
+  const pattern = /^https:\/\/(tile\.googleapis\.com|assets\.ion\.cesium\.com\/google-credit\.png)/
+  await page.route(pattern, (route) => {
+    const url = route.request().url()
+    if (url.includes('/v1/createSession')) {
+      const expiry = String(Math.floor(Date.now() / 1000) + 14 * 86_400)
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ session: 'seams', expiry, tileWidth: 256, tileHeight: 256 }) })
+    }
+    if (url.includes('/tile/v1/viewport')) return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+    return route.fulfill({ status: 200, contentType: 'image/png', body: solid })
+  })
+  // The camera marker, pins, crosshair, attribution and banners are drawn over the map: hide them.
+  const style = await page.addStyleTag({ content: '.map-camera, .map-pins, .map-center, .map-attribution, .map-empty, .top-center { display: none !important }' })
+  try {
+    await page.keyboard.press('3')
+    await expect(page.getByTestId('map-mode')).toBeVisible()
+    await page.evaluate(async () => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      e.keys.googleApiKey = 'test-key'
+      await e.mapTiles.configure('test-key', 'roadmap')
+    })
+    await page.mouse.move(700, 450)
+    // Ctrl+wheel to fractional zooms (100 px a zoom): tiles drawn at ~123 %, ~84 % and ~146 %.
+    const base = Math.floor((await mapView()).zoom)
+    for (const target of [base + 0.3, base + 0.75, base + 1.45]) {
+      const dy = Math.round(((await mapView()).zoom - target) * 100)
+      await page.keyboard.down('Control')
+      await page.mouse.wheel(0, dy)
+      await page.keyboard.up('Control')
+      // Stood still, one layer left (no previous zoom underneath), every tile in view decoded.
+      await settledMap()
+      await expect
+        .poll(() => page.evaluate(() => document.querySelectorAll('.map-layer').length === 1 && document.querySelectorAll('.map-tile:not(.ready)').length === 0))
+        .toBe(true)
+      const zoom = await mapView().then((v) => v.zoom)
+      expect(Math.abs(zoom - Math.round(zoom))).toBeGreaterThan(0.05)
+      // The map between the top bar (and its shadow), the tool rail and the status bar.
+      const shot = await page.screenshot({ clip: { x: 20, y: 100, width: 1320, height: 740 } })
+      const off = await page.evaluate(
+        async ([png, [r, g, b]]) => {
+          const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0))
+          const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }))
+          const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+          const ctx = canvas.getContext('2d')!
+          ctx.drawImage(bitmap, 0, 0)
+          const d = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data
+          let n = 0
+          for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - r) > 8 || Math.abs(d[i + 1] - g) > 8 || Math.abs(d[i + 2] - b) > 8) n++
+          return n
+        },
+        [shot.toString('base64'), tileColor] as const
+      )
+      expect(off, `zoom ${zoom.toFixed(3)}: pixels not covered by tiles`).toBe(0)
+    }
+  } finally {
+    await style.evaluate((el) => (el as HTMLElement).remove())
+    await page.evaluate(async () => {
+      const e = (window as unknown as { __photoearth: any }).__photoearth
+      if ((await window.photoearth.settings.get()).map.open) await e.setMode('photorealistic')
+      e.mapTiles.destroy()
+      e.keys.googleApiKey = null
+    })
+    await page.unroute(pattern)
+  }
+})
+
 test('light pollution: overlay layer, legend, and a sky brightness estimate at the inspected point', async () => {
   // Offline and deterministic: color tiles are a 1×1 PNG, the data tiles a uniform field of
   // 1.29× natural brightness (the 2025 atlas's value for Zermatt), gzipped as served.

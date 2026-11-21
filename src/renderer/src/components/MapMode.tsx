@@ -76,6 +76,8 @@ interface Layer {
   tiles: Map<string, TileImage>
   /** When this zoom last became the drawn one. */
   currentSince: number
+  /** How far tiles reach into their right and bottom neighbors, in layer pixels. */
+  overlap: number
 }
 
 interface Animation {
@@ -322,7 +324,7 @@ class MapRenderer implements MapControl {
       const el = document.createElement('div')
       el.className = 'map-layer'
       this.tilesEl.appendChild(el)
-      layer = { zoom: tz, el, originX: range.x0 * TILE, originY: range.y0 * TILE, tiles: new Map(), currentSince: performance.now() }
+      layer = { zoom: tz, el, originX: range.x0 * TILE, originY: range.y0 * TILE, tiles: new Map(), currentSince: performance.now(), overlap: 0 }
       this.layers.set(tz, layer)
     } else if (tz !== this.tileZoom) {
       layer.currentSince = performance.now()
@@ -396,6 +398,15 @@ class MapRenderer implements MapControl {
     const tx = this.width / 2 + (layer.originX - cx) * scale
     const ty = this.height / 2 + (layer.originY - c.y) * scale
     layer.el.style.transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) scale(${scale.toFixed(5)})`
+    // Scaled by a fraction, tile edges fall between pixels and each image's edge is blended
+    // with transparency: a hairline seam. Each tile reaches one screen pixel into its right
+    // and bottom neighbor (drawn over it), so edges always overlap. Stretching a tile by one
+    // pixel is invisible; the variable only changes with the scale.
+    const overlap = Math.round((1 / scale) * 20) / 20
+    if (overlap !== layer.overlap) {
+      layer.overlap = overlap
+      layer.el.style.setProperty('--tile-overlap', `${overlap}px`)
+    }
     // The current zoom on top, then the nearest others (z-index must be a whole number).
     layer.el.style.zIndex = String(layer.zoom === this.tileZoom ? 100 : 50 - Math.abs(layer.zoom - (this.tileZoom ?? layer.zoom)))
   }

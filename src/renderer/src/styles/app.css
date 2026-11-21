@@ -2315,8 +2315,9 @@ input[type='color'] {
   position: absolute;
   left: 0;
   top: 0;
-  width: 256px;
-  height: 256px;
+  /* One screen pixel of overlap with the next tile (set per layer by its scale): no seams. */
+  width: calc(256px + var(--tile-overlap, 1px));
+  height: calc(256px + var(--tile-overlap, 1px));
   /* Shown at once when decoded, over the previous zoom's tiles (no fade through to the
      background). */
   visibility: hidden;
