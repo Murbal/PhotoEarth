@@ -46,7 +46,7 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
     'Tools & time',
     [
       [shortcutLabel('Mod+K'), 'Search & command palette'],
-      [shortcutLabel('Mod+B'), 'Save bookmark'],
+      [shortcutLabel('Mod+B'), 'Save location'],
       [shortcutLabel('Mod+,'), 'Settings'],
       ['T', 'Time & sun panel'],
       ['L', 'Elevation styling panel'],

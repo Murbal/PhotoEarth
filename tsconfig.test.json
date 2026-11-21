@@ -10,7 +10,10 @@
   "include": [
     "src/renderer/src/**/*",
     "src/shared/**/*",
+    "src/main/bookmarks.ts",
     "src/main/devEnv.ts",
+    "src/main/jsonStore.ts",
+    "src/main/photos.ts",
     "src/main/wslGpu.ts",
     "vite/cesium.ts",
     "tests/unit/**/*"

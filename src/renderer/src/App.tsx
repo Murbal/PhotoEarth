@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
-import { BookmarksPanel } from './components/BookmarksPanel'
 import { Banners } from './components/Banners'
 import { CommandPalette } from './components/CommandPalette'
 import { ElevationPanel } from './components/ElevationPanel'
 import { HorizonPanel } from './components/HorizonPanel'
+import { LocationsPanel, PhotoViewer } from './components/LocationsPanel'
 import { MapView } from './components/MapView'
 import { Onboarding } from './components/Onboarding'
 import { Crosshair, FpsIndicator, InspectCard, LoadingBar, StatusChips, Toast } from './components/Overlays'
@@ -19,22 +19,24 @@ import { runCommand } from './commands'
 import { getEngine } from './engine/instance'
 import { useForecastFeed } from './hooks/useForecastFeed'
 import { useShortcuts } from './hooks/useShortcuts'
-import { saveCurrentView } from './lib/bookmarks'
+import { saveCurrentView } from './lib/locations'
 import { appState, useAppStore } from './store/appStore'
 
 async function boot(): Promise<void> {
   const api = window.photoearth
-  const [settings, keys, secrets, bookmarks] = await Promise.all([
+  const [settings, keys, secrets, bookmarks, profiles] = await Promise.all([
     api.settings.get(),
     api.keys.get(),
     api.keys.status(),
-    api.bookmarks.list()
+    api.bookmarks.list(),
+    api.profiles.list()
   ])
   appState().set({
     settings,
     keys,
     secrets,
     bookmarks,
+    profiles,
     mode: settings.lastMode,
     onboardingOpen: !settings.onboardingComplete,
     booted: true
@@ -143,7 +145,7 @@ function useOverlayLayout(root: RefObject<HTMLDivElement | null>, stack: RefObje
 export function App() {
   const booted = useAppStore((s) => s.booted)
   const theme = useAppStore((s) => s.settings.theme)
-  const modalOpen = useAppStore((s) => s.paletteOpen || s.settingsOpen || s.shortcutsOpen || s.onboardingOpen)
+  const modalOpen = useAppStore((s) => s.paletteOpen || s.settingsOpen || s.shortcutsOpen || s.onboardingOpen || !!s.photoViewer)
   const overlayRef = useRef<HTMLDivElement>(null)
   const stackRef = useRef<HTMLDivElement>(null)
   const [creditEl, setCreditEl] = useState<HTMLDivElement | null>(null)
@@ -185,7 +187,7 @@ export function App() {
           <Banners />
         </div>
         <RightRail />
-        <BookmarksPanel />
+        <LocationsPanel />
         <ElevationPanel />
         <InspectCard />
         <Crosshair />
@@ -203,6 +205,7 @@ export function App() {
       <SettingsDialog />
       <ShortcutsOverlay />
       <Onboarding />
+      <PhotoViewer />
     </>
   )
 }

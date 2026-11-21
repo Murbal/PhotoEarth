@@ -6,7 +6,7 @@ import { DEV_ENV_KEYS, loadDevEnvKeys } from './devEnv'
 import { registerIpc } from './ipc'
 import { JsonFile } from './jsonStore'
 import { buildMenu } from './menu'
-import { handleAppScheme, registerAppScheme } from './protocol'
+import { handleAppScheme, handlePhotoScheme, registerAppScheme } from './protocol'
 import { SecretStore } from './secrets'
 import { mapTilesNeedsReferer } from './network'
 import { APP_ORIGIN, hardenSession, hardenWebContents, setGoogleRefererHook } from './security'
@@ -83,10 +83,11 @@ void app.whenReady().then(async () => {
     const loaded = Object.entries(DEV_ENV_KEYS).filter(([, key]) => keys[key]).map(([variable]) => variable)
     if (loaded.length) console.log(`[photoearth] dev: using ${loaded.join(', ')} from .env`)
   }
-  const bookmarks = new BookmarkStore()
+  const bookmarks = new BookmarkStore(app.getPath('userData'))
 
   hardenSession(session.defaultSession, devServer)
   handleAppScheme(join(__dirname, '../renderer'))
+  handlePhotoScheme(bookmarks.photos)
 
   // Drop the per-request Referer hook when the key doesn't need it. It goes back on while a
   // new key is probed, so requests never go out without it while that's unknown.

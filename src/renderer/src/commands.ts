@@ -1,6 +1,6 @@
 import type { ImageryType, QualityPreset } from '@shared/types'
 import { getEngine } from './engine/instance'
-import { saveCurrentView } from './lib/bookmarks'
+import { saveCurrentView } from './lib/locations'
 import { GUIDES, nudgeFocal, stepFocal } from './lib/lens'
 import { shortcutLabel } from './lib/platform'
 import { appState } from './store/appStore'
@@ -166,8 +166,28 @@ export function getCommands(): Command[] {
     { id: 'fly-mode', title: 'Toggle first-person fly mode', group: 'Navigation', keys: 'F', run: () => engine()?.camera.toggleFlyMode() },
     { id: 'zoom-in', title: 'Zoom in', group: 'Navigation', keys: '+', run: () => void engine()?.camera.zoomBy(0.5) },
     { id: 'zoom-out', title: 'Zoom out', group: 'Navigation', keys: '−', run: () => void engine()?.camera.zoomBy(2) },
-    { id: 'save-bookmark', title: 'Save bookmark of current view', group: 'Tools', keys: shortcutLabel('Mod+B'), run: () => void saveCurrentView() },
-    { id: 'toggle-bookmarks', title: 'Show / hide bookmarks', group: 'Tools', run: () => appState().togglePanel('bookmarks') },
+    {
+      id: 'save-bookmark',
+      title: 'Save location (current view)',
+      group: 'Tools',
+      keys: shortcutLabel('Mod+B'),
+      keywords: 'bookmark scouting spot place notes photos',
+      run: () => void saveCurrentView()
+    },
+    {
+      id: 'toggle-bookmarks',
+      title: 'Show / hide saved locations',
+      group: 'Tools',
+      keywords: 'bookmarks scouting spots list tags visited',
+      run: () => appState().togglePanel('bookmarks')
+    },
+    {
+      id: 'toggle-location-markers',
+      title: 'Show / hide saved location markers on the map',
+      group: 'View',
+      keywords: 'bookmarks pins scouting spots',
+      run: toggleSetting((d) => void (d.showLocationMarkers = !d.showLocationMarkers))
+    },
     { id: 'profile-start', title: 'Draw elevation profile', group: 'Tools', keys: 'P', keywords: 'path chart distance', run: () => engine()?.startProfile() },
     { id: 'profile-clear', title: 'Clear elevation profile', group: 'Tools', run: () => engine()?.profile.clear() },
     {

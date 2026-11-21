@@ -20,7 +20,15 @@ const api: PhotoEarthApi = {
     list: () => ipcRenderer.invoke(IPC.bookmarksList),
     create: (bookmark) => ipcRenderer.invoke(IPC.bookmarksCreate, bookmark),
     update: (id, patch) => ipcRenderer.invoke(IPC.bookmarksUpdate, id, patch),
-    remove: (id) => ipcRenderer.invoke(IPC.bookmarksRemove, id)
+    remove: (id) => ipcRenderer.invoke(IPC.bookmarksRemove, id),
+    addPhoto: (id, photo) => ipcRenderer.invoke(IPC.bookmarksAddPhoto, id, photo),
+    removePhoto: (id, photoId) => ipcRenderer.invoke(IPC.bookmarksRemovePhoto, id, photoId)
+  },
+  profiles: {
+    list: () => ipcRenderer.invoke(IPC.profilesList),
+    create: (profile) => ipcRenderer.invoke(IPC.profilesCreate, profile),
+    update: (id, patch) => ipcRenderer.invoke(IPC.profilesUpdate, id, patch),
+    remove: (id) => ipcRenderer.invoke(IPC.profilesRemove, id)
   },
   places: {
     autocomplete: (request) => ipcRenderer.invoke(IPC.placesAutocomplete, request),

@@ -20,7 +20,7 @@ export function buildMenu(): void {
       label: '&File',
       submenu: [
         { label: 'Search or Go To…', accelerator: 'CmdOrCtrl+K', click: () => send('open-palette') },
-        { label: 'Save Bookmark', accelerator: 'CmdOrCtrl+B', click: () => send('save-bookmark') },
+        { label: 'Save Location', accelerator: 'CmdOrCtrl+B', click: () => send('save-bookmark') },
         { type: 'separator' },
         { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => send('open-settings') },
         { type: 'separator' },
@@ -36,7 +36,7 @@ export function buildMenu(): void {
         { label: 'Photorealistic Mode', click: () => send('mode-photorealistic') },
         { label: 'Elevation Mode', click: () => send('mode-elevation') },
         { type: 'separator' },
-        { label: 'Bookmarks Panel', click: () => send('toggle-bookmarks') },
+        { label: 'Saved Locations', click: () => send('toggle-bookmarks') },
         { label: 'Time & Sun Panel', click: () => send('toggle-time-panel') },
         { label: 'Viewfinder', click: () => send('toggle-viewfinder') },
         { label: 'FPS Indicator', click: () => send('toggle-fps') },

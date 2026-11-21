@@ -58,8 +58,8 @@ They're loaded in the main process only, so they never end up in the renderer bu
 | `G` | Eye level (1.7 m) at the cursor; WASD then walks along the ground |
 | `N` / `U` / `R` | Face north / top-down / level horizon |
 | `1` / `2` | Photorealistic / Elevation mode |
-| `Ctrl+K` | Search places, paste coordinates (decimal, DMS, Google Maps URLs), bookmarks, commands |
-| `Ctrl+B` | Save a bookmark |
+| `Ctrl+K` | Search places, paste coordinates (decimal, DMS, Google Maps URLs), saved locations and profiles, commands |
+| `Ctrl+B` | Save the view as a scouting location |
 | `T` / `L` / `P` | Time & sun panel / elevation styling / elevation profile |
 | `V` | Viewfinder: frame the view through a real sensor and focal length |
 | `H` | Horizon panorama: the skyline with the sun and moon paths |
@@ -73,6 +73,10 @@ They're loaded in the main process only, so they never end up in the renderer bu
 `H` (or the panorama button on the inspect card, the right rail or the palette) answers "does the sun set into that notch or behind the peak, and when?". From the inspected point (else the search pin or the view center) it traces the terrain skyline through 360° out to ~300 km on Cesium World Terrain, and draws it as a strip chart of altitude against compass direction. Over it go the sun's and the moon's paths for the chosen date, marked hourly, solid where they are above the skyline and dashed behind it, with the times they clear and drop behind the terrain (compared with a flat-horizon sunrise and sunset) and the hours of direct sun. Named peaks on the skyline are labeled from Google Places.
 
 Scroll to zoom, drag to turn, or jump to the sunrise or sunset close-up; *1:1* shows true angles instead of the stretched skyline. Hovering shows the direction, altitude, distance and height of the skyline and draws the line of sight on the map. Clicking the sun or moon path sets the time to that moment, and *Look* stands you at the observer at eye level, facing the selected direction. While the panorama is open, clicking the map moves the observer. It needs the Cesium ion token; peak names need the Google key.
+
+### Saved scouting locations
+
+`Ctrl+B` (or *Save current view* in the locations panel, the bookmark button in the right rail) saves the view as a location: its camera, mode, lens and, optionally, the simulated date and time, plus the spot itself (the inspected point or search pin, else the view center). Give it notes, tags, a free-text "best time", a *to visit* / *visited* status, reference photos, and elevation profiles. The list filters by status and tags, and the map shows a pin for each location it lists; clicking a pin or a list entry flies there and restores the saved time. Photos are copied into the app's own data folder (at most 40 MB each), so moving or deleting the originals doesn't affect them. A drawn elevation profile can be saved (*Save path*) on its own or with a location, and reopened later. Bookmarks from earlier versions become locations to visit; the original `bookmarks.json` is kept as `bookmarks.v1.backup.json`.
 
 ### Viewfinder
 
@@ -111,13 +115,15 @@ Each request sends only coordinates to Open-Meteo: the view center and the two p
 ```
 src/
   main/        Electron main: window, app:// protocol, CSP, Referer, permissions,
-               settings.json / bookmarks.json / secrets.json, Places, Open-Meteo + key validation over net.fetch
+               settings.json / bookmarks.json (locations, profiles) / photos/ / secrets.json,
+               photo:// protocol, Places, Open-Meteo + key validation over net.fetch
   preload/     contextBridge → typed window.photoearth API
-  shared/      types, settings defaults + sanitization, IPC channels, API error classification
+  shared/      types, settings and location sanitization + migration, IPC channels, API error classification
   renderer/src/
     engine/    Engine (owns the CesiumWidget) and the managers from SPEC §4:
                TilesetManager, TerrainManager, GoogleImagery, CameraController,
                SunController, MoonController, ElevationStyler, ProfileTool, PointInspector, Readouts,
+               LocationMarkers,
                TerrainShadowOverlay, quality presets
     components/ React overlay UI (the canvas belongs to Cesium)
     store/     Zustand app state; React writes it, the engine subscribes to it

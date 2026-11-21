@@ -226,7 +226,7 @@ export function RightRail() {
           pressed={lightPollution}
           onClick={() => runCommand('toggle-light-pollution')}
         />
-        <RailButton icon="bookmark" label="Bookmarks" active={panels.bookmarks} pressed={panels.bookmarks} onClick={() => togglePanel('bookmarks')} />
+        <RailButton icon="bookmark" label="Saved locations" active={panels.bookmarks} pressed={panels.bookmarks} onClick={() => togglePanel('bookmarks')} />
         <div className="divider" />
         <RailButton icon="settings" label="Settings" keys={shortcutLabel('Mod+,')} onClick={() => set({ settingsOpen: true })} />
         <RailButton icon="help" label="Controls & shortcuts" keys="?" onClick={() => set({ shortcutsOpen: true })} />

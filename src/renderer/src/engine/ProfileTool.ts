@@ -9,6 +9,7 @@ import {
   type CesiumWidget,
   type Entity
 } from 'cesium'
+import type { GeoPosition } from '@shared/types'
 import { toMsl } from '../lib/geoid'
 import { densifyPath, profileStats, type GeoPoint, type ProfileSample } from '../lib/profile'
 import { appState } from '../store/appStore'
@@ -80,6 +81,35 @@ export class ProfileTool {
 
   addPoint(position: Cartesian3): void {
     if (!this.drawing) return
+    this.addVertex(position)
+    this.syncPoints()
+    if (this.vertices.length > 1) void this.compute()
+    this.widget.scene.requestRender()
+  }
+
+  /**
+   * Reopens a saved path (§7.3): draws it finished and samples its profile again. Returns the
+   * vertices, so the caller can frame them.
+   */
+  load(points: GeoPosition[], savedId: string | null = null): Cartesian3[] {
+    this.start()
+    for (const p of points) this.addVertex(Cartesian3.fromDegrees(p.longitude, p.latitude, p.height ?? 0))
+    this.syncPoints()
+    appState().patchProfile({ active: false, savedId })
+    if (this.vertices.length > 1) void this.compute()
+    this.widget.scene.requestRender()
+    return [...this.vertices]
+  }
+
+  /** The clicked vertices with their surface heights, as saved with a profile. */
+  vertexPositions(): GeoPosition[] {
+    return this.vertices.map((v) => {
+      const c = Cartographic.fromCartesian(v)
+      return { longitude: toDeg(c.longitude), latitude: toDeg(c.latitude), height: Number.isFinite(c.height) ? c.height : null }
+    })
+  }
+
+  private addVertex(position: Cartesian3): void {
     this.vertices.push(position)
     this.entities.push(
       this.widget.entities.add({
@@ -93,9 +123,6 @@ export class ProfileTool {
         }
       })
     )
-    this.syncPoints()
-    if (this.vertices.length > 1) void this.compute()
-    this.widget.scene.requestRender()
   }
 
   undo(): void {
