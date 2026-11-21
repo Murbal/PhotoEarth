@@ -13,6 +13,7 @@ export function StatusChips() {
   const profileDrawing = useAppStore((s) => s.profile.active)
   const profilePoints = useAppStore((s) => s.profile.points.length)
   const patchSettings = useAppStore((s) => s.patchSettings)
+  const horizonOpen = useAppStore((s) => s.horizon.open)
   return (
     <div className="chip-row">
       {exaggeration !== 1 && (
@@ -33,6 +34,11 @@ export function StatusChips() {
             : profilePoints === 1
               ? 'Start point set: click a second point · Backspace undo · Esc cancel'
               : 'Click to add points · Enter or double-click to finish · Backspace undo'}
+        </span>
+      )}
+      {horizonOpen && !profileDrawing && (
+        <span className="panel chip" role="status">
+          Horizon: click the map to move the observer · H or Esc closes
         </span>
       )}
       <DestinationChip />
@@ -112,6 +118,9 @@ export function InspectCard() {
             {inspect.loading && <span className="faint"> …</span>}
           </div>
         </div>
+        <button className="icon-btn small" title="Horizon panorama from here (H)" aria-label="Horizon panorama from here" onClick={() => void getEngine()?.openHorizon()}>
+          <Icon name="panorama" size={14} />
+        </button>
         <button className="icon-btn small" title="Copy coordinates and elevation" onClick={copy}>
           <Icon name="copy" size={14} />
         </button>

@@ -141,6 +141,14 @@ export function getCommands(): Command[] {
     { id: 'toggle-bookmarks', title: 'Show / hide bookmarks', group: 'Tools', run: () => appState().togglePanel('bookmarks') },
     { id: 'profile-start', title: 'Draw elevation profile', group: 'Tools', keys: 'P', keywords: 'path chart distance', run: () => engine()?.startProfile() },
     { id: 'profile-clear', title: 'Clear elevation profile', group: 'Tools', run: () => engine()?.profile.clear() },
+    {
+      id: 'horizon-panorama',
+      title: 'Horizon panorama with sun & moon paths (at the pin or view center)',
+      group: 'Tools',
+      keys: 'H',
+      keywords: 'skyline peakfinder photopills sunrise sunset moonrise moonset peaks mountains notch ridge',
+      run: () => engine()?.toggleHorizon()
+    },
     { id: 'clear-marker', title: 'Clear inspection marker', group: 'Tools', keys: 'Esc', run: () => engine()?.inspector.clear() },
     { id: 'clear-search-pin', title: 'Clear search result pin', group: 'Tools', keywords: 'destination marker', run: () => engine()?.searchMarker.clear() },
     { id: 'toggle-elevation-panel', title: 'Show / hide elevation styling', group: 'Elevation', keys: 'L', run: () => appState().togglePanel('elevation') },

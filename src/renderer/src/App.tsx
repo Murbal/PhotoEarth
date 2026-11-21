@@ -3,6 +3,7 @@ import { BookmarksPanel } from './components/BookmarksPanel'
 import { Banners } from './components/Banners'
 import { CommandPalette } from './components/CommandPalette'
 import { ElevationPanel } from './components/ElevationPanel'
+import { HorizonPanel } from './components/HorizonPanel'
 import { MapView } from './components/MapView'
 import { Onboarding } from './components/Onboarding'
 import { Crosshair, FpsIndicator, InspectCard, LoadingBar, StatusChips, Toast } from './components/Overlays'
@@ -188,6 +189,7 @@ export function App() {
         <Crosshair />
         <div ref={stackRef} className="bottom-stack">
           <ProfilePanel />
+          <HorizonPanel />
           <ViewfinderPanel />
           <TimePanel />
         </div>

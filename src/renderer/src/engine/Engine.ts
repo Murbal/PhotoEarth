@@ -21,6 +21,7 @@ import { appState, useAppStore, type AppState } from '../store/appStore'
 import { CameraController } from './CameraController'
 import { ElevationStyler } from './ElevationStyler'
 import { GoogleImagery } from './GoogleImagery'
+import { HorizonTool } from './HorizonTool'
 import { PlaceLabels } from './PlaceLabels'
 import { PointInspector } from './PointInspector'
 import { ProfileTool } from './ProfileTool'
@@ -35,7 +36,7 @@ import { TerrainShadows } from './TerrainShadows'
 import { TilePreloader } from './TilePreloader'
 import { TilesetManager } from './TilesetManager'
 import { Viewfinder } from './Viewfinder'
-import { cartographicDeg, currentView, pickSurface, surfaceHeight } from './util'
+import { cameraTarget, cartographicDeg, currentView, pickSurface, surfaceHeight, toDeg } from './util'
 
 type ProviderKey = 'tiles' | 'terrain' | 'imagery' | 'labels'
 
@@ -68,6 +69,7 @@ export class Engine {
   readonly sun: SunController
   readonly styler: ElevationStyler
   readonly profile: ProfileTool
+  readonly horizon: HorizonTool
   readonly inspector: PointInspector
   readonly spotSun: SpotSun
   readonly searchMarker: SearchMarker
@@ -178,6 +180,12 @@ export class Engine {
     this.sun = new SunController(this.widget, this.tiles)
     this.styler = new ElevationStyler(scene, this.terrainShadows)
     this.profile = new ProfileTool(this.widget, (points) => this.sampleProfile(points))
+    this.horizon = new HorizonTool(this.widget, {
+      provider: () => this.terrain.provider,
+      nearby: (req) => window.photoearth.places.nearby(req),
+      knownPeaks: () => this.labels.knownPeaks(),
+      canNamePeaks: () => !!this.keys.googleApiKey
+    })
     this.inspector = new PointInspector(this.widget, (lon, lat) => this.preciseGround(lon, lat))
     this.spotSun = new SpotSun(() => this.terrain?.provider ?? null)
     this.searchMarker = new SearchMarker(this.widget, (lon, lat) => this.preciseGround(lon, lat))
@@ -366,6 +374,17 @@ export class Engine {
       )
     )
     s.push(useAppStore.subscribe((st) => st.profile.hoverIndex, () => this.requestRender()))
+    s.push(useAppStore.subscribe((st) => st.settings.horizon.peakNames, () => void this.horizon.namePeaks()))
+    // A token added while the panorama shows "needs terrain" retries it.
+    s.push(
+      useAppStore.subscribe(
+        (st) => st.terrainReady,
+        (ready) => {
+          const h = appState().horizon
+          if (ready && h.open && h.status === 'error' && this.horizon.spot) void this.horizon.open(this.horizon.spot)
+        }
+      )
+    )
     s.push(
       subscribeJson(
         (st) => [st.viewfinder, st.settings.viewfinder] as const,
@@ -479,7 +498,10 @@ export class Engine {
     this.clickTimer = window.setTimeout(() => {
       this.clickTimer = null
       const hit = pickSurface(this.scene, p.x, p.y)
-      if (hit) {
+      if (!hit) return
+      // With the horizon panorama open, a click moves its observer.
+      if (this.horizon.isOpen) void this.openHorizon(hit)
+      else {
         void this.inspector.inspect(hit)
         void this.spotSun.inspect(hit)
       }
@@ -682,6 +704,34 @@ export class Engine {
   /** Eye level on/off: at the dropped pin if there is one, else under the cursor. */
   toggleEyeLevel(): Promise<void> {
     return this.camera.toggleEyeLevel(this.eyeLevelSpot ?? undefined)
+  }
+
+  /**
+   * Horizon panorama for an observer at `position`, else at the inspected point, the search
+   * pin or the view center.
+   */
+  async openHorizon(position?: Cartesian3): Promise<void> {
+    const spot = position ?? this.inspector.point ?? this.searchMarker.point ?? cameraTarget(this.scene)
+    this.inspector.clear()
+    // On the 3D tiles a roof or tower counts as the observer's footing (at full detail); on
+    // the terrain, or with exaggerated heights, the panorama's own grids give the ground.
+    const { mode, tilesetReady } = appState()
+    const c = Cartographic.fromCartesian(spot)
+    const tiles = mode === 'photorealistic' && tilesetReady && this.scene.verticalExaggeration === 1
+    await this.horizon.open(spot, tiles ? this.preciseGround(toDeg(c.longitude), toDeg(c.latitude)) : undefined)
+  }
+
+  /** H: opens the panorama, or closes it when it is open. */
+  toggleHorizon(): void {
+    if (this.horizon.isOpen) this.horizon.close()
+    else void this.openHorizon()
+  }
+
+  /** Stands at the panorama's observer, looking at an azimuth and altitude (degrees). */
+  lookFromHorizon(azimuth: number, altitude: number): Promise<void> {
+    const spot = this.horizon.spot
+    if (!spot) return Promise.resolve()
+    return this.camera.goToEyeLevel(spot, { heading: azimuth, pitch: altitude })
   }
 
   startProfile(): void {

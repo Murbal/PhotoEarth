@@ -162,6 +162,11 @@ export class PlaceLabels {
     this.scene.requestRender()
   }
 
+  /** Mountain peaks found so far (the horizon panorama names its skyline with them too). */
+  knownPeaks(): KnownPlace[] {
+    return [...this.known.values()].filter((p) => p.kind === 'mountain_peak')
+  }
+
   /** Call when the camera stops: queries the new view once it has settled. */
   onMoveEnd(): void {
     if (!this.active) return

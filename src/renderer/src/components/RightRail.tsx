@@ -156,6 +156,7 @@ export function RightRail() {
   const togglePanel = useAppStore((s) => s.togglePanel)
   const set = useAppStore((s) => s.set)
   const profileOn = useAppStore((s) => s.profile.active || s.profile.samples.length > 0)
+  const horizonOpen = useAppStore((s) => s.horizon.open)
   const eyeLevel = useAppStore((s) => s.eyeLevel)
   const flyMode = useAppStore((s) => s.flyMode)
   // Where Eye level stands (Engine.eyeLevelSpot): the inspect marker, then the search pin.
@@ -190,6 +191,14 @@ export function RightRail() {
             if (profileOn) e.profile.clear()
             else e.startProfile()
           }}
+        />
+        <RailButton
+          icon="panorama"
+          label={horizonOpen ? 'Horizon panorama: close' : 'Horizon panorama: skyline, sun & moon paths'}
+          keys="H"
+          active={horizonOpen}
+          pressed={horizonOpen}
+          onClick={() => getEngine()?.toggleHorizon()}
         />
         <RailButton
           icon="viewfinder"

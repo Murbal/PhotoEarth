@@ -50,6 +50,7 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
       ['T', 'Time & sun panel'],
       ['L', 'Elevation styling panel'],
       ['P', 'Elevation profile'],
+      ['H', 'Horizon panorama: skyline, sun & moon paths'],
       ['V', 'Viewfinder: lens, crop frame & guides'],
       [', / .', 'Viewfinder: shorter / longer focal length preset'],
       [shortcutLabel('Shift+, / .'), 'Viewfinder: focal length ∓5 %'],
