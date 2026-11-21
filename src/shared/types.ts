@@ -1,5 +1,7 @@
 // Types shared by the main, preload and renderer processes.
 
+import type { ParsedLocation } from './coords'
+
 export type MapMode = 'photorealistic' | 'elevation'
 export type QualityPreset = 'low' | 'medium' | 'high' | 'ultra'
 export type Units = 'metric' | 'imperial'
@@ -24,6 +26,8 @@ export interface QualityOverrides {
   shadowMapSize: number | null
   shadowCascades: 1 | 4 | null
   softShadows: boolean | null
+  /** Range of building/tree detail shadows near a low camera, meters (0 = off). */
+  detailShadowDistance: number | null
   /** Cells per side of the terrain shadow grids. */
   terrainShadowResolution: number | null
   msaaSamples: number | null
@@ -131,6 +135,24 @@ export interface HorizonSettings {
   peakNames: boolean
 }
 
+export type ViewshedColorMode = 'distance' | 'solid'
+
+/** Viewshed analysis overlay: line-of-sight visibility from a selected target point. */
+export interface ViewshedSettings {
+  /** Analysis radius, meters. */
+  radius: number
+  /** Target height offset above ground, meters (e.g. 1.7 m eye height, 0 m peak, 50 m tower/drone). */
+  targetOffset: number
+  /** Surrounding viewer height offset above ground, meters (e.g. 1.7 m standing photographer). */
+  viewerOffset: number
+  /** Overlay opacity (0–1). */
+  opacity: number
+  /** Distance-tinted visibility ('distance') or uniform tint ('solid'). */
+  colorMode: ViewshedColorMode
+  /** Draw concentric distance rings within the analysis radius. */
+  showRings: boolean
+}
+
 export interface Settings {
   version: 1
   units: Units
@@ -160,6 +182,7 @@ export interface Settings {
   forecast: boolean
   viewfinder: ViewfinderSettings
   horizon: HorizonSettings
+  viewshed: ViewshedSettings
   bookmarkIncludeTime: boolean
   /** Markers for the saved locations on the map. */
   showLocationMarkers: boolean
@@ -421,6 +444,12 @@ export interface WeatherRequest {
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: ApiCheck }
 
+/** Where a Google Maps short link leads: the full URL and what it parses to. */
+export interface ResolvedMapsLink {
+  url: string
+  location: ParsedLocation
+}
+
 export interface AppInfo {
   version: string
   platform: string
@@ -486,6 +515,10 @@ export interface PhotoEarthApi {
   weather: {
     /** Hourly forecast for the next 16 days at each point (Open-Meteo, no key). */
     forecast(request: WeatherRequest): Promise<Result<WeatherSeries[]>>
+  }
+  maps: {
+    /** Follows a maps.app.goo.gl / goo.gl/maps link to its google.com/maps URL (online, no key). */
+    resolveShortLink(url: string): Promise<Result<ResolvedMapsLink>>
   }
   openExternal(url: string): Promise<void>
   onMenuCommand(listener: (command: MenuCommand) => void): () => void

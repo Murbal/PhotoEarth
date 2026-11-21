@@ -6,7 +6,7 @@ import {
   parseCoordinatePair,
   parseGoogleMapsUrl,
   parseLocationInput
-} from '@renderer/lib/coords'
+} from '@shared/coords'
 
 const close = (a: number | undefined, b: number, eps = 1e-4) => expect(Math.abs((a ?? NaN) - b)).toBeLessThan(eps)
 
@@ -86,7 +86,7 @@ describe('Google Maps URLs', () => {
     close(parseGoogleMapsUrl('geo:46.5577,7.9586')?.latitude, 46.5577)
   })
 
-  it('recognises short links it cannot resolve offline', () => {
+  it('recognises short links, which carry no coordinates themselves', () => {
     expect(isShortMapsLink('https://maps.app.goo.gl/abc123')).toBe(true)
     expect(parseLocationInput('https://maps.app.goo.gl/abc123')).toBeNull()
   })

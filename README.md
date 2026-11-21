@@ -25,7 +25,7 @@ On first launch PhotoEarth asks for two keys, validates them with a test request
 | Key | Used for | Where |
 |---|---|---|
 | Google Maps Platform API key | Photorealistic 3D Tiles, 2D satellite/terrain imagery (Map Tiles API), place search and the place names on the map (Places API (New)) | [Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials). Enable **Map Tiles API** and **Places API (New)**. |
-| Cesium ion access token | Cesium World Terrain: Elevation mode, profiles, long-range terrain shadows | [ion.cesium.com/tokens](https://ion.cesium.com/tokens) |
+| Cesium ion access token | Cesium World Terrain: Elevation mode, profiles, long-range terrain shadows, horizon panorama, viewshed analysis | [ion.cesium.com/tokens](https://ion.cesium.com/tokens) |
 
 Both work on their free tiers. Either can be skipped and added later in **Settings → API keys**.
 
@@ -62,7 +62,9 @@ They're loaded in the main process only, so they never end up in the renderer bu
 | `Ctrl+B` | Save the view as a scouting location |
 | `T` / `L` / `P` | Time & sun panel / elevation styling / elevation profile |
 | `V` | Viewfinder: frame the view through a real sensor and focal length |
+| `Shift+V` | Viewshed analysis: highlight all terrain with line of sight to a target |
 | `H` | Horizon panorama: the skyline with the sun and moon paths |
+| `X` | Shot alignment: Camera → Subject line of sight & reverse Sun/Moon date finder |
 | `,` / `.`, `Shift+,` / `Shift+.` | Viewfinder: previous / next focal length preset, ∓5 % |
 | `M` | Place names on / off |
 | `Space`, `[` `]`, `Shift+[` `]` | Play/pause the sun, ±15 min, ±1 day |
@@ -73,6 +75,20 @@ They're loaded in the main process only, so they never end up in the renderer bu
 `H` (or the panorama button on the inspect card, the right rail or the palette) answers "does the sun set into that notch or behind the peak, and when?". From the inspected point (else the search pin or the view center) it traces the terrain skyline through 360° out to ~300 km on Cesium World Terrain, and draws it as a strip chart of altitude against compass direction. Over it go the sun's and the moon's paths for the chosen date, marked hourly, solid where they are above the skyline and dashed behind it, with the times they clear and drop behind the terrain (compared with a flat-horizon sunrise and sunset) and the hours of direct sun. Named peaks on the skyline are labeled from Google Places.
 
 Scroll to zoom, drag to turn, or jump to the sunrise or sunset close-up; *1:1* shows true angles instead of the stretched skyline. Hovering shows the direction, altitude, distance and height of the skyline and draws the line of sight on the map. Clicking the sun or moon path sets the time to that moment, and *Look* stands you at the observer at eye level, facing the selected direction. While the panorama is open, clicking the map moves the observer. It needs the Cesium ion token; peak names need the Google key.
+
+### Viewshed analysis
+
+`Shift+V` (or *Viewshed from here* on the inspect card, the right rail, the Elevation panel or the command palette) answers "where can I stand to see that mountain peak or landmark?". Using three nested grids of Cesium World Terrain heights centered on the target (5 / 15 / 30 / 50 km radius, sharing the terrain-shadow tile cache), a GPU compute pass ray-marches line of sight with Earth curvature and terrestrial refraction (`k = 0.13`) and drapes the visible terrain onto both Photorealistic 3D Tiles and Elevation mode alongside terrain shadows.
+
+Adjust target height offset (ground/peak 0 m, eye level 1.7 m, tower or drone up to 500 m), surrounding viewer height offset, overlay opacity, distance-tinted or uniform coloring, and concentric distance rings for judging focal-length range, with live visible-area coverage stats. Clicking any point while exploring inspects it as usual, reports whether it has unobstructed line of sight to the target (with distance, bearing, elevation angle and clearance), and lets you drop straight to eye level or open the viewfinder aimed back at the target. Needs a Cesium ion token.
+
+### Shot alignment & reverse date finder
+
+`X` (or the alignment button on the right rail, the inspect card, the command palette, or *Align* in the horizon panorama) plans sun and moon alignments behind specific landmarks, peaks or buildings:
+
+- **Camera → Subject pins**: pick a Camera spot (with configurable eye/tripod height above ground, defaulting to 1.7 m) and a Subject point on terrain or 3D tiles, or adopt the active inspect/search pin. The 3D map draws both pins, a ground reference track, and a 3D sightline colored green when clear or dashed red with a **Blocked** marker at the worst obstructing ridge when terrain intercepts the view.
+- **Geometry & framing readouts**: true compass bearing and geodesic reverse bearing, apparent vertical elevation angle (including Earth curvature and standard terrestrial refraction `k = 0.13`), horizontal and 3D slope distance, elevation difference, line-of-sight clearance, apparent Sun/Moon linear disc width at the subject distance (including lunar apogee–perigee range), and framing coverage in the active Viewfinder lens.
+- **Reverse Sun & Moon date finder**: searches forward across 30 days, 90 days, 1 year, 2 years or a custom date range (in the observer's local time zone, across DST transitions) for exact dates and times when the Sun or Moon aligns within configurable azimuth and altitude tolerances. Filter Moon shots by minimum illumination % and sky light (golden hour, blue hour, twilight, night or daylight). Clicking a result jumps the simulation to that exact instant; *Look* (or *Frame shot on click*) stands at the Camera pin aimed at the Subject.
 
 ### Saved scouting locations
 
@@ -122,13 +138,14 @@ src/
   renderer/src/
     engine/    Engine (owns the CesiumWidget) and the managers from SPEC §4:
                TilesetManager, TerrainManager, GoogleImagery, CameraController,
-               SunController, MoonController, ElevationStyler, ProfileTool, PointInspector, Readouts,
-               LocationMarkers,
-               TerrainShadowOverlay, quality presets
+               SunController, MoonController, ElevationStyler, ProfileTool, HorizonTool,
+               ViewshedTool, AlignmentTool, PointInspector, Readouts, LocationMarkers,
+               TerrainShadows, quality presets
     components/ React overlay UI (the canvas belongs to Cesium)
     store/     Zustand app state; React writes it, the engine subscribes to it
-    lib/       pure, unit-tested logic: time zones, sun, moon, seasons, coordinates, geoid,
-               profile math, terrain-shadow ray marching, weather outlook, palettes, units
+    lib/       pure, unit-tested logic: time zones, sun, moon, alignment, seasons, coordinates, geoid,
+               profile math, terrain-shadow & viewshed ray marching, horizon panorama,
+               weather outlook, palettes, units
 ```
 
 Notable decisions:

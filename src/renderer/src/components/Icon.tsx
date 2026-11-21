@@ -127,6 +127,14 @@ const PATHS: Record<string, ReactElement> = {
       <circle cx="17.5" cy="5.5" r="2" />
     </>
   ),
+  /** Sightlines fanning out from a target beacon: viewshed analysis overlay. */
+  viewshed: (
+    <>
+      <path d="M2.5 12s3.8-6.5 9.5-6.5S21.5 12 21.5 12s-3.8 6.5-9.5 6.5S2.5 12 2.5 12z" />
+      <circle cx="12" cy="12" r="2.8" />
+      <path d="M12 2.5v2M4.5 5.5l1.5 1.5M19.5 5.5 18 7" />
+    </>
+  ),
   /** An attitude indicator with a level horizon: level the horizon (remove roll). */
   horizon: (
     <>
@@ -145,6 +153,22 @@ const PATHS: Record<string, ReactElement> = {
     <>
       <circle cx="12" cy="12" r="9" />
       <circle cx="12" cy="12" r="2" fill="currentColor" />
+    </>
+  ),
+  /** Two pins connected by a sightline to a target: Camera → Subject shot alignment. */
+  alignment: (
+    <>
+      <circle cx="5.5" cy="18.5" r="2.2" fill="currentColor" />
+      <path d="M7.3 16.7 15.8 8.2" strokeDasharray="2 2" />
+      <circle cx="18" cy="6" r="3" />
+      <path d="M18 1.5v1.3M18 9.2v1.3M13.5 6h1.3M21.2 6h1.3" />
+    </>
+  ),
+  /** Swap two items vertically. */
+  swap: (
+    <>
+      <path d="M7 16V4M7 4 4 7M7 4l3 3" />
+      <path d="M17 8v12M17 20l-3-3M17 20l3-3" />
     </>
   )
 }

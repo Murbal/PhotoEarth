@@ -1,12 +1,32 @@
+import { formatLatLonPlain } from '@shared/coords'
 import type { Units } from '@shared/types'
 
 export const FEET_PER_METER = 3.280839895
 
-export function formatElevation(meters: number | null | undefined, units: Units): string {
+/**
+ * Whole meters or feet: "1,234 m", "4,049 ft". `grouping: false` drops the thousands
+ * separator ("1234 m") for text that is itself comma-separated, like the clipboard.
+ */
+export function formatElevation(meters: number | null | undefined, units: Units, { grouping = true } = {}): string {
   if (meters === null || meters === undefined || !Number.isFinite(meters)) return '—'
-  return units === 'imperial'
-    ? `${Math.round(meters * FEET_PER_METER).toLocaleString('en-US')} ft`
-    : `${Math.round(meters).toLocaleString('en-US')} m`
+  const value = Math.round(units === 'imperial' ? meters * FEET_PER_METER : meters)
+  return `${value.toLocaleString('en-US', { useGrouping: grouping })} ${units === 'imperial' ? 'ft' : 'm'}`
+}
+
+/**
+ * The inspect card's clipboard line: plain decimal coordinates, then the elevation in the
+ * chosen units and any extra readouts, e.g. "46.557700, 7.958600, 13016 ft, 21.10 mag/arcsec² (…)".
+ */
+export function formatPointForClipboard(
+  lat: number,
+  lon: number,
+  elevation: number | null,
+  units: Units,
+  extras: readonly string[] = []
+): string {
+  const parts = [formatLatLonPlain(lat, lon)]
+  if (elevation !== null && Number.isFinite(elevation)) parts.push(formatElevation(elevation, units, { grouping: false }))
+  return [...parts, ...extras].join(', ')
 }
 
 export function formatDistance(meters: number, units: Units): string {

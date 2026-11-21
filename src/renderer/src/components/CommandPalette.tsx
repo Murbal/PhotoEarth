@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MIN_QUERY_LENGTH } from '@shared/places'
-import type { PlaceSuggestion } from '@shared/types'
+import type { PlaceSuggestion, ResolvedMapsLink, Result } from '@shared/types'
 import { getCommands, type Command } from '../commands'
 import { getEngine } from '../engine/instance'
 import { useDialogFocus } from '../hooks/useDialogFocus'
 import { flyToBookmark, openProfile } from '../lib/locations'
-import { coordinateProblem, formatLatLon, isShortMapsLink, parseLocationInput } from '../lib/coords'
+import { coordinateProblem, formatLatLon, isShortMapsLink, parseLocationInput } from '@shared/coords'
 import { DEBOUNCE_MS, PlacesSession } from '../lib/places'
+import { resolveShortLink } from '../lib/shortLinks'
 import { useAppStore } from '../store/appStore'
 import { Icon, type IconName } from './Icon'
 
@@ -44,6 +45,14 @@ interface PlacesResult {
 const NO_SUGGESTIONS: PlaceSuggestion[] = []
 const NO_PLACES: PlacesResult = { query: '', places: NO_SUGGESTIONS, error: null }
 
+interface ShortLinkResult {
+  /** The trimmed query (a short link) this answers. */
+  link: string
+  result: Result<ResolvedMapsLink>
+}
+
+const MAPS_LINK_DETAIL = 'From Google Maps link'
+
 function PaletteDialog() {
   const set = useAppStore((s) => s.set)
   const bookmarks = useAppStore((s) => s.bookmarks)
@@ -53,6 +62,7 @@ function PaletteDialog() {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
   const [result, setResult] = useState<PlacesResult>(NO_PLACES)
+  const [shortLink, setShortLink] = useState<ShortLinkResult | null>(null)
   const session = useMemo(() => new PlacesSession(), [])
   const dialogRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -65,7 +75,13 @@ function PaletteDialog() {
   // Text that reads as coordinates but isn't a valid location is explained, never sent to
   // address search ("91, 181" is not a street address).
   const coordError = q && !coords ? coordinateProblem(q) : null
-  const placesEligible = hasGoogleKey && q.length >= MIN_QUERY_LENGTH && !coords && !coordError && !isShortMapsLink(q)
+  // Short links carry no coordinates; the main process follows them to the full URL.
+  const isShortLink = !coords && isShortMapsLink(q)
+  const shortResult = isShortLink && shortLink?.link === q ? shortLink.result : null
+  const resolving = isShortLink && !shortResult
+  const shortCoords = shortResult?.ok ? shortResult.data.location : null
+  const shortError = shortResult && !shortResult.ok ? shortResult.error.message : null
+  const placesEligible = hasGoogleKey && q.length >= MIN_QUERY_LENGTH && !coords && !coordError && !isShortLink
   // Pending from the first render after a keystroke, so "No matches" never flashes while a
   // search is still on its way.
   const searching = placesEligible && result.query !== q
@@ -88,6 +104,20 @@ function PaletteDialog() {
     return () => window.clearTimeout(timer)
   }, [q, placesEligible, session, target])
 
+  // Debounced, so typing a link by hand doesn't request every prefix of it.
+  useEffect(() => {
+    if (!isShortLink) return
+    let current = true
+    const timer = window.setTimeout(async () => {
+      const res = await resolveShortLink(q)
+      if (current) setShortLink({ link: q, result: res })
+    }, DEBOUNCE_MS)
+    return () => {
+      current = false
+      window.clearTimeout(timer)
+    }
+  }, [q, isShortLink])
+
   const items = useMemo<Item[]>(() => {
     const out: Item[] = []
     if (coords) {
@@ -97,16 +127,30 @@ function PaletteDialog() {
         icon: 'pin',
         title: formatLatLon(coords.latitude, coords.longitude, 'decimal'),
         subtitle: coords.source === 'url' ? 'from Google Maps link' : coords.source === 'dms' ? 'DMS' : 'decimal degrees',
-        run: () => getEngine()?.goToCoordinates(coords, coords.source === 'url' ? 'From Google Maps link' : 'Coordinates')
+        run: () => getEngine()?.goToCoordinates(coords, coords.source === 'url' ? MAPS_LINK_DETAIL : 'Coordinates')
       })
-    } else if (q && isShortMapsLink(q)) {
+    } else if (shortCoords) {
+      out.push({
+        key: 'coords',
+        group: 'Go to coordinates',
+        icon: 'pin',
+        title: formatLatLon(shortCoords.latitude, shortCoords.longitude, 'decimal'),
+        subtitle: 'from Google Maps short link',
+        run: () => getEngine()?.goToCoordinates(shortCoords, MAPS_LINK_DETAIL)
+      })
+    } else if (resolving) {
       out.push({
         key: 'short',
         group: 'Go to coordinates',
-        icon: 'info',
-        title: 'Short links can’t be resolved offline',
-        subtitle: 'Open it in a browser and paste the full google.com/maps URL',
-        run: () => undefined
+        icon: 'clock',
+        title: 'Resolving short link…',
+        subtitle: 'Asking Google Maps where it leads',
+        // Enter before the answer arrives still goes there once it does.
+        run: async () => {
+          const res = await resolveShortLink(q)
+          if (res.ok) await getEngine()?.goToCoordinates(res.data.location, MAPS_LINK_DETAIL)
+          else useAppStore.getState().showToast(res.error.message)
+        }
       })
     }
     for (const p of places) {
@@ -149,7 +193,7 @@ function PaletteDialog() {
       out.push({ key: `cmd-${c.id}`, group: 'Commands', icon: 'command', title: c.title, hint: c.keys, run: c.run })
     }
     return out
-  }, [q, coords, places, bookmarks, profiles, session])
+  }, [q, coords, shortCoords, resolving, places, bookmarks, profiles, session])
 
   useEffect(() => setSelected(0), [q, places.length])
   useEffect(() => {
@@ -171,15 +215,19 @@ function PaletteDialog() {
   })
   const optionId = (i: number) => `palette-option-${i}`
   const active = items[selected]
-  const status = searching
-    ? 'Searching places…'
-    : coordError
-      ? `Invalid coordinates. ${coordError}`
-      : placesError
-        ? placesError
-        : items.length === 0
-          ? 'No matches'
-          : `${items.length} result${items.length === 1 ? '' : 's'}`
+  const status = resolving
+    ? 'Resolving short link…'
+    : searching
+      ? 'Searching places…'
+      : coordError
+        ? `Invalid coordinates. ${coordError}`
+        : shortError
+          ? `Short link not resolved. ${shortError}`
+          : placesError
+            ? placesError
+            : items.length === 0
+              ? 'No matches'
+              : `${items.length} result${items.length === 1 ? '' : 's'}`
 
   return (
     <div className="scrim" onPointerDown={(e) => e.target === e.currentTarget && close()}>
@@ -209,9 +257,9 @@ function PaletteDialog() {
             aria-describedby="palette-status"
             spellCheck={false}
           />
-          {searching && (
+          {(searching || resolving) && (
             <span className="small faint" aria-hidden="true">
-              searching…
+              {resolving ? 'resolving…' : 'searching…'}
             </span>
           )}
         </div>
@@ -224,8 +272,13 @@ function PaletteDialog() {
               <strong>Invalid coordinates.</strong> {coordError}
             </div>
           )}
+          {shortError && (
+            <div className="notice palette-notice">
+              <strong>Short link not resolved.</strong> {shortError}
+            </div>
+          )}
           {placesError && <div className="notice palette-notice">{placesError}</div>}
-          {items.length === 0 && !coordError && !placesError && (
+          {items.length === 0 && !coordError && !shortError && !placesError && (
             <div className="muted" style={{ padding: 14 }}>
               {searching ? 'Searching places…' : 'No matches.'}
             </div>

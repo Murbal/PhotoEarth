@@ -133,7 +133,7 @@ export function LightPollutionSection() {
   )
 }
 
-/** One line for the clipboard: "21.10 mag/arcsec² (Bortle ≈ 4)". */
+/** One line for the clipboard: "21.10 mag/arcsec² (Bortle ≈ 4, estimate)". No unit setting applies to it. */
 export function skySummary(e: SkyEstimate): string {
   return `${fmtMpsas(e.mpsas)} mag/arcsec² (Bortle ≈ ${e.bortle.label}, estimate)`
 }

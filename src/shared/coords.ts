@@ -1,4 +1,5 @@
-// Coordinate parsing (decimal, DMS/DDM, Google Maps URLs) and formatting.
+// Coordinate parsing (decimal, DMS/DDM, Google Maps URLs) and formatting. Shared: the main
+// process parses the URLs that Google Maps short links resolve to (main/shortLinks.ts).
 
 export interface ParsedLocation {
   latitude: number

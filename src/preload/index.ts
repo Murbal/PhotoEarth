@@ -41,6 +41,9 @@ const api: PhotoEarthApi = {
   weather: {
     forecast: (request) => ipcRenderer.invoke(IPC.weatherForecast, request)
   },
+  maps: {
+    resolveShortLink: (url) => ipcRenderer.invoke(IPC.mapsResolveShortLink, url)
+  },
   openExternal: (url) => ipcRenderer.invoke(IPC.openExternal, url),
   onMenuCommand: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, command: MenuCommand) => listener(command)

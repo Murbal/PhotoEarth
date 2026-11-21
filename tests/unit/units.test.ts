@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compassPoint, formatDistance, formatElevation, niceScale } from '@renderer/lib/units'
+import { compassPoint, formatDistance, formatElevation, formatPointForClipboard, niceScale } from '@renderer/lib/units'
 import { paletteColor, paletteGradientCss } from '@renderer/lib/palettes'
 
 describe('units', () => {
@@ -7,6 +7,8 @@ describe('units', () => {
     expect(formatElevation(3967.4, 'metric')).toBe('3,967 m')
     expect(formatElevation(3967.4, 'imperial')).toBe('13,016 ft')
     expect(formatElevation(null, 'metric')).toBe('—')
+    expect(formatElevation(3967.4, 'metric', { grouping: false })).toBe('3967 m')
+    expect(formatElevation(3967.4, 'imperial', { grouping: false })).toBe('13016 ft')
   })
 
   it('formats distances', () => {
@@ -37,5 +39,19 @@ describe('palettes', () => {
     expect(paletteColor('grayscale', 1)).toEqual([245, 245, 245])
     expect(paletteColor('grayscale', 0.5)).toEqual([131, 131, 131])
     expect(paletteGradientCss('viridis')).toContain('#440154 0%')
+  })
+})
+
+describe('formatPointForClipboard', () => {
+  it('keeps plain decimal coordinates and uses the chosen units for elevation', () => {
+    expect(formatPointForClipboard(46.5577, 7.9586, 3967.4, 'metric')).toBe('46.557700, 7.958600, 3967 m')
+    expect(formatPointForClipboard(46.5577, 7.9586, 3967.4, 'imperial')).toBe('46.557700, 7.958600, 13016 ft')
+  })
+
+  it('leaves out an unknown elevation and appends extra readouts', () => {
+    expect(formatPointForClipboard(-33.9, 18.4, null, 'imperial')).toBe('-33.900000, 18.400000')
+    expect(formatPointForClipboard(46.5577, 7.9586, 1234, 'metric', ['21.10 mag/arcsec² (Bortle ≈ 4, estimate)'])).toBe(
+      '46.557700, 7.958600, 1234 m, 21.10 mag/arcsec² (Bortle ≈ 4, estimate)'
+    )
   })
 })
