@@ -2,7 +2,9 @@ import type { ImageryType, QualityPreset } from '@shared/types'
 import { getEngine } from './engine/instance'
 import { saveCurrentView } from './lib/locations'
 import { GUIDES, nudgeFocal, stepFocal } from './lib/lens'
+import { astroNight, LOW_MOON_ILLUMINATION } from './lib/milkyWay'
 import { shortcutLabel } from './lib/platform'
+import { addDays } from './lib/time'
 import { appState } from './store/appStore'
 
 export type CommandGroup = 'View' | 'Navigation' | 'Time & sun' | 'Elevation' | 'Tools' | 'App'
@@ -139,6 +141,40 @@ export function getCommands(): Command[] {
     { id: 'toggle-sun-indicator', title: 'Toggle sun direction indicator', group: 'Time & sun', run: toggleSetting((d) => void (d.showSunIndicator = !d.showSunIndicator)) },
     { id: 'toggle-moon-indicator', title: 'Toggle moon direction indicator', group: 'Time & sun', run: toggleSetting((d) => void (d.showMoonIndicator = !d.showMoonIndicator)) },
     {
+      id: 'toggle-milky-way-indicator',
+      title: 'Toggle Milky Way / Galactic Core direction indicator',
+      group: 'Time & sun',
+      keywords: 'milky way galactic core sagittarius astro night sky direction arrow',
+      run: toggleSetting((d) => void (d.showMilkyWayIndicator = !d.showMilkyWayIndicator))
+    },
+    {
+      id: 'jump-milky-way-peak',
+      title: 'Jump to peak Galactic Core dark window',
+      group: 'Time & sun',
+      keywords: 'milky way galactic core astro dark window night peak',
+      run: () => {
+        const s = appState()
+        const eng = engine()
+        if (!eng) return
+        const useHorizon = s.horizon.open && s.horizon.horizon && s.horizon.observer
+        const lat = useHorizon ? s.horizon.observer!.latitude : (s.target?.latitude ?? 0)
+        const lon = useHorizon ? s.horizon.observer!.longitude : (s.target?.longitude ?? 0)
+        const nightDate = s.sim.minutes < 360 ? addDays(s.sim.date, -1) : s.sim.date
+        const night = astroNight(nightDate, s.sim.timeZone, lat, lon, {
+          minCoreAltitude: s.settings.astro.minCoreAltitude,
+          maxMoonIllumination: s.settings.astro.allowLowMoon ? LOW_MOON_ILLUMINATION : 0,
+          horizon: useHorizon ? s.horizon.horizon : null
+        })
+        const targetUtc = night.peakCore?.utc ?? night.moonlessDark[0]?.start ?? night.astroDark[0]?.start ?? null
+        if (targetUtc !== null) {
+          eng.sun.setInstant(targetUtc)
+          s.togglePanel('time', true)
+        } else {
+          s.showToast('No astronomical dark window on this night')
+        }
+      }
+    },
+    {
       id: 'toggle-detail-shadows',
       title: 'Toggle building & tree shadows',
       group: 'Time & sun',
@@ -152,7 +188,14 @@ export function getCommands(): Command[] {
       keywords: 'weather clouds cloud cover fog mist wind gusts visibility rain precipitation open-meteo sunrise sunset rating twilight',
       run: toggleSetting((d) => void (d.forecast = !d.forecast))
     },
-    { id: 'toggle-time-panel',title: 'Show / hide time & sun panel', group: 'Time & sun', keys: 'T', keywords: 'moon phase moonrise moonset', run: () => appState().togglePanel('time') },
+    {
+      id: 'toggle-time-panel',
+      title: 'Show / hide time & sun panel',
+      group: 'Time & sun',
+      keys: 'T',
+      keywords: 'moon phase moonrise moonset milky way galactic core astro dark window',
+      run: () => appState().togglePanel('time')
+    },
     { id: 'play-pause', title: 'Play / pause sun animation', group: 'Time & sun', keys: 'Space', run: () => engine()?.sun.togglePlay() },
     { id: 'time-now', title: 'Set time to now', group: 'Time & sun', run: () => engine()?.sun.setNow() },
     { id: 'time-back', title: 'Time −15 min', group: 'Time & sun', keys: '[', run: () => engine()?.sun.nudgeMinutes(-15) },
@@ -206,10 +249,10 @@ export function getCommands(): Command[] {
     { id: 'profile-clear', title: 'Clear elevation profile', group: 'Tools', run: () => engine()?.profile.clear() },
     {
       id: 'horizon-panorama',
-      title: 'Horizon panorama with sun & moon paths (at the pin or view center)',
+      title: 'Horizon panorama with sun, moon & Milky Way paths (at the pin or view center)',
       group: 'Tools',
       keys: 'H',
-      keywords: 'skyline peakfinder photopills sunrise sunset moonrise moonset peaks mountains notch ridge',
+      keywords: 'skyline peakfinder photopills sunrise sunset moonrise moonset milky way galactic core arch astro peaks mountains notch ridge',
       run: () => engine()?.toggleHorizon()
     },
     {
@@ -218,6 +261,13 @@ export function getCommands(): Command[] {
       group: 'Tools',
       keywords: 'skyline moonrise moonset',
       run: toggleSetting((d) => void (d.horizon.moon = !d.horizon.moon))
+    },
+    {
+      id: 'toggle-horizon-milky-way',
+      title: 'Horizon panorama: Milky Way & Galactic Core on / off',
+      group: 'Tools',
+      keywords: 'skyline milky way galactic core arch astro',
+      run: toggleSetting((d) => void (d.horizon.milkyWay = !d.horizon.milkyWay))
     },
     {
       id: 'toggle-horizon-peaks',

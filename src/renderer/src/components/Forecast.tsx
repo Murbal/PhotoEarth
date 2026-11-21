@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import type { Units, WeatherSeries } from '@shared/types'
 import { haversine } from '../lib/profile'
-import { formatClock, formatShortDate, parseDate, utcToZoned, zonedToUtc } from '../lib/time'
+import { astroNight, LOW_MOON_ILLUMINATION, type AstroNight } from '../lib/milkyWay'
+import { addDays, formatClock, formatDuration, formatShortDate, localMinutesOf, parseDate, utcToZoned, zonedToUtc } from '../lib/time'
 import { compassPoint, formatDistance, formatSpeed } from '../lib/units'
 import {
   fogRisk,
@@ -92,8 +93,35 @@ function weekday(date: string): string {
   return WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()]
 }
 
+function astroTitle(night: AstroNight, timeZone: string): string {
+  const nextDay = parseDate(addDays(night.date, 1)).day
+  const lines = [`Night ${formatShortDate(night.date)}–${nextDay}: ${RATING_LABEL[night.rating]}`]
+  if (night.astroDark.length === 0) {
+    lines.push(`No astronomical night (sun reaches ${night.darkestSunAltitude.toFixed(1)}°)`)
+  } else if (night.moonlessDark.length === 0) {
+    lines.push('Moon up during astronomical night')
+  } else if (night.coreDarkWindows.length > 0 && night.peakCore) {
+    const w = night.coreDarkWindows[0]
+    lines.push(
+      `Core dark window ${formatClock(localMinutesOf(w.start, timeZone))}–${formatClock(localMinutesOf(w.end, timeZone))} (${formatDuration(night.totalCoreDarkMs)})`
+    )
+    lines.push(
+      `Peak core ${formatClock(localMinutesOf(night.peakCore.utc, timeZone))} (${night.peakCore.altitude.toFixed(1)}° ${compassPoint(night.peakCore.azimuth)})`
+    )
+  } else {
+    const w = night.moonlessDark[0]
+    lines.push(
+      `Moonless dark ${formatClock(localMinutesOf(w.start, timeZone))}–${formatClock(localMinutesOf(w.end, timeZone))} (${formatDuration(night.totalMoonlessDarkMs)}) · core below threshold`
+    )
+  }
+  if (night.clouds) lines.push(`${night.clouds.label}: avg ${night.clouds.meanCloud}% cloud (best ${night.clouds.minCloud}%)`)
+  if (night.peakCore || night.moonlessDark.length > 0) lines.push('Click to jump to peak core / dark window')
+  return lines.join('\n')
+}
+
 function DayChip({
   day,
+  astro,
   selected,
   forecast,
   timeZone,
@@ -101,6 +129,7 @@ function DayChip({
   onPick
 }: {
   day: DayOutlook
+  astro: AstroNight | null
   selected: boolean
   forecast: Forecast
   timeZone: string
@@ -124,6 +153,7 @@ function DayChip({
         {kind === 'Sunrise' ? '↑' : '↓'}
       </span>
     )
+  const astroJump = astro?.peakCore?.utc ?? astro?.moonlessDark[0]?.start ?? astro?.astroDark[0]?.start ?? null
   const fogTitle = day.morningFog.level !== 'low' ? `Fog ${day.morningFog.level} around sunrise (${day.morningFog.reason})` : ''
   const windTitle = day.maxGust !== null ? `Gusts up to ${formatSpeed(day.maxGust, units)} in daylight` : ''
   return (
@@ -134,6 +164,20 @@ function DayChip({
       <div className="forecast-day-glow">
         {twilight('Sunrise', day.sunrise, forecast.sunriseAzimuth)}
         {twilight('Sunset', day.sunset, forecast.sunsetAzimuth)}
+        {astro && astroJump !== null ? (
+          <button
+            className={`glow-dot astro-dot astro-${astro.rating}`}
+            title={astroTitle(astro, timeZone)}
+            aria-label={`Astro night ${formatShortDate(day.date)}: ${RATING_LABEL[astro.rating]}`}
+            onClick={() => onPick(astroJump)}
+          >
+            ✦
+          </button>
+        ) : (
+          <span className="glow-dot glow-none" title={astro ? astroTitle(astro, timeZone) : undefined} aria-hidden="true">
+            ✦
+          </span>
+        )}
       </div>
       <div className="forecast-day-note">{notes.join(' ') || '\u00a0'}</div>
     </div>
@@ -175,10 +219,29 @@ export function ForecastSection({
   onPick: (utc: number) => void
 }) {
   const { usable: forecast, status, error } = useViewForecast()
+  const astroPrefs = useAppStore((s) => s.settings.astro)
   const days = useMemo(
     () => (forecast ? forecastDays(forecast, timeZone, utcToZoned(Date.now(), timeZone).date) : []),
     [forecast, timeZone]
   )
+  const astroByDate = useMemo(() => {
+    const map = new Map<string, AstroNight>()
+    if (!forecast) return map
+    const { latitude, longitude } = forecast.location
+    const maxMoonIllumination = astroPrefs.allowLowMoon ? LOW_MOON_ILLUMINATION : 0
+    for (const d of days) {
+      map.set(
+        d.date,
+        astroNight(d.date, timeZone, latitude, longitude, {
+          minCoreAltitude: astroPrefs.minCoreAltitude,
+          maxMoonIllumination,
+          weather: forecast.observer,
+          stepMinutes: 10
+        })
+      )
+    }
+    return map
+  }, [forecast, days, timeZone, astroPrefs.minCoreAltitude, astroPrefs.allowLowMoon])
 
   const header = (
     <div className="forecast-header">
@@ -189,7 +252,10 @@ export function ForecastSection({
           {forecast ? 'Update failed' : `Forecast unavailable${error ? `: ${error}` : ''}`}
         </span>
       )}
-      <span className="forecast-legend small muted" title="Sunrise (↑) and sunset (↓) colour outlook: mid and high cloud to catch the light, little low cloud overhead or toward the sun. Click one to go to it.">
+      <span
+        className="forecast-legend small muted"
+        title="Sunrise (↑), sunset (↓) colour outlook and night astro window (✦). Click one to jump to it."
+      >
         {(['poor', 'fair', 'good', 'great'] as const).map((r) => (
           <span key={r}>
             <span className={`legend-swatch glow-${r}`} aria-hidden="true" />
@@ -217,6 +283,8 @@ export function ForecastSection({
   const utc = zonedToUtc(date, minutes, timeZone)
   const hour = forecastHour(forecast.observer, utc)
   const today = days.find((d) => d.date === date)
+  const nightDate = minutes < 360 ? addDays(date, -1) : date
+  const todayAstro = astroByDate.get(nightDate) ?? null
   const fog = hour ? fogRisk(hour) : null
   const wind = hour ? windLevel(hour.windSpeed, hour.windGusts) : null
   const lastDate = days.length > 0 ? days[days.length - 1].date : null
@@ -224,10 +292,18 @@ export function ForecastSection({
   return (
     <div className="forecast">
       {header}
-      <div className="forecast-days" role="list" aria-label="Sunrise and sunset outlook by day">
+      <div className="forecast-days" role="list" aria-label="Sunrise, sunset and astro night outlook by day">
         {days.map((d) => (
           <div role="listitem" key={d.date}>
-            <DayChip day={d} selected={d.date === date} forecast={forecast} timeZone={timeZone} units={units} onPick={onPick} />
+            <DayChip
+              day={d}
+              astro={astroByDate.get(d.date) ?? null}
+              selected={d.date === date}
+              forecast={forecast}
+              timeZone={timeZone}
+              units={units}
+              onPick={onPick}
+            />
           </div>
         ))}
       </div>
@@ -235,6 +311,52 @@ export function ForecastSection({
         <div className="forecast-detail">
           {today?.sunrise && <TwilightLine kind="Sunrise" t={today.sunrise} timeZone={timeZone} azimuth={forecast.sunriseAzimuth} />}
           {today?.sunset && <TwilightLine kind="Sunset" t={today.sunset} timeZone={timeZone} azimuth={forecast.sunsetAzimuth} />}
+          {todayAstro?.clouds && (
+            <>
+              <span className="k">Astro {formatShortDate(todayAstro.date)}</span>
+              <span className={`glow-rating astro-${todayAstro.rating}`} title={astroTitle(todayAstro, timeZone)}>
+                {todayAstro.clouds.label} <span className="mono">{todayAstro.clouds.meanCloud}%</span>
+              </span>
+              <span className="muted">
+                {todayAstro.coreDarkWindows.length > 0 && todayAstro.peakCore ? (
+                  <>
+                    Core window{' '}
+                    <button
+                      className="time-link mw mono"
+                      onClick={() => onPick(todayAstro.coreDarkWindows[0].start)}
+                      title="Jump to Galactic Core dark-window start"
+                    >
+                      {formatClock(localMinutesOf(todayAstro.coreDarkWindows[0].start, timeZone))}–
+                      {formatClock(localMinutesOf(todayAstro.coreDarkWindows[0].end, timeZone))}
+                    </button>
+                    {' · peak '}
+                    <button
+                      className="time-link mw mono"
+                      onClick={() => onPick(todayAstro.peakCore!.utc)}
+                      title="Jump to peak Galactic Core"
+                    >
+                      {formatClock(localMinutesOf(todayAstro.peakCore.utc, timeZone))} ({todayAstro.peakCore.altitude.toFixed(0)}°)
+                    </button>
+                  </>
+                ) : todayAstro.moonlessDark.length > 0 ? (
+                  <>
+                    Moonless dark{' '}
+                    <button
+                      className="time-link mw mono"
+                      onClick={() => onPick(todayAstro.moonlessDark[0].start)}
+                      title="Jump to moonless dark window start"
+                    >
+                      {formatClock(localMinutesOf(todayAstro.moonlessDark[0].start, timeZone))}–
+                      {formatClock(localMinutesOf(todayAstro.moonlessDark[0].end, timeZone))}
+                    </button>{' '}
+                    · core below threshold
+                  </>
+                ) : (
+                  'No moonless dark window'
+                )}
+              </span>
+            </>
+          )}
           {hour && (
             <>
               <span className="k">At {formatClock(utcToZoned(hour.utc, timeZone).minutes)}</span>

@@ -32,6 +32,7 @@ import { ProfileTool } from './ProfileTool'
 import { resolveQuality } from './quality'
 import { Readouts } from './Readouts'
 import { SearchMarker } from './SearchMarker'
+import { MilkyWayController } from './MilkyWayController'
 import { MoonController } from './MoonController'
 import { installDetailShadowPatch } from './shadows/detailShadowPatch'
 import { SpotSun } from './SpotSun'
@@ -75,6 +76,7 @@ export class Engine {
   readonly camera: CameraController
   readonly sun: SunController
   readonly moon: MoonController
+  readonly milkyWay: MilkyWayController
   readonly styler: ElevationStyler
   readonly profile: ProfileTool
   readonly horizon: HorizonTool
@@ -192,6 +194,7 @@ export class Engine {
     this.viewfinder = new Viewfinder(scene, this.camera)
     this.sun = new SunController(this.widget, this.tiles)
     this.moon = new MoonController(this.widget)
+    this.milkyWay = new MilkyWayController(this.widget)
     this.styler = new ElevationStyler(scene, this.terrainShadows)
     this.profile = new ProfileTool(this.widget, (points) => this.sampleProfile(points))
     this.horizon = new HorizonTool(this.widget, {
@@ -238,6 +241,7 @@ export class Engine {
     this.readouts.refresh()
     this.sun.update()
     this.moon.update()
+    this.milkyWay.update()
     void this.setKeys(keys)
     void loadGeoid().then(() => {
       if (this.destroyed) return
@@ -257,6 +261,7 @@ export class Engine {
     this.sun.destroy()
     this.spotSun.destroy()
     this.moon.destroy()
+    this.milkyWay.destroy()
     this.readouts.destroy()
     this.imagery.destroy()
     this.lightPollution.destroy()
@@ -366,6 +371,7 @@ export class Engine {
     s.push(subscribeJson((st) => [st.settings.lighting, st.settings.shadows, st.settings.detailShadows], () => this.applyLighting()))
     s.push(subscribeJson((st) => st.settings.showSunIndicator, () => this.sun.update()))
     s.push(subscribeJson((st) => st.settings.showMoonIndicator, () => this.moon.updateIndicator()))
+    s.push(subscribeJson((st) => st.settings.showMilkyWayIndicator, () => this.milkyWay.updateIndicator()))
     s.push(
       subscribeJson(
         (st) => st.settings.imagery,
@@ -602,6 +608,7 @@ export class Engine {
   private onTarget(target: Cartesian3): void {
     this.sun.setTargetPosition(target)
     this.moon.setTargetPosition(target)
+    this.milkyWay.setTargetPosition(target)
     this.terrainShadows.setView(this.scene.camera.positionWC, target, appState().camera?.heightAgl ?? null)
     const t = cartographicDeg(target)
     if (t) this.styler.setGeoidOffset(t.latitude, t.longitude)

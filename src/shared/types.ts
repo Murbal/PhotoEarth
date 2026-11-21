@@ -120,8 +120,18 @@ export interface LightPollutionSettings {
 export interface HorizonSettings {
   /** The moon's path for the same date. */
   moon: boolean
+  /** The Milky Way arch and Galactic Core path for the same date. */
+  milkyWay: boolean
   /** Names of the peaks on the skyline (Places API Nearby Search). */
   peakNames: boolean
+}
+
+/** Astrophotography dark-window preferences (§11.6). */
+export interface AstroSettings {
+  /** Minimum Galactic Core altitude (degrees) for the dark-window calculation. */
+  minCoreAltitude: number
+  /** Allow a thin crescent moon (≤ 10 % illuminated) in the dark window. */
+  allowLowMoon: boolean
 }
 
 export interface Settings {
@@ -147,8 +157,12 @@ export interface Settings {
   showSunIndicator: boolean
   /** Moon direction line on the map, like the sun's. */
   showMoonIndicator: boolean
+  /** Galactic Core direction line on the map, like the sun's and moon's. */
+  showMilkyWayIndicator: boolean
   /** Open-Meteo cloud, wind and visibility forecast in the time panel (sends the view center to Open-Meteo). */
   forecast: boolean
+  /** Astrophotography / Milky Way dark-window preferences. */
+  astro: AstroSettings
   viewfinder: ViewfinderSettings
   horizon: HorizonSettings
   bookmarkIncludeTime: boolean

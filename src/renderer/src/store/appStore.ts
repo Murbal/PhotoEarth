@@ -6,6 +6,7 @@ import type { ApiKeys, Bookmark, MapMode, SavedProfile, SecretsStatus, Settings 
 import type { BodyDay } from '../lib/celestial'
 import type { SkyEstimate } from '../lib/skyBrightness'
 import type { SunlitSpan } from '../lib/horizon'
+import type { GalacticCoreState } from '../lib/milkyWay'
 import type { MoonState } from '../lib/moon'
 import type { Horizon, SkylinePeak } from '../lib/panorama'
 import type { ProfileSample, ProfileStats, GeoPoint } from '../lib/profile'
@@ -83,6 +84,11 @@ export interface MoonInfo extends MoonState, BodyDay {
   /** First new and full moon from the start of the local day (UTC instants). */
   nextNewMoon: number | null
   nextFullMoon: number | null
+}
+
+/** Galactic Core (Sagittarius A*) and Milky Way arch at the simulated instant and camera target. */
+export interface MilkyWayInfo extends GalacticCoreState, BodyDay {
+  utc: number
 }
 
 export type Panel = 'time' | 'elevation' | 'bookmarks'
@@ -225,6 +231,7 @@ export interface AppState {
   sim: SimState
   sun: SunInfo | null
   moon: MoonInfo | null
+  milkyWay: MilkyWayInfo | null
   banners: Banner[]
   panels: Record<Panel, boolean>
   paletteOpen: boolean
@@ -299,6 +306,7 @@ export const useAppStore = create<AppState>()(
     sim: { ...todayIn(), timeZone: 'UTC', playing: false, speed: '10m' },
     sun: null,
     moon: null,
+    milkyWay: null,
     banners: [],
     panels: { time: false, elevation: false, bookmarks: false },
     paletteOpen: false,

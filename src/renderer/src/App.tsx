@@ -126,10 +126,14 @@ function useOverlayLayout(root: RefObject<HTMLDivElement | null>, stack: RefObje
       const leftInset = left ? GAP + SIDE_PANEL + GAP : EDGE
       const rightInset = right ? RIGHT_PANEL_INSET + SIDE_PANEL + GAP : EDGE
       const besidePanels = width - leftInset - rightInset >= MIN_STACK_WIDTH
-      const stackHeight = stackEl.offsetHeight
       const style = rootEl.style
       style.setProperty('--stack-left', `${besidePanels ? leftInset : EDGE}px`)
       style.setProperty('--stack-right', `${besidePanels ? rightInset : EDGE}px`)
+      // Keep the bottom stack clear of top-center chips (and side panels when they sit above it).
+      const sideAbove = !besidePanels && (left || right)
+      const topClearance = sideAbove ? 60 + 160 + GAP : 112
+      style.setProperty('--stack-max-height', `calc(100% - ${topClearance + STACK_BOTTOM}px)`)
+      const stackHeight = stackEl.offsetHeight
       style.setProperty('--stack-height', `${stackHeight}px`)
       const clearance = !besidePanels && stackHeight > 0 ? STACK_BOTTOM + stackHeight + GAP : STATUS_CLEARANCE
       style.setProperty('--side-bottom', `${clearance}px`)

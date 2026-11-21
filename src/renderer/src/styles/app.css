@@ -15,6 +15,7 @@
   --ok: #4cd18a;
   --sun: #ffc94d;
   --moon: #b8c8ff;
+  --milky-way: #c084fc;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.25);
   --radius: 12px;
   --radius-sm: 8px;
@@ -38,6 +39,7 @@
   --warn: #a35f00;
   --sun: #b77800;
   --moon: #4b62b0;
+  --milky-way: #7c3aed;
   --danger: #c93636;
   --ok: #17864c;
   --shadow: 0 10px 30px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.08);
@@ -912,10 +914,20 @@ input[type='color'] {
   right: var(--stack-right, 70px);
   bottom: 40px;
   max-width: 880px;
+  max-height: var(--stack-max-height, calc(100% - 100px));
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.bottom-stack > .panel {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.bottom-stack > .time-panel {
+  flex: 0 1 auto;
 }
 
 .statusbar {
@@ -1012,6 +1024,7 @@ input[type='color'] {
 .time-panel {
   position: relative;
   padding: 10px 14px 12px;
+  overflow-y: auto;
 }
 
 /* Title shrinks (ellipsis) before the controls wrap; the controls wrap as one group. */
@@ -1191,6 +1204,88 @@ input[type='color'] {
 
 .body-key.moon {
   background: var(--moon);
+}
+
+.body-key.milky-way {
+  background: var(--milky-way);
+}
+
+.time-link.mw {
+  color: var(--milky-way);
+}
+
+.astro-window {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.astro-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.astro-window .k {
+  color: var(--text-faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.astro-controls {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.astro-min-alt {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.astro-select {
+  height: 22px;
+  padding: 0 22px 0 6px;
+  font-size: 11px;
+  width: 58px;
+}
+
+.astro-status-visible {
+  color: var(--milky-way);
+  background: color-mix(in srgb, var(--milky-way) 16%, transparent);
+}
+
+.astro-status-low {
+  color: var(--accent);
+}
+
+.astro-status-moonlit,
+.astro-status-twilight {
+  color: var(--warn);
+}
+
+.astro-now {
+  color: var(--text);
+}
+
+.clarity-clear,
+.clarity-mostly-clear {
+  color: var(--ok);
+}
+
+.clarity-partly-cloudy {
+  color: var(--warn);
+}
+
+.clarity-cloudy {
+  color: var(--text-muted);
 }
 
 .sky-side {
@@ -2152,7 +2247,7 @@ input[type='color'] {
 
 .forecast-days > * {
   flex: 1 1 0;
-  min-width: 48px;
+  min-width: 54px;
 }
 
 .forecast-day {
@@ -2175,12 +2270,12 @@ input[type='color'] {
 .forecast-day-glow {
   display: flex;
   justify-content: center;
-  gap: 3px;
+  gap: 2px;
   margin-top: 2px;
 }
 
 .glow-dot {
-  width: 18px;
+  width: 16px;
   height: 16px;
   padding: 0;
   border: 0;
@@ -2206,6 +2301,11 @@ input[type='color'] {
 .glow-fair { background: var(--glow-fair); }
 .glow-good { background: var(--glow-good); }
 .glow-great { background: var(--glow-great); }
+
+.astro-poor { background: var(--glow-poor); }
+.astro-fair { background: #7f87a8; }
+.astro-good { background: #8f95e8; }
+.astro-great { background: var(--milky-way); }
 
 .forecast-day-note {
   font-size: 9px;
