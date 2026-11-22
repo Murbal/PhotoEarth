@@ -87,8 +87,8 @@ export class AlignmentTool {
       const days = s.alignment.filters.rangePreset === '30d' ? 30 : s.alignment.filters.rangePreset === '90d' ? 90 : s.alignment.filters.rangePreset === '2y' ? 730 : 365
       s.patchAlignmentFilters({ startDate: start, endDate: addDays(start, days) })
     }
-    // Close Elevation side panel so right-side panels don't compete for space (styling stays active).
-    if (s.panels.elevation) s.togglePanel('elevation', false)
+    // Close the Layers side panel so right-side panels don't compete for space (its layers stay on).
+    if (s.panels.layers) s.togglePanel('layers', false)
     const nextPick = pick !== undefined ? pick : !s.alignment.camera ? 'camera' : !s.alignment.subject ? 'subject' : null
     s.patchAlignment({ open: true, pickMode: nextPick })
     this.syncEntities()
@@ -219,7 +219,7 @@ export class AlignmentTool {
     skyline?: { distance: number; height: number; label?: string }
   ): void {
     const s = appState()
-    if (s.panels.elevation) s.togglePanel('elevation', false)
+    if (s.panels.layers) s.togglePanel('layers', false)
     const eyeHeight = observer.eyeHeight ?? DEFAULT_EYE_HEIGHT
     const camera: AlignmentPin = {
       longitude: observer.longitude,

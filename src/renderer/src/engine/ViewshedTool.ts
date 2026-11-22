@@ -48,7 +48,7 @@ const TARGET_COLOR = Color.fromCssColorString('#2ee8a5')
  * Viewshed analysis overlay. Given a selected target point and analysis radius, loads three
  * nested Cesium World Terrain grids centered on the target via the shared `HeightField` cache,
  * ray-marches line-of-sight on the GPU in Cesium's compute pass (`ViewshedCompute`), and binds
- * the resulting masks to both the 3D Tiles custom shader and the Elevation-mode globe material.
+ * the resulting masks to both the 3D Tiles custom shader and the stand-in globe's material.
  */
 export class ViewshedTool {
   readonly compute: ViewshedCompute

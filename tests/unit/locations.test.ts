@@ -107,7 +107,6 @@ describe('sanitizeBookmark', () => {
       createdAt: '2025-06-01T08:00:00.000Z',
       updatedAt: '2025-06-01T08:00:00.000Z',
       camera,
-      mode: 'photorealistic',
       time: v1Bookmark.time,
       status: 'to-visit',
       notes: '',
@@ -147,7 +146,8 @@ describe('sanitizeBookmark', () => {
     expect(b.bestTime).toBe('late October')
     expect(b.position).toEqual({ longitude: 180, latitude: 46.5, height: 1200 })
     expect(b.time).toBeUndefined()
-    expect(b.mode).toBe('photorealistic')
+    // Saved locations no longer carry a mode (Elevation mode is gone).
+    expect('mode' in b).toBe(false)
   })
 
   it('only accepts photos with names the photo store writes', () => {
@@ -208,9 +208,9 @@ describe('migrateBookmarksFile', () => {
     const v2 = migrateBookmarksFile(v1, NOW)
     expect(v2.version).toBe(2)
     expect(v2.profiles).toEqual([])
-    expect(v2.bookmarks.map((b) => [b.id, b.name, b.mode, b.status])).toEqual([
-      ['b1', 'Lauterbrunnen', 'photorealistic', 'to-visit'],
-      ['b2', 'Eiger', 'elevation', 'to-visit']
+    expect(v2.bookmarks.map((b) => [b.id, b.name, b.status])).toEqual([
+      ['b1', 'Lauterbrunnen', 'to-visit'],
+      ['b2', 'Eiger', 'to-visit']
     ])
     expect(v2.bookmarks[1].time).toBeUndefined()
     // Migrating again changes nothing.

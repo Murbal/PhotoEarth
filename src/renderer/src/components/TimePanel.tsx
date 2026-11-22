@@ -185,7 +185,6 @@ export function TimePanel() {
   const patchSettings = useAppStore((s) => s.patchSettings)
   const togglePanel = useAppStore((s) => s.togglePanel)
   const terrainShadows = useAppStore((s) => s.terrainShadows)
-  const mode = useAppStore((s) => s.mode)
   const target = useAppStore((s) => s.target)
   const spotSun = useAppStore((s) => s.spotSun)
   const inspect = useAppStore((s) => s.inspect)
@@ -597,7 +596,7 @@ export function TimePanel() {
           <input
             type="checkbox"
             checked={settings.detailShadows}
-            disabled={!simulated || !settings.shadows || mode !== 'photorealistic'}
+            disabled={!simulated || !settings.shadows}
             onChange={(e) => patchSettings((d) => void (d.detailShadows = e.target.checked))}
           />
           Buildings &amp; trees

@@ -123,3 +123,31 @@ export class PhotoStore {
     renameSync(tmp, target)
   }
 }
+
+/** A store that references assets inside the shared PhotoStore. */
+export interface PhotoOwner {
+  /** False when the store's file was corrupt/unreadable or from a newer schema version. */
+  readonly canCleanOrphans: boolean
+  referencedPhotos(): Iterable<Pick<LocationPhoto, 'id' | 'file'>>
+}
+
+/**
+ * Deletes stored photo files not referenced by any owner, only if every owner loaded cleanly.
+ * Run once at startup after all photo-owning stores (bookmarks, projects, moodboards) have loaded.
+ */
+export function cleanOrphanPhotos(photos: PhotoStore, owners: readonly PhotoOwner[]): number {
+  if (owners.some((o) => !o.canCleanOrphans)) {
+    console.error('[photoearth] Keeping all stored photos: at least one store was not fully read.')
+    return 0
+  }
+  const kept: Array<Pick<LocationPhoto, 'id' | 'file'>> = []
+  for (const owner of owners) {
+    for (const photo of owner.referencedPhotos()) kept.push(photo)
+  }
+  try {
+    return photos.removeOrphans(kept)
+  } catch (err) {
+    console.error('[photoearth] Could not clean up the photo directory:', err)
+    return 0
+  }
+}

@@ -262,11 +262,9 @@ describe('camera on the map', () => {
 })
 
 describe('Map Tiles sessions and settings', () => {
-  it('asks for hybrid satellite and 2× tiles', () => {
+  it('asks for the roadmap layer on terrain, and 2× tiles', () => {
     expect(sessionBody('roadmap')).toEqual({ mapType: 'roadmap', language: 'en-US', region: 'US' })
     expect(sessionBody('terrain').layerTypes).toEqual(['layerRoadmap'])
-    expect(sessionBody('satellite').layerTypes).toBeUndefined()
-    expect(sessionBody('satellite', { labels: true }).layerTypes).toEqual(['layerRoadmap'])
     expect(sessionBody('roadmap', { highDpi: true })).toMatchObject({ scale: 'scaleFactor2x', highDpi: true })
     expect(viewportKey({ north: 89, south: -89, east: 1, west: 0 }, 3.6)).toBe('85.0000,-85.0000,1.0000,0.0000@4')
     expect(tileUrl('https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=s&key=k', 5, 16, 11)).toBe(
@@ -276,13 +274,15 @@ describe('Map Tiles sessions and settings', () => {
 
   it('keeps Map mode closed by default and sanitizes its view', () => {
     expect(defaultSettings().map).toMatchObject({ open: false, type: 'roadmap' })
-    expect(sanitizeSettings({ map: { open: true, longitude: 7.7, latitude: 46, zoom: 13.5, type: 'satellite' } }).map).toEqual({
+    expect(sanitizeSettings({ map: { open: true, longitude: 7.7, latitude: 46, zoom: 13.5, type: 'terrain' } }).map).toEqual({
       open: true,
       longitude: 7.7,
       latitude: 46,
       zoom: 13.5,
-      type: 'satellite'
+      type: 'terrain'
     })
+    // Satellite isn't offered any more (EEA accounts): saved settings fall back to the defaults.
+    expect(sanitizeSettings({ map: { type: 'satellite' }, imagery: 'satellite' })).toMatchObject({ map: { type: 'roadmap' }, imagery: 'roadmap' })
     expect(sanitizeSettings({ map: { open: 'yes', longitude: 500, latitude: -90, zoom: 99, type: 'hybrid' } }).map).toEqual({
       ...defaultSettings().map,
       longitude: 180,

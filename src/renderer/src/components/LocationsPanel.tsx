@@ -20,6 +20,7 @@ import {
 } from '../lib/locations'
 import { shortcutLabel } from '../lib/platform'
 import { formatClock, formatShortDate, utcToZoned } from '../lib/time'
+import { shellState, useShellStore } from '../shell/shellStore'
 import { useAppStore } from '../store/appStore'
 import { Icon } from './Icon'
 
@@ -396,7 +397,6 @@ function TagEditor({ location: b }: { location: Bookmark }) {
 }
 
 function PhotoGrid({ location: b }: { location: Bookmark }) {
-  const set = useAppStore((s) => s.set)
   const [busy, setBusy] = useState(false)
   const [dragging, setDragging] = useState(false)
   const run = (job: () => Promise<void>) => {
@@ -425,7 +425,7 @@ function PhotoGrid({ location: b }: { location: Bookmark }) {
         <div className="photo-grid">
           {b.photos.map((p) => (
             <div key={p.id} className="photo-thumb">
-              <button className="photo-open" title={p.name} aria-label={`Show ${p.name}`} onClick={() => set({ photoViewer: { locationId: b.id, photoId: p.id } })}>
+              <button className="photo-open" title={p.name} aria-label={`Show ${p.name}`} onClick={() => shellState().set({ photoViewer: { locationId: b.id, photoId: p.id } })}>
                 <img src={photoUrl(thumbFile(p))} alt={p.name} loading="lazy" decoding="async" />
               </button>
               <button className="photo-remove" title="Remove photo" aria-label={`Remove ${p.name}`} onClick={() => void removePhoto(b.id, p.id)}>
@@ -507,7 +507,7 @@ function ProfileRow({ profile: p }: { profile: SavedProfile }) {
 
 /** A reference photo at full size, with the location's others a click or arrow key away. */
 export function PhotoViewer() {
-  const viewer = useAppStore((s) => s.photoViewer)
+  const viewer = useShellStore((s) => s.photoViewer)
   const location = useAppStore((s) => (viewer ? s.bookmarks.find((b) => b.id === viewer.locationId) : undefined))
   const index = location?.photos.findIndex((p) => p.id === viewer?.photoId) ?? -1
   if (!location || index < 0) return null
@@ -515,7 +515,7 @@ export function PhotoViewer() {
 }
 
 function PhotoDialog({ location, index }: { location: Bookmark; index: number }) {
-  const set = useAppStore((s) => s.set)
+  const set = useShellStore((s) => s.set)
   const ref = useRef<HTMLDivElement>(null)
   useDialogFocus(ref)
   const photos = location.photos

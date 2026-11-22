@@ -13,7 +13,7 @@ const PATHS: Record<string, ReactElement> = {
       <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
     </>
   ),
-  /** Topographic contour rings: elevation styling (tint, contours, slope, hillshade). */
+  /** Topographic contour rings: the Layers panel (light pollution, viewshed, exaggeration). */
   layers: (
     <>
       <path d="M12 3.5c4.8 0 8.5 2.8 8.5 7.4S17 20.5 11.6 20.5C6.4 20.5 3.5 17 3.5 12.8 3.5 7.4 7.3 3.5 12 3.5z" />

@@ -2,14 +2,14 @@
 
 import type { ParsedLocation } from './coords'
 
-export type MapMode = 'photorealistic' | 'elevation'
+export type ModuleId = 'globe' | 'projects' | 'moodboard'
 export type QualityPreset = 'low' | 'medium' | 'high' | 'ultra'
 export type Units = 'metric' | 'imperial'
 export type CoordFormat = 'decimal' | 'dms'
 export type Theme = 'dark' | 'light'
-export type ImageryType = 'satellite' | 'terrain' | 'roadmap'
+/** Google 2D map types. Satellite isn't offered: Google doesn't serve it to EEA accounts. */
+export type ImageryType = 'roadmap' | 'terrain'
 export type LightingMode = 'sun' | 'flat'
-export type PaletteId = 'terrain' | 'viridis' | 'spectral' | 'magma' | 'grayscale'
 
 /** Camera pose. Angles in degrees, height in meters above the WGS84 ellipsoid. */
 export interface CameraView {
@@ -59,27 +59,6 @@ export interface NavigationSettings {
 
 export type ScrollGesture = 'auto' | 'pan' | 'zoom'
 
-export interface ElevationStyleSettings {
-  tint: {
-    enabled: boolean
-    opacity: number
-    palette: PaletteId
-    autoRange: boolean
-    /** Manual range in meters above sea level. */
-    min: number
-    max: number
-  }
-  contours: {
-    enabled: boolean
-    interval: number
-    width: number
-    color: string
-    opacity: number
-  }
-  slope: { enabled: boolean; opacity: number }
-  hillshade: { enabled: boolean; opacity: number; followSun: boolean }
-}
-
 export type SensorId = 'ff' | 'apsc' | 'apsc-canon' | 'm43' | '1in' | 'mf44' | 'phone' | 'custom'
 export type FrameAspect = 'native' | '3:2' | '4:3' | '1:1' | '4:5' | '5:4' | '16:9' | '65:24'
 export type CompositionGuide = 'none' | 'thirds' | 'phi' | 'center' | 'diagonals'
@@ -123,7 +102,6 @@ export interface MapModeSettings {
   longitude: number
   latitude: number
   zoom: number
-  /** satellite is drawn with roads and labels (hybrid). */
   type: ImageryType
 }
 
@@ -171,13 +149,10 @@ export interface Settings {
   quality: QualitySettings
   navigation: NavigationSettings
   lastCamera: CameraView | null
-  /** The last 3D mode; Map mode opens over it and returns to it. */
-  lastMode: MapMode
   map: MapModeSettings
   imagery: ImageryType
   /** Google place names on the map (a labels-only Map Tiles layer). */
   placeLabels: boolean
-  elevation: ElevationStyleSettings
   /** Artificial night sky brightness overlay. */
   lightPollution: LightPollutionSettings
   verticalExaggeration: number
@@ -247,7 +222,6 @@ export interface Bookmark {
   createdAt: string
   updatedAt: string
   camera: CameraView
-  mode: MapMode
   time?: BookmarkTime
   /** Set when the view was saved in viewfinder mode: reopens framed with the same lens. */
   viewfinder?: ViewfinderSettings
@@ -265,7 +239,6 @@ export interface Bookmark {
 export interface NewBookmark {
   name: string
   camera: CameraView
-  mode: MapMode
   time?: BookmarkTime
   viewfinder?: ViewfinderSettings
   position?: GeoPosition
@@ -279,7 +252,6 @@ export interface NewBookmark {
 export interface BookmarkPatch {
   name?: string
   camera?: CameraView
-  mode?: MapMode
   time?: BookmarkTime | null
   viewfinder?: ViewfinderSettings | null
   position?: GeoPosition
@@ -479,7 +451,6 @@ export type MenuCommand =
   | 'open-palette'
   | 'open-shortcuts'
   | 'mode-photorealistic'
-  | 'mode-elevation'
   | 'mode-map'
   | 'toggle-fps'
   | 'save-bookmark'

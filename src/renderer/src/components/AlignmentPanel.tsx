@@ -76,7 +76,7 @@ export function AlignmentPanel() {
 
 function AlignmentPanelBody() {
   const state = useAppStore((s) => s.alignment)
-  const elevationOpen = useAppStore((s) => s.panels.elevation)
+  const layersOpen = useAppStore((s) => s.panels.layers)
   const units = useAppStore((s) => s.settings.units)
   const coordFormat = useAppStore((s) => s.settings.coordFormat)
   const vfSettings = useAppStore((s) => s.settings.viewfinder)
@@ -184,7 +184,7 @@ function AlignmentPanelBody() {
 
   return (
     <div
-      className={`panel side-panel right alignment-panel ${elevationOpen ? 'shifted' : ''}`}
+      className={`panel side-panel right alignment-panel ${layersOpen ? 'shifted' : ''}`}
       role="region"
       aria-label="Shot alignment planner"
     >

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Engine } from '../engine/Engine'
 import { setEngine } from '../engine/instance'
+import { shellState } from '../shell/shellStore'
 import { appState, useAppStore } from '../store/appStore'
 
 /**
@@ -38,6 +39,7 @@ export function MapView({ creditContainer, inert }: { creditContainer: HTMLEleme
       }
       engine.start(appState().keys)
     }
+    engine.setSuspended(shellState().activeModule !== 'globe')
     setEngine(engine)
     const unsubscribe = useAppStore.subscribe(
       (s) => s.keys,

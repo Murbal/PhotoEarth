@@ -12,9 +12,20 @@ import {
   sanitizeBookmark,
   type BookmarksFile
 } from '@shared/locations'
-import type { Bookmark, PhotoResult, SavedProfile } from '@shared/types'
+import type { Bookmark, LocationPhoto, PhotoResult, SavedProfile } from '@shared/types'
 import { JsonFile } from './jsonStore'
-import { PhotoError, PhotoStore, type PhotoInput } from './photos'
+import { cleanOrphanPhotos, PhotoError, PhotoStore, type PhotoInput, type PhotoOwner } from './photos'
+
+export interface BookmarkStoreOptions {
+  /** Shared top-level PhotoStore service; when omitted, BookmarkStore creates its own. */
+  photos?: PhotoStore
+  /**
+   * Whether to run orphan cleanup during construction. Defaults to `true` when BookmarkStore
+   * owns its own PhotoStore and `false` when a shared PhotoStore is injected (the caller runs
+   * `cleanOrphanPhotos` once after all photo-owning stores have loaded).
+   */
+  cleanupOrphans?: boolean
+}
 
 /**
  * Saved scouting locations and elevation profiles, in `bookmarks.json` (the file kept its name
@@ -23,11 +34,12 @@ import { PhotoError, PhotoStore, type PhotoInput } from './photos'
  * A file from an older version is migrated when it is read (see migrateBookmarksFile) and
  * written back in the current format; the original is kept once as `bookmarks.v<n>.backup.json`.
  */
-export class BookmarkStore {
+export class BookmarkStore implements PhotoOwner {
   readonly photos: PhotoStore
+  readonly canCleanOrphans: boolean
   private readonly file: JsonFile<BookmarksFile>
 
-  constructor(dir: string) {
+  constructor(dir: string, options?: BookmarkStoreOptions) {
     const path = join(dir, 'bookmarks.json')
     const version = readVersion(path)
     if (version !== null && version !== BOOKMARKS_FILE_VERSION) {
@@ -40,18 +52,18 @@ export class BookmarkStore {
     }
     this.file = new JsonFile<BookmarksFile>(path, (raw) => migrateBookmarksFile(raw))
     if (version !== null && version !== BOOKMARKS_FILE_VERSION) this.file.set(this.file.get())
-    this.photos = new PhotoStore(join(dir, 'photos'))
+    const ownsPhotos = !options?.photos
+    this.photos = options?.photos ?? new PhotoStore(join(dir, 'photos'))
     // Orphans are only safe to delete when every location was read. An unreadable file (kept as
     // bookmarks.json.corrupt-*) or one from a newer version may still refer to the photos.
-    if (this.file.recovered || (version !== null && version > BOOKMARKS_FILE_VERSION)) {
-      console.error('[photoearth] Keeping all stored photos: bookmarks.json was not fully read.')
-    } else {
-      try {
-        this.photos.removeOrphans(this.list().flatMap((b) => b.photos))
-      } catch (err) {
-        console.error('[photoearth] Could not clean up the photo directory:', err)
-      }
+    this.canCleanOrphans = !this.file.recovered && !(version !== null && version > BOOKMARKS_FILE_VERSION)
+    if (options?.cleanupOrphans ?? ownsPhotos) {
+      cleanOrphanPhotos(this.photos, [this])
     }
+  }
+
+  referencedPhotos(): LocationPhoto[] {
+    return this.list().flatMap((b) => b.photos)
   }
 
   list(): Bookmark[] {

@@ -7,7 +7,7 @@ import {
   type Cartesian3,
   type CesiumWidget
 } from 'cesium'
-import type { LightingMode, MapMode } from '@shared/types'
+import type { LightingMode } from '@shared/types'
 import { dayBands, sunDay, sunPosition, type BandSegment, type SunDay } from '../lib/sun'
 import { addDays, addMinutes, isValidTimeZone, offsetMinutes, utcToZoned, zoneAbbreviation, zonedToUtc } from '../lib/time'
 import { lookupTimeZone } from '../lib/timezone'
@@ -47,7 +47,6 @@ export class SunController {
   private dayKey = ''
   private day: SunDay | null = null
   private readonly indicator: DirectionIndicator
-  private mode: MapMode = 'photorealistic'
   private lighting: LightingMode = 'sun'
   private shadowsWanted = true
   private detailWanted = true
@@ -114,8 +113,7 @@ export class SunController {
     this.updateIndicator()
   }
 
-  configure(mode: MapMode, lighting: LightingMode, shadows: boolean, detailShadows: boolean): void {
-    this.mode = mode
+  configure(lighting: LightingMode, shadows: boolean, detailShadows: boolean): void {
     this.lighting = lighting
     this.shadowsWanted = shadows
     this.detailWanted = detailShadows
@@ -233,13 +231,12 @@ export class SunController {
     // Night / twilight dimming for the (unlit) photorealistic mesh.
     this.tiles.setDaylight(simulated ? 0.08 + 0.92 * smoothstep(-7, 2, this.altitude) : 1)
     const wanted = simulated && this.shadowsWanted
-    const photo = this.mode === 'photorealistic'
     let enabled: boolean
     let distance: number
     if (this.terrainShadows) {
       // Terrain shadows come from the heightmap; the shadow map only adds what the terrain
       // model lacks (buildings, trees, overhangs) close to a low camera.
-      enabled = wanted && photo && this.detailWanted && this.detailDistance > 0 && this.altitude > 0.5 && this.cameraNear
+      enabled = wanted && this.detailWanted && this.detailDistance > 0 && this.altitude > 0.5 && this.cameraNear
       distance = this.detailDistance
     } else {
       // No terrain heights (no ion token, or still loading): shadow maps do everything.
@@ -253,8 +250,9 @@ export class SunController {
     // matter; vite/cesium.ts skips the rest (they were most of the frame at a low sun).
     ;(shadowMap as unknown as { casterMargin?: number }).casterMargin = this.terrainShadows ? DETAIL_CASTER_MARGIN : undefined
     this.applyBias(distance)
-    globe.shadows = enabled && !photo ? ShadowMode.ENABLED : ShadowMode.DISABLED
-    this.tiles.setShadows(enabled && photo)
+    // Shadow maps fall on the 3D Tiles only; the stand-in globe gets the heightmap shadows.
+    globe.shadows = ShadowMode.DISABLED
+    this.tiles.setShadows(enabled)
     scene.requestRender()
   }
 

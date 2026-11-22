@@ -5,6 +5,13 @@ import { GOOGLE_LOGO_URL } from '../engine/googleTiles'
 import { getEngine } from '../engine/instance'
 import { setMapControl, type MapControl } from '../engine/mapControl'
 import { WheelClassifier } from '../engine/WheelInput'
+import {
+  creditText,
+  lightPollutionSource,
+  mapLightPollutionZoom,
+  tileUrl as lightPollutionTileUrl,
+  type LightPollutionSource
+} from '../lib/lightPollutionSources'
 import { niceScale } from '../lib/units'
 import {
   clampZoom,
@@ -30,7 +37,13 @@ import {
   type MapView,
   type Point
 } from '../lib/webMercator'
+import { shellState } from '../shell/shellStore'
 import { appState, useAppStore } from '../store/appStore'
+
+/** Light pollution tiles kept (1024 px atlas tiles are ~4 MB decoded). */
+const LIGHT_POLLUTION_CACHE = 40
+/** A light pollution tile still loading is stood in for by an ancestor up to this many zooms coarser. */
+const LIGHT_POLLUTION_FALLBACK_LEVELS = 3
 
 /** A press that moves less than this is a click. */
 const CLICK_SLOP = 4
@@ -71,6 +84,13 @@ interface TileImage {
   y: number
   /** Downloaded and decoded: drawable without a stall. */
   ready: boolean
+}
+
+/** A light pollution tile; `failed`: missing (open ocean has none) or unreachable. */
+interface OverlayTile {
+  img: HTMLImageElement
+  ready: boolean
+  failed: boolean
 }
 
 /** The tiles of one whole zoom. */
@@ -165,6 +185,9 @@ class MapRenderer implements MapControl {
   private drawn: DrawnTile[] | null = null
   private pins = new Map<string, Pin>()
   private destination: Pin | null = null
+  /** Light pollution tiles by `z/x/y` (wrapped x), oldest first; and the source they're from. */
+  private readonly lightTiles = new Map<string, OverlayTile>()
+  private lightSource: LightPollutionSource | null = null
   private readonly disposers: Array<() => void> = []
 
   constructor(
@@ -217,6 +240,10 @@ class MapRenderer implements MapControl {
         () => this.invalidate()
       ),
       useAppStore.subscribe(
+        (s) => s.settings.lightPollution,
+        () => this.invalidate()
+      ),
+      useAppStore.subscribe(
         (s) => [s.bookmarks, s.locationFilter, s.activeLocation, s.settings.showLocationMarkers, s.destination] as const,
         () => this.syncPins(),
         { equalityFn: (a, b) => a.every((v, i) => v === b[i]) }
@@ -232,6 +259,7 @@ class MapRenderer implements MapControl {
     if (this.raf !== null) cancelAnimationFrame(this.raf)
     if (this.settleTimer !== null) window.clearTimeout(this.settleTimer)
     for (const zoom of [...this.layers.keys()]) this.removeLayer(zoom)
+    this.clearLightTiles()
     appState().set({ cursor: null })
   }
 
@@ -334,6 +362,7 @@ class MapRenderer implements MapControl {
     const view = this.current
     this.placeTiles(view)
     this.drawTiles(view)
+    this.drawLightPollution(view)
     this.positionOverlay(view)
   }
 
@@ -407,6 +436,107 @@ class MapRenderer implements MapControl {
       }
     }
     if (drawn) this.drawn = drawn
+  }
+
+  // ───────────── light pollution ─────────────
+
+  /**
+   * The light pollution layer over the map (the same tiles the 3D view's globe layer shows), at
+   * the panel's opacity. A tile still loading is stood in for by the matching part of an
+   * ancestor, so zooming doesn't blink.
+   */
+  private drawLightPollution(view: MapView): void {
+    const lp = appState().settings.lightPollution
+    if (!lp.enabled) {
+      if (this.lightTiles.size) this.clearLightTiles()
+      return
+    }
+    const source = lightPollutionSource(lp.source)
+    if (source !== this.lightSource) {
+      this.clearLightTiles()
+      this.lightSource = source
+    }
+    const { tileSize, bounds } = source.imagery
+    const z = mapLightPollutionZoom(this.tileZoom ?? tileZoomFor(view.zoom), source.imagery)
+    const scale = 2 ** (view.zoom - z)
+    const c = project(view, z)
+    const size = TILE * scale
+    const ox = this.width / 2 - c.x * scale
+    const oy = this.height / 2 - c.y * scale
+    const range = tileRange(view, z, this.width, this.height, 0, c.x)
+    // No tiles outside the source's coverage.
+    const north = Math.floor(project({ longitude: 0, latitude: bounds.north }, z).y / TILE)
+    const south = Math.floor((project({ longitude: 0, latitude: bounds.south }, z).y - 1e-9) / TILE)
+    const ctx = this.ctx
+    const dpr = this.dpr
+    ctx.globalAlpha = lp.opacity
+    for (let y = Math.max(range.y0, north); y <= Math.min(range.y1, south); y++) {
+      for (let x = range.x0; x <= range.x1; x++) {
+        let tile: OverlayTile | null = this.lightTile(source, z, wrapColumn(x, z), y)
+        let sx = 0
+        let sy = 0
+        let sw = tileSize
+        for (let k = 1; !tile?.ready && k <= LIGHT_POLLUTION_FALLBACK_LEVELS && z - k >= 0; k++) {
+          const f = 2 ** k
+          const ax = Math.floor(x / f)
+          const ay = Math.floor(y / f)
+          tile = this.lightTiles.get(`${z - k}/${wrapColumn(ax, z - k)}/${ay}`) ?? null
+          sw = tileSize / f
+          sx = (x - ax * f) * sw
+          sy = (y - ay * f) * sw
+        }
+        if (!tile?.ready) continue
+        const left = ox + x * size
+        const top = oy + y * size
+        const x0 = Math.round(left * dpr)
+        const y0 = Math.round(top * dpr)
+        const x1 = Math.round((left + size) * dpr)
+        const y1 = Math.round((top + size) * dpr)
+        ctx.drawImage(tile.img, sx, sy, sw, sw, x0, y0, x1 - x0, y1 - y0)
+      }
+    }
+    ctx.globalAlpha = 1
+  }
+
+  /** A light pollution tile, requested on first use; the cache keeps the most recently used. */
+  private lightTile(source: LightPollutionSource, z: number, x: number, y: number): OverlayTile {
+    const key = `${z}/${x}/${y}`
+    const cached = this.lightTiles.get(key)
+    if (cached) {
+      this.lightTiles.delete(key)
+      this.lightTiles.set(key, cached)
+      return cached
+    }
+    const img = new Image()
+    img.decoding = 'async'
+    const created: OverlayTile = { img, ready: false, failed: false }
+    img.onerror = () => (created.failed = true)
+    img.src = lightPollutionTileUrl(source.imagery.url, z, x, y)
+    img
+      .decode()
+      .then(() => {
+        if (this.lightTiles.get(key) !== created) return
+        created.ready = true
+        this.invalidate()
+      })
+      .catch(() => (created.failed = true))
+    this.lightTiles.set(key, created)
+    while (this.lightTiles.size > LIGHT_POLLUTION_CACHE) {
+      const [oldKey, old] = this.lightTiles.entries().next().value!
+      if (!old.ready) old.img.src = ''
+      this.lightTiles.delete(oldKey)
+    }
+    return created
+  }
+
+  private clearLightTiles(): void {
+    for (const tile of this.lightTiles.values()) {
+      tile.img.onerror = null
+      // Stops a download in flight.
+      if (!tile.ready) tile.img.src = ''
+    }
+    this.lightTiles.clear()
+    this.lightSource = null
   }
 
   // ───────────── tiles ─────────────
@@ -725,9 +855,8 @@ class MapRenderer implements MapControl {
       if (this.keys.delete(e.code)) this.moved()
       return
     }
-    const s = appState()
-    const modal = s.paletteOpen || s.settingsOpen || s.onboardingOpen || s.shortcutsOpen || !!s.photoViewer
-    if (modal || isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return
+    const sh = shellState()
+    if (sh.activeModule !== 'globe' || sh.isModalOpen() || isTyping(e.target) || e.ctrlKey || e.metaKey || e.altKey) return
     e.preventDefault()
     if (!this.keys.has(e.code)) this.stopMotion()
     if (this.keys.size === 0) this.keyPanAt = performance.now()
@@ -840,6 +969,9 @@ function MapModeView() {
   const session = useAppStore((s) => s.mapSession)
   const mapType = useAppStore((s) => s.settings.map.type)
   const hasKey = useAppStore((s) => !!s.keys.googleApiKey)
+  const lightCredit = useAppStore((s) =>
+    s.settings.lightPollution.enabled ? creditText(lightPollutionSource(s.settings.lightPollution.source).imagery.credit) : null
+  )
 
   useEffect(() => {
     const root = rootRef.current
@@ -885,10 +1017,10 @@ function MapModeView() {
           {hasKey ? 'Loading the map…' : 'Add a Google Maps Platform key in Settings to see the map.'}
         </div>
       )}
-      {session && (
+      {(session || lightCredit) && (
         <div className="map-attribution" data-testid="map-attribution">
-          <img src={GOOGLE_LOGO_URL} alt="Google" draggable={false} />
-          {copyright && <span>{copyright}</span>}
+          {session && <img src={GOOGLE_LOGO_URL} alt="Google" draggable={false} />}
+          {(copyright || lightCredit) && <span>{[session ? copyright : null, lightCredit].filter(Boolean).join(' · ')}</span>}
         </div>
       )}
     </div>

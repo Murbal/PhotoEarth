@@ -85,3 +85,17 @@ export function readoutSource(id: LightPollutionSourceId): LightPollutionSource 
 export function tileUrl(template: string, z: number, x: number, y: number): string {
   return template.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y))
 }
+
+/**
+ * The source zoom Map mode draws under its tile zoom `tileZoom` (256-pixel map tiles): a
+ * `tileSize`-pixel source tile at zoom z covers what map tiles do at z + log2(tileSize / 256).
+ * Past the source's last level, that level's tiles are drawn enlarged.
+ */
+export function mapLightPollutionZoom(tileZoom: number, imagery: Pick<LightPollutionSource['imagery'], 'tileSize' | 'maximumLevel'>): number {
+  return Math.max(0, Math.min(imagery.maximumLevel, Math.round(tileZoom - Math.log2(imagery.tileSize / 256))))
+}
+
+/** An HTML credit as plain text (Map mode's attribution line isn't interactive). */
+export function creditText(html: string): string {
+  return html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+}

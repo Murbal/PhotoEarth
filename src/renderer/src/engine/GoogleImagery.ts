@@ -21,7 +21,7 @@ export class GoogleImagery {
   layer: ImageryLayer | null = null
   private session: TileSession | null = null
   private key: string | null = null
-  private mapType: ImageryType = 'satellite'
+  private mapType: ImageryType = 'roadmap'
   private renewTimer: number | null = null
   private generation = 0
   private credit: Credit | null = null

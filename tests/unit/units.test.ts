@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { compassPoint, formatDistance, formatElevation, formatPointForClipboard, niceScale } from '@renderer/lib/units'
-import { paletteColor, paletteGradientCss } from '@renderer/lib/palettes'
 
 describe('units', () => {
   it('formats elevations', () => {
@@ -30,15 +29,6 @@ describe('units', () => {
     expect(compassPoint(359)).toBe('N')
     expect(compassPoint(135)).toBe('SE')
     expect(compassPoint(250)).toBe('WSW')
-  })
-})
-
-describe('palettes', () => {
-  it('interpolates between stops', () => {
-    expect(paletteColor('grayscale', 0)).toEqual([17, 17, 17])
-    expect(paletteColor('grayscale', 1)).toEqual([245, 245, 245])
-    expect(paletteColor('grayscale', 0.5)).toEqual([131, 131, 131])
-    expect(paletteGradientCss('viridis')).toContain('#440154 0%')
   })
 })
 

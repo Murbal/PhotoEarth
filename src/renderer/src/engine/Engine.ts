@@ -14,16 +14,17 @@ import {
 } from 'cesium'
 import { estimateTarget, matchesFilter } from '@shared/locations'
 import { DEFAULT_VIEW } from '@shared/settings'
-import type { ApiCheck, ApiKeys, Bookmark, CameraView, GeoPosition, MapMode, NewBookmark, PlaceDetails, SavedProfile } from '@shared/types'
+import type { ApiCheck, ApiKeys, Bookmark, CameraView, GeoPosition, NewBookmark, PlaceDetails, SavedProfile } from '@shared/types'
 import { formatLatLon, type ParsedLocation } from '@shared/coords'
 import { cameraForView, LOOKING_DOWN, sameView, viewFromCamera, zoomForMetersPerPixel, clampZoom, type MapView } from '../lib/webMercator'
 import { loadGeoid } from '../lib/geoid'
 import type { GeoPoint } from '../lib/profile'
 import { haversine } from '../lib/profile'
+import { shellState } from '../shell/shellStore'
 import { appState, useAppStore, type AppState } from '../store/appStore'
 import { AlignmentTool } from './AlignmentTool'
 import { CameraController } from './CameraController'
-import { ElevationStyler } from './ElevationStyler'
+import { GlobeMaterial } from './GlobeMaterial'
 import { GoogleImagery } from './GoogleImagery'
 import { HorizonTool } from './HorizonTool'
 import { LightPollution } from './LightPollution'
@@ -82,7 +83,7 @@ export class Engine {
   readonly sun: SunController
   readonly moon: MoonController
   readonly milkyWay: MilkyWayController
-  readonly styler: ElevationStyler
+  readonly globeMaterial: GlobeMaterial
   readonly profile: ProfileTool
   readonly horizon: HorizonTool
   readonly alignment: AlignmentTool
@@ -103,7 +104,6 @@ export class Engine {
   private readonly subs: Array<() => void> = []
   private clickTimer: number | null = null
   private saveTimer: number | null = null
-  private rangeTimer: number | null = null
   private refreshTimer: number | null = null
   private moveRaf: number | null = null
   private pendingMove: Cartesian2 | null = null
@@ -111,6 +111,7 @@ export class Engine {
   private keys: ApiKeys = { googleApiKey: null, cesiumIonToken: null }
   private tilesTokenLoaded: string | null = null
   private failed = { tiles: false, terrain: false, imagery: false, labels: false, map: false }
+  private suspended = false
   private destroyed = false
 
   constructor(container: HTMLElement, creditContainer: HTMLElement) {
@@ -167,14 +168,14 @@ export class Engine {
       (state) => {
         appState().set({ terrainShadows: state })
         this.sun?.setTerrainShadows(state === 'ready')
-        this.applyStyle()
+        this.applyGlobeOverlays()
       }
     )
     this.viewshed = new ViewshedTool(
       this.widget,
       () => this.terrain?.provider ?? null,
       () => {
-        this.applyStyle()
+        this.applyGlobeOverlays()
         this.refreshInspectViewshed()
       }
     )
@@ -195,10 +196,7 @@ export class Engine {
     })
     this.imagery = new GoogleImagery(scene, this.widget.creditDisplay, imagery.error, imagery.ready)
     this.mapTiles = new MapTiles((mapSession) => appState().set({ mapSession }), map.error, map.ready)
-    this.lightPollution = new LightPollution(scene, (shown) => {
-      this.sun?.setUnlitGlobe(shown)
-      this.applyStyle()
-    })
+    this.lightPollution = new LightPollution(scene, () => this.applyGlobeOverlays())
     this.labels = new PlaceLabels(scene, { onError: labels.error, onReady: labels.ready }, {
       nearby: (req) => window.photoearth.places.nearby(req),
       cities: (req) => window.photoearth.places.cities(req)
@@ -208,8 +206,10 @@ export class Engine {
       onEyeLevelChange: (eyeLevel) => appState().set({ eyeLevel }),
       onUserInput: () => undefined,
       keyboardEnabled: () => {
+        if (this.suspended) return false
         const s = appState()
-        return !s.paletteOpen && !s.settingsOpen && !s.onboardingOpen && !s.shortcutsOpen && !s.photoViewer && !s.settings.map.open
+        const sh = shellState()
+        return sh.activeModule === 'globe' && !sh.isModalOpen() && !s.settings.map.open
       },
       sampleGround: (lon, lat) => this.preciseGround(lon, lat)
     })
@@ -217,7 +217,7 @@ export class Engine {
     this.sun = new SunController(this.widget, this.tiles)
     this.moon = new MoonController(this.widget)
     this.milkyWay = new MilkyWayController(this.widget)
-    this.styler = new ElevationStyler(scene, this.terrainShadows, this.viewshed)
+    this.globeMaterial = new GlobeMaterial(scene, this.terrainShadows, this.viewshed)
     this.profile = new ProfileTool(this.widget, (points) => this.sampleProfile(points))
     this.horizon = new HorizonTool(this.widget, {
       provider: () => this.terrain.provider,
@@ -245,11 +245,9 @@ export class Engine {
     scene.camera.moveEnd.addEventListener(() => this.onMoveEnd())
     scene.postRender.addEventListener(() => this.inspector.updateScreen())
     globe.tileLoadProgressEvent.addEventListener((queued: number) => {
-      if (appState().mode === 'elevation') appState().set({ pendingTiles: queued })
-      if (queued === 0) {
-        this.scheduleAutoRange()
-        this.scheduleRefresh()
-      }
+      // The globe is the 3D view while the 3D Tiles aren't: its tiles drive the loading bar.
+      if (!appState().tilesetReady) appState().set({ pendingTiles: queued })
+      if (queued === 0) this.scheduleRefresh()
     })
     window.addEventListener('online', this.onOnline)
     this.subscribe()
@@ -275,8 +273,6 @@ export class Engine {
     void loadGeoid().then(() => {
       if (this.destroyed) return
       this.readouts.refresh()
-      const t = appState().target
-      if (t) this.styler.setGeoidOffset(t.latitude, t.longitude)
     })
   }
 
@@ -305,7 +301,35 @@ export class Engine {
   }
 
   requestRender(): void {
+    if (this.suspended || this.destroyed) return
     this.scene.requestRender()
+  }
+
+  get isSuspended(): boolean {
+    return this.suspended
+  }
+
+  /**
+   * Hibernates the 3D engine while another workspace module is active, keeping Cesium and
+   * its WebGL context/tile cache alive in the DOM without background CPU/network work.
+   */
+  setSuspended(suspended: boolean): void {
+    if (this.destroyed || this.suspended === suspended) return
+    this.suspended = suspended
+    if (suspended) {
+      if (appState().flyMode) this.camera.toggleFlyMode()
+      this.scene.camera.cancelFlight()
+      this.sun.pause()
+      this.labels.setSuspended(true)
+      this.widget.useDefaultRenderLoop = false
+    } else {
+      this.labels.setSuspended(false)
+      if (!appState().settings.map.open) {
+        this.widget.useDefaultRenderLoop = true
+        void this.ensure3dTiles()
+        this.scene.requestRender()
+      }
+    }
   }
 
   private onOnline = (): void => {
@@ -366,11 +390,12 @@ export class Engine {
 
   /**
    * Loads Google Photorealistic 3D Tiles via Cesium ion on demand: skipped when the dev toggle
-   * `PHOTOEARTH_NO_3D_TILES=1` is active or while the 3D Photorealistic view isn't shown.
+   * `PHOTOEARTH_NO_3D_TILES=1` is active or while the 3D Photorealistic view isn't shown
+   * (including while the engine is suspended behind another module).
    */
   private async ensure3dTiles(): Promise<void> {
-    const { disable3dTiles, mode, settings, set } = appState()
-    if (disable3dTiles || mode !== 'photorealistic' || settings.map.open) return
+    const { disable3dTiles, settings, set } = appState()
+    if (this.suspended || disable3dTiles || settings.map.open) return
     const token = this.keys.cesiumIonToken
     if (!token) return
     if (this.tilesTokenLoaded === token && !this.failed.tiles) return
@@ -411,7 +436,6 @@ export class Engine {
 
   private subscribe(): void {
     const s = this.subs
-    s.push(subscribeJson((st) => st.mode, () => this.applyMode()))
     s.push(subscribeJson((st) => st.tilesetReady, () => this.applyMode()))
     s.push(subscribeJson((st) => st.terrainReady, () => this.applyMode()))
     s.push(subscribeJson((st) => st.settings.quality, () => this.applyQuality()))
@@ -421,12 +445,10 @@ export class Engine {
         (st) => st.settings.verticalExaggeration,
         (v) => {
           this.scene.verticalExaggeration = v
-          this.applyStyle()
-          this.scheduleAutoRange()
+          this.requestRender()
         }
       )
     )
-    s.push(subscribeJson((st) => [st.settings.elevation, st.autoRange], () => this.applyStyle()))
     s.push(subscribeJson((st) => [st.settings.lighting, st.settings.shadows, st.settings.detailShadows], () => this.applyLighting()))
     s.push(subscribeJson((st) => st.settings.showSunIndicator, () => this.sun.update()))
     s.push(subscribeJson((st) => st.settings.showMoonIndicator, () => this.moon.updateIndicator()))
@@ -526,14 +548,13 @@ export class Engine {
 
   private applyMode(): void {
     if (this.destroyed) return
-    const { mode, tilesetReady, settings } = appState()
-    const photo = mode === 'photorealistic'
-    if (photo && !settings.map.open) void this.ensure3dTiles()
+    const { tilesetReady, settings } = appState()
+    if (!settings.map.open) void this.ensure3dTiles()
     const globe = this.scene.globe
-    this.tiles.setVisible(photo)
-    // In Photorealistic mode the globe is hidden so it never z-fights with the mesh; it only
+    this.tiles.setVisible(true)
+    // The globe is hidden under the 3D Tiles so it never z-fights with the mesh; it only
     // appears as a backdrop when the tileset is unavailable.
-    globe.show = !photo || !tilesetReady
+    globe.show = !tilesetReady
     const terrain = this.terrain.provider ?? this.terrain.ellipsoid
     if (this.terrainOnGlobe !== terrain) {
       this.terrainOnGlobe = terrain
@@ -542,41 +563,24 @@ export class Engine {
     this.imagery.setVisible(globe.show)
     this.lightPollution.configure(settings.lightPollution, globe.show)
     this.labels.refresh()
-    if (!photo && !this.terrain.available) {
-      appState().postBanner({
-        id: 'elevation-terrain',
-        level: 'info',
-        title: 'Elevation mode needs terrain',
-        message: 'Add a Cesium ion access token to load Cesium World Terrain for contours, tint, slope and hillshade.',
-        actions: [{ label: 'Add token', command: 'open-settings' }]
-      })
-    } else {
-      appState().dismissBanner('elevation-terrain')
-    }
-    this.sun.configure(mode, settings.lighting, settings.shadows, settings.detailShadows)
-    this.applyStyle()
+    this.sun.configure(settings.lighting, settings.shadows, settings.detailShadows)
+    this.applyGlobeOverlays()
     this.applyTerrainShadows()
-    this.scheduleAutoRange()
     this.requestRender()
   }
 
-  private applyStyle(): void {
+  private applyGlobeOverlays(): void {
     // Called from the terrain-shadow status callback, which can fire during construction.
-    if (!this.styler || !this.terrain) return
-    const { mode, settings, autoRange } = appState()
-    this.styler.apply(
-      settings.elevation,
-      mode === 'elevation' && (this.terrain.available || this.viewshed.ready),
-      autoRange,
-      this.terrainShadows.ready,
-      this.lightPollution.shown,
-      this.viewshed.ready
-    )
+    if (!this.globeMaterial || !this.terrain) return
+    // The globe isn't shaded by day and night under a data overlay, so its colors read as its
+    // legend says.
+    this.sun.setUnlitGlobe(this.lightPollution.shown)
+    this.globeMaterial.apply(this.scene.globe.show, this.terrainShadows.ready, this.viewshed.ready)
   }
 
   private applyLighting(): void {
-    const { mode, settings } = appState()
-    this.sun.configure(mode, settings.lighting, settings.shadows, settings.detailShadows)
+    const { settings } = appState()
+    this.sun.configure(settings.lighting, settings.shadows, settings.detailShadows)
     this.sun.update()
   }
 
@@ -595,8 +599,6 @@ export class Engine {
     this.scene.postProcessStages.fxaa.enabled = q.fxaa
     this.widget.useBrowserRecommendedResolution = !quality.devicePixelRatioAware
     this.widget.resolutionScale = q.resolutionScale
-    // Contours fade with the terrain's screen-space error.
-    this.applyStyle()
     this.requestRender()
   }
 
@@ -704,8 +706,6 @@ export class Engine {
     this.moon.setTargetPosition(target)
     this.milkyWay.setTargetPosition(target)
     this.terrainShadows.setView(this.scene.camera.positionWC, target, appState().camera?.heightAgl ?? null)
-    const t = cartographicDeg(target)
-    if (t) this.styler.setGeoidOffset(t.latitude, t.longitude)
   }
 
   /** The camera started moving: trade a little detail for steady frames until it stops. */
@@ -722,7 +722,6 @@ export class Engine {
     this.readouts.refresh()
     this.imagery.updateAttribution()
     this.labels.onMoveEnd()
-    this.scheduleAutoRange()
     if (this.saveTimer !== null) window.clearTimeout(this.saveTimer)
     this.saveTimer = window.setTimeout(() => {
       const view = currentView(this.scene)
@@ -743,22 +742,11 @@ export class Engine {
     }, 300)
   }
 
-  private scheduleAutoRange(): void {
-    if (this.rangeTimer !== null) window.clearTimeout(this.rangeTimer)
-    this.rangeTimer = window.setTimeout(() => {
-      const { mode, settings } = appState()
-      if (mode !== 'elevation' || !settings.elevation.tint.autoRange || !this.terrain.available) return
-      const range = this.styler.sampleVisibleRange()
-      if (range) appState().set({ autoRange: range })
-    }, 450)
-  }
-
   // ───────────────────────────── sampling ─────────────────────────────
 
   /** Ellipsoidal ground height from the active surface (3D tiles or terrain). */
   async preciseGround(longitude: number, latitude: number): Promise<number | undefined> {
-    const photo = appState().mode === 'photorealistic'
-    if (photo && this.tiles.tileset && appState().tilesetReady) {
+    if (this.tiles.tileset && appState().tilesetReady) {
       try {
         const [c] = await withTimeout(this.scene.sampleHeightMostDetailed([Cartographic.fromDegrees(longitude, latitude)]), 8000, [])
         if (c && Number.isFinite(c.height)) return c.height
@@ -801,17 +789,13 @@ export class Engine {
 
   // ───────────────────────────── commands ─────────────────────────────
 
-  /** Switches to a 3D mode (leaving Map mode at the map's center) or to Map mode. */
-  async setMode(mode: MapMode | 'map'): Promise<void> {
+  /** Switches to the 3D view (leaving Map mode at the map's center) or to Map mode. */
+  async setMode(mode: 'photorealistic' | 'map'): Promise<void> {
     if (mode === 'map') {
       this.openMap()
       return
     }
     if (appState().settings.map.open) await this.closeMap(true)
-    appState().set({ mode })
-    appState().patchSettings((d) => {
-      d.lastMode = mode
-    })
   }
 
   // ───────────────────────────── Map mode ─────────────────────────────
@@ -884,16 +868,18 @@ export class Engine {
       d.map.latitude = view.latitude
       d.map.zoom = view.zoom
     })
-    this.widget.useDefaultRenderLoop = true
-    void this.ensure3dTiles()
-    // The depth buffer still holds the 3D view from before the map opened, so a command run
-    // right after this (U, N, a tilt) would pick its pivot there and fling the camera away.
-    // Wait for one frame drawn from the new position.
-    const drawn = moved ? this.nextFrame() : null
-    this.requestRender()
-    // The status bar's readouts (scale bar) are the 3D view's again.
-    this.scheduleRefresh()
-    await drawn
+    if (!this.suspended) {
+      this.widget.useDefaultRenderLoop = true
+      void this.ensure3dTiles()
+      // The depth buffer still holds the 3D view from before the map opened, so a command run
+      // right after this (U, N, a tilt) would pick its pivot there and fling the camera away.
+      // Wait for one frame drawn from the new position.
+      const drawn = moved ? this.nextFrame() : null
+      this.requestRender()
+      // The status bar's readouts (scale bar) are the 3D view's again.
+      this.scheduleRefresh()
+      await drawn
+    }
   }
 
   /** Resolves after the next frame has been drawn, or after `timeoutMs` (a hidden window draws nothing). */
@@ -930,12 +916,12 @@ export class Engine {
   }
 
   /**
-   * The current view as a location: camera, mode, lens, optionally the simulated time, and the
+   * The current view as a location: camera, lens, optionally the simulated time, and the
    * spot. In Map mode: the search pin or the map's center, with the 3D view leaving the map
    * there would open.
    */
   async bookmarkFromView(name: string, includeTime: boolean): Promise<NewBookmark> {
-    const { mode, sim, viewfinder, settings, destination, camera } = appState()
+    const { sim, viewfinder, settings, destination, camera } = appState()
     let view = this.currentView()
     let position = settings.map.open ? null : this.locationSpot()
     if (settings.map.open) {
@@ -950,7 +936,6 @@ export class Engine {
     return {
       name,
       camera: view,
-      mode,
       time: includeTime ? { utc: new Date(this.sun.utc).toISOString(), timeZone: sim.timeZone } : undefined,
       viewfinder: viewfinder && !settings.map.open ? structuredClone(settings.viewfinder) : undefined,
       position: position ?? this.locationSpot()
@@ -966,11 +951,10 @@ export class Engine {
     return c ? { longitude: c.longitude, latitude: c.latitude, height: c.height } : estimateTarget(this.currentView())
   }
 
-  /** Flies to a saved location and restores its mode, lens and simulated time. */
+  /** Flies to a saved location and restores its lens and simulated time. */
   async flyToBookmark(b: Bookmark): Promise<void> {
     // From the map: straight to the location's own view, not via the map's center.
     await this.closeMap(false)
-    if (b.mode !== appState().mode) await this.setMode(b.mode)
     if (b.time) this.sun.setInstant(Date.parse(b.time.utc), b.time.timeZone)
     // A shot saved in viewfinder mode reopens framed with the same lens.
     if (b.viewfinder) {
@@ -1083,9 +1067,9 @@ export class Engine {
     this.inspector.clear()
     // On the 3D tiles a roof or tower counts as the observer's footing (at full detail); on
     // the terrain, or with exaggerated heights, the panorama's own grids give the ground.
-    const { mode, tilesetReady } = appState()
+    const { tilesetReady } = appState()
     const c = Cartographic.fromCartesian(spot)
-    const tiles = mode === 'photorealistic' && tilesetReady && this.scene.verticalExaggeration === 1
+    const tiles = tilesetReady && this.scene.verticalExaggeration === 1
     await this.horizon.open(spot, tiles ? this.preciseGround(toDeg(c.longitude), toDeg(c.latitude)) : undefined)
   }
 
@@ -1146,7 +1130,7 @@ export class Engine {
     const s = appState()
     const spot = this.inspector.point ?? this.searchMarker.point
     if (!spot) {
-      s.showToast('No inspected point or search pin on the map.')
+      shellState().showToast('No inspected point or search pin on the map.')
       return
     }
     const label = this.inspector.point ? undefined : s.destination?.name
@@ -1174,10 +1158,10 @@ export class Engine {
    */
   async openViewshed(position?: Cartesian3): Promise<void> {
     const spot = position ?? this.inspector.point ?? this.searchMarker.point ?? cameraTarget(this.scene)
-    const { mode, tilesetReady, settings } = appState()
+    const { tilesetReady, settings } = appState()
     this.viewshed.configure(settings.viewshed, settings.units)
     const c = Cartographic.fromCartesian(spot)
-    const tiles = mode === 'photorealistic' && tilesetReady && this.scene.verticalExaggeration === 1
+    const tiles = tilesetReady && this.scene.verticalExaggeration === 1
     await this.viewshed.open(spot, tiles ? this.preciseGround(toDeg(c.longitude), toDeg(c.latitude)) : undefined)
     this.refreshInspectViewshed()
   }

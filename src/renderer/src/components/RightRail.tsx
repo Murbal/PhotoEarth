@@ -3,6 +3,7 @@ import { runCommand } from '../commands'
 import { getEngine } from '../engine/instance'
 import { shortcutLabel } from '../lib/platform'
 import { haversine } from '../lib/profile'
+import { useShellStore } from '../shell/shellStore'
 import { useAppStore } from '../store/appStore'
 import { Icon, type IconName } from './Icon'
 
@@ -171,6 +172,7 @@ export function RightRail() {
   const viewfinder = useAppStore((s) => s.viewfinder)
   const patchSettings = useAppStore((s) => s.patchSettings)
   const mapOpen = useAppStore((s) => s.settings.map.open)
+  const setShell = useShellStore((s) => s.set)
 
   // Map mode: the 3D tools and camera widgets would act on the hidden 3D view.
   if (mapOpen) {
@@ -178,9 +180,10 @@ export function RightRail() {
       <div className="right-rail">
         <div className="panel toolbar" role="toolbar" aria-label="Tools" aria-orientation="vertical">
           <RailButton icon="bookmark" label="Saved locations" active={panels.bookmarks} pressed={panels.bookmarks} onClick={() => togglePanel('bookmarks')} />
+          <RailButton icon="layers" label="Layers: light pollution" keys="L" active={panels.layers} pressed={panels.layers} onClick={() => togglePanel('layers')} />
           <div className="divider" />
-          <RailButton icon="settings" label="Settings" keys={shortcutLabel('Mod+,')} onClick={() => set({ settingsOpen: true })} />
-          <RailButton icon="help" label="Controls & shortcuts" keys="?" onClick={() => set({ shortcutsOpen: true })} />
+          <RailButton icon="settings" label="Settings" keys={shortcutLabel('Mod+,')} onClick={() => setShell({ settingsOpen: true })} />
+          <RailButton icon="help" label="Controls & shortcuts" keys="?" onClick={() => setShell({ shortcutsOpen: true })} />
         </div>
         <div className="nav-widgets" role="toolbar" aria-label="Map" aria-orientation="vertical">
           <div className="panel zoom-widget">
@@ -198,11 +201,11 @@ export function RightRail() {
         <RailButton icon="sun" label="Time & sun" keys="T" active={panels.time} pressed={panels.time} onClick={() => togglePanel('time')} />
         <RailButton
           icon="layers"
-          label="Elevation styling & light pollution"
+          label="Layers: light pollution, viewshed, exaggeration"
           keys="L"
-          active={panels.elevation}
-          pressed={panels.elevation}
-          onClick={() => togglePanel('elevation')}
+          active={panels.layers}
+          pressed={panels.layers}
+          onClick={() => togglePanel('layers')}
         />
         <RailButton
           icon="profile"
@@ -267,8 +270,8 @@ export function RightRail() {
         />
         <RailButton icon="bookmark" label="Saved locations" active={panels.bookmarks} pressed={panels.bookmarks} onClick={() => togglePanel('bookmarks')} />
         <div className="divider" />
-        <RailButton icon="settings" label="Settings" keys={shortcutLabel('Mod+,')} onClick={() => set({ settingsOpen: true })} />
-        <RailButton icon="help" label="Controls & shortcuts" keys="?" onClick={() => set({ shortcutsOpen: true })} />
+        <RailButton icon="settings" label="Settings" keys={shortcutLabel('Mod+,')} onClick={() => setShell({ settingsOpen: true })} />
+        <RailButton icon="help" label="Controls & shortcuts" keys="?" onClick={() => setShell({ shortcutsOpen: true })} />
       </div>
 
       <div className="nav-widgets" role="toolbar" aria-label="Camera" aria-orientation="vertical">
