@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { MAX_PHOTO_BYTES, MAX_THUMB_BYTES, PHOTO_FILE, sanitizeName, thumbFile } from '@shared/locations'
 import type { LocationPhoto } from '@shared/types'
@@ -91,6 +91,21 @@ export class PhotoStore {
     for (const file of [photo.file, thumbFile(photo)]) {
       if (PHOTO_FILE.test(file)) rmSync(join(this.dir, file), { force: true })
     }
+  }
+
+  /**
+   * Duplicates an already-stored photo under a fresh UUID so another store (e.g. a project
+   * cover picked from a location) owns an independent copy that survives deletions of the source.
+   */
+  clone(source: Pick<LocationPhoto, 'id' | 'file' | 'name' | 'width' | 'height'>): LocationPhoto {
+    const srcPath = this.resolve(source.file)
+    const srcThumbPath = this.resolve(thumbFile(source))
+    if (!srcPath || !srcThumbPath || !existsSync(srcPath) || !existsSync(srcThumbPath)) {
+      throw new PhotoError('The source photo is no longer available.')
+    }
+    const data = new Uint8Array(readFileSync(srcPath))
+    const thumb = new Uint8Array(readFileSync(srcThumbPath))
+    return this.save({ name: source.name, data, thumb, width: source.width, height: source.height })
   }
 
   /** The path of a stored file, or null for any name the store wouldn't have written. */

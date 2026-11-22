@@ -170,7 +170,87 @@ const PATHS: Record<string, ReactElement> = {
       <path d="M7 16V4M7 4 4 7M7 4l3 3" />
       <path d="M17 8v12M17 20l-3-3M17 20l3-3" />
     </>
-  )
+  ),
+  /** Folder / workspace icon for Projects Hub. */
+  projects: (
+    <>
+      <path d="M3 6.5A2 2 0 0 1 5 4.5h4.2l2 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <path d="M7.5 13h9M7.5 16h5.5" />
+    </>
+  ),
+  /** Collage grid icon for Moodboards. */
+  moodboard: (
+    <>
+      <rect x="3.5" y="3.5" width="7" height="9" rx="1.5" />
+      <rect x="13.5" y="3.5" width="7" height="5.5" rx="1.5" />
+      <rect x="13.5" y="12" width="7" height="8.5" rx="1.5" />
+      <rect x="3.5" y="15.5" width="7" height="5" rx="1.5" />
+    </>
+  ),
+  /** Document / scratchpad note icon. */
+  note: (
+    <>
+      <path d="M6 3.5h8.5L19 8v12.5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1z" />
+      <path d="M14 3.5V8.5h5M8.5 12h7M8.5 15.5h5" />
+    </>
+  ),
+  /** Calendar / target date window icon. */
+  calendar: (
+    <>
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
+      <path d="M8 3v4M16 3v4M3.5 9.5h17" />
+    </>
+  ),
+  /** Swatch / color story icon. */
+  palette: (
+    <>
+      <path d="M12 3a9 9 0 0 0 0 18h1.5a2 2 0 0 0 1.4-3.4 1.8 1.8 0 0 1 1.3-3.1H18a3 3 0 0 0 3-3A8.5 8.5 0 0 0 12 3z" />
+      <circle cx="8" cy="10" r="1" fill="currentColor" />
+      <circle cx="11.5" cy="7.5" r="1" fill="currentColor" />
+      <circle cx="15.5" cy="9.5" r="1" fill="currentColor" />
+      <circle cx="7.5" cy="14" r="1" fill="currentColor" />
+    </>
+  ),
+  /** Chain link icon. */
+  link: (
+    <>
+      <path d="M10 14a4 4 0 0 0 5.7 0l2.8-2.8a4 4 0 0 0-5.7-5.7L11 7.3" />
+      <path d="M14 10a4 4 0 0 0-5.7 0l-2.8 2.8a4 4 0 0 0 5.7 5.7L13 16.7" />
+    </>
+  ),
+  /** Broken link / unlink icon. */
+  unlink: (
+    <>
+      <path d="M18.5 11.2a4 4 0 0 0-5.7-5.7L11 7.3M5.5 12.8a4 4 0 0 0 5.7 5.7L13 16.7" />
+      <path d="M8 2v3M2 8h3M16 19v3M19 16h3" />
+    </>
+  ),
+  /** Archive box icon. */
+  archive: (
+    <>
+      <rect x="3" y="4" width="18" height="4.5" rx="1" />
+      <path d="M5 8.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19V8.5M10 12.5h4" />
+    </>
+  ),
+  /** Star / active project badge icon. */
+  star: <path d="m12 3.2 2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6-4.3-4.2 6-.9z" />,
+  /** Image / cover photo icon. */
+  image: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <circle cx="9" cy="9.5" r="1.5" />
+      <path d="m4.5 17 4.5-4.5 3.5 3.5 2.5-2.5 4.5 4.5" />
+    </>
+  ),
+  /** Pinned note thumbtack icon. */
+  thumbtack: (
+    <>
+      <path d="M15 4.5 19.5 9l-2 2-3-1-3.5 3.5 1 3-1.5 1.5-4.5-4.5L7.5 12l3 1 3.5-3.5-1-3z" />
+      <path d="m9 15-4.5 4.5" />
+    </>
+  ),
+  /** Back arrow icon. */
+  arrowLeft: <path d="M19 12H5M11 6l-6 6 6 6" />
 }
 
 export type IconName = keyof typeof PATHS

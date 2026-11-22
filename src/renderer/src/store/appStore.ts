@@ -366,6 +366,14 @@ export interface AppState {
   profiles: SavedProfile[]
   /** What the locations panel and the map markers show. */
   locationFilter: LocationFilter
+  /** Whether the locations panel & map markers show all saved spots or only the active project's. */
+  locationScope: 'all' | 'project'
+  /** When scoped to the active project, show non-project markers dimmed instead of hiding them. */
+  dimOtherLocations: boolean
+  /** When an active project is set, saving a new location (Ctrl+B) links it automatically. */
+  saveToActiveProject: boolean
+  /** Set when the user jumped from a project's "Scout in 3D Globe" flow to add new spots. */
+  scoutingProjectId: string | null
   /** The location open in the editor, highlighted on the map. */
   activeLocation: string | null
   terrainReady: boolean
@@ -437,6 +445,10 @@ export const useAppStore = create<AppState>()(
     bookmarks: [],
     profiles: [],
     locationFilter: NO_FILTER,
+    locationScope: 'all',
+    dimOtherLocations: true,
+    saveToActiveProject: true,
+    scoutingProjectId: null,
     activeLocation: null,
     terrainReady: false,
     tilesetReady: false,

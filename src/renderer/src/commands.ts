@@ -8,8 +8,9 @@ import { shortcutLabel } from './lib/platform'
 import { addDays } from './lib/time'
 import { shellState } from './shell/shellStore'
 import { appState } from './store/appStore'
+import { projectsState } from './store/projectsStore'
 
-export type CommandGroup = 'View' | 'Navigation' | 'Time & sun' | 'Layers' | 'Tools' | 'App'
+export type CommandGroup = 'Workspace' | 'View' | 'Navigation' | 'Time & sun' | 'Layers' | 'Tools' | 'App'
 
 export interface Command {
   id: string
@@ -124,14 +125,40 @@ export function getCommands(): Command[] {
 
 function commandList(): Command[] {
   return [
-    { id: 'mode-photorealistic', title: 'Photorealistic mode', group: 'View', keys: '1', keywords: '3d tiles google', run: () => void engine()?.setMode('photorealistic') },
+    {
+      id: 'module-projects',
+      title: 'Switch to Projects Hub',
+      group: 'Workspace',
+      keys: shortcutLabel('Mod+1'),
+      keywords: 'projects hub workspace brief notes organize',
+      run: () => shellState().setActiveModule('projects')
+    },
+    {
+      id: 'module-globe',
+      title: 'Switch to 3D Globe',
+      group: 'Workspace',
+      keys: shortcutLabel('Mod+2'),
+      keywords: 'globe 3d map earth scouting',
+      run: () => shellState().setActiveModule('globe')
+    },
+    {
+      id: 'new-project',
+      title: 'New project',
+      group: 'Workspace',
+      keywords: 'create project trip series brief',
+      run: () => {
+        shellState().setActiveModule('projects')
+        projectsState().set({ createDialogOpen: true })
+      }
+    },
+    { id: 'mode-photorealistic', title: 'Photorealistic mode', group: 'View', keys: '1', keywords: '3d tiles google', run: () => { shellState().setActiveModule('globe'); void engine()?.setMode('photorealistic') } },
     {
       id: 'mode-map',
       title: 'Map mode (2D map for getting around)',
       group: 'View',
       keys: '2',
       keywords: '2d flat google maps road terrain navigate overview minimap',
-      run: () => void engine()?.setMode('map')
+      run: () => { shellState().setActiveModule('globe'); void engine()?.setMode('map') }
     },
     { id: 'map-roadmap', title: 'Map mode: road map', group: 'View', keywords: '2d streets', run: setMapType('roadmap') },
     { id: 'map-terrain', title: 'Map mode: terrain', group: 'View', keywords: '2d relief topographic', run: setMapType('terrain') },

@@ -13,17 +13,22 @@ import { ActivityRail } from './shell/ActivityRail'
 import { ModuleViewport } from './shell/ModuleViewport'
 import { shellState, useShellStore } from './shell/shellStore'
 import { appState, useAppStore } from './store/appStore'
+import { projectsState } from './store/projectsStore'
 
 async function boot(): Promise<void> {
   const api = window.photoearth
-  const [info, settings, keys, secrets, bookmarks, profiles] = await Promise.all([
+  const [info, settings, keys, secrets, bookmarks, profiles, projects] = await Promise.all([
     api.info(),
     api.settings.get(),
     api.keys.get(),
     api.keys.status(),
     api.bookmarks.list(),
-    api.profiles.list()
+    api.profiles.list(),
+    api.projects.list()
   ])
+  projectsState().set({ projects })
+  const restoredProjectId =
+    settings.lastProjectId && projects.some((p) => p.id === settings.lastProjectId) ? settings.lastProjectId : null
   appState().set({
     settings,
     keys,
@@ -34,6 +39,7 @@ async function boot(): Promise<void> {
     booted: true
   })
   shellState().set({
+    activeProjectId: restoredProjectId,
     onboardingOpen: !settings.onboardingComplete
   })
 }
@@ -75,6 +81,8 @@ function useMenuCommands(): void {
             return sh.set({ paletteOpen: true })
           case 'open-shortcuts':
             return sh.set({ shortcutsOpen: true })
+          case 'open-projects':
+            return sh.setActiveModule('projects')
           case 'mode-photorealistic':
             sh.setActiveModule('globe')
             return runCommand('mode-photorealistic')

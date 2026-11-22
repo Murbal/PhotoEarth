@@ -15,6 +15,7 @@
     "src/main/jsonStore.ts",
     "src/main/photoPicker.ts",
     "src/main/photos.ts",
+    "src/main/projects.ts",
     "src/main/shortLinks.ts",
     "src/main/wslGpu.ts",
     "vite/cesium.ts",

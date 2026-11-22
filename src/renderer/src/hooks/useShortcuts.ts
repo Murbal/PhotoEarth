@@ -5,6 +5,7 @@ import { hasPrimaryModifier } from '../lib/platform'
 import { WORKSPACE_MODULES } from '../shell/modules'
 import { shellState } from '../shell/shellStore'
 import { appState } from '../store/appStore'
+import { projectsState } from '../store/projectsStore'
 
 function isTyping(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
@@ -51,7 +52,11 @@ export function useShortcuts(): void {
         else if (sh.paletteOpen) sh.set({ paletteOpen: false })
         else if (sh.shortcutsOpen) sh.set({ shortcutsOpen: false })
         else if (sh.settingsOpen) sh.set({ settingsOpen: false })
-        else if (sh.activeModule === 'globe') {
+        else if (sh.activeModule === 'projects') {
+          const ps = projectsState()
+          if (ps.createDialogOpen) ps.set({ createDialogOpen: false })
+          else if (ps.openProjectId) ps.closeProject()
+        } else if (sh.activeModule === 'globe') {
           if (s.profile.active) getEngine()?.profile.cancelOrFinish()
           else if (s.alignment.open && s.alignment.pickMode !== null) getEngine()?.alignment.setPickMode(null)
           else if (s.viewshed.picking) getEngine()?.viewshed.setPicking(false)
@@ -66,6 +71,24 @@ export function useShortcuts(): void {
       if (modal || isTyping(e.target)) return
       if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key === '?') {
         sh.set({ shortcutsOpen: true })
+        return
+      }
+
+      // Module-scoped shortcuts: Projects Hub.
+      if (sh.activeModule === 'projects') {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return
+        const ps = projectsState()
+        if (ps.createDialogOpen) return
+        if (key === 'n' && !ps.openProjectId) {
+          e.preventDefault()
+          ps.set({ createDialogOpen: true })
+          return
+        }
+        if (e.key === '/' && !ps.openProjectId) {
+          e.preventDefault()
+          ps.requestFocusSearch()
+          return
+        }
         return
       }
 

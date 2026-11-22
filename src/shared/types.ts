@@ -175,6 +175,8 @@ export interface Settings {
   bookmarkIncludeTime: boolean
   /** Markers for the saved locations on the map. */
   showLocationMarkers: boolean
+  /** Last active project context (restored on startup if it still exists). */
+  lastProjectId: string | null
   onboardingComplete: boolean
 }
 
@@ -302,6 +304,83 @@ export interface ProfilePatch {
   name?: string
   locationId?: string | null
 }
+
+// ───────────────────────────── projects ─────────────────────────────
+
+export type ProjectStatus = 'brainstorming' | 'scouting' | 'ready' | 'shot' | 'archived'
+
+export interface ProjectDateWindow {
+  /** ISO calendar date 'YYYY-MM-DD' (date-only, independent of timezone). */
+  start: string | null
+  end: string | null
+  /** Optional free text, e.g. "Late October, first snow" when exact dates aren't fixed yet. */
+  label: string
+}
+
+export interface ProjectConcept {
+  /** Short 1-2 sentence premise or visual goal. */
+  summary: string
+  /** Lighting / weather mood keywords or prose (e.g. "low-angle fog, blue hour"). */
+  lightingMood: string
+  /** Optional self-imposed constraints (e.g. "35mm prime only", "square 1:1"). */
+  constraints: string
+  /** Dominant target hex colors (manually picked or synced from a linked Moodboard). */
+  colorStory: string[]
+}
+
+export interface ProjectNote {
+  id: string
+  title: string
+  /** Markdown text. */
+  body: string
+  pinned: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Project {
+  id: string
+  title: string
+  status: ProjectStatus
+  createdAt: string
+  updatedAt: string
+  /** Optional cover image stored in the shared PhotoStore. */
+  coverPhoto: LocationPhoto | null
+  /** Lowercase, unique tags (e.g. 'landscape', 'astro', 'italy'). */
+  tags: string[]
+  dateWindow: ProjectDateWindow
+  concept: ProjectConcept
+  /** Ordered list of linked Bookmark IDs from bookmarks.json. */
+  locationIds: string[]
+  /** Ordered list of linked Moodboard IDs from moodboards/index.json. */
+  moodboardIds: string[]
+  /** Free-form scratchpad / concept cards. */
+  notes: ProjectNote[]
+}
+
+export interface NewProject {
+  title: string
+  status?: ProjectStatus
+  tags?: string[]
+  dateWindow?: Partial<ProjectDateWindow>
+  concept?: Partial<ProjectConcept>
+  locationIds?: string[]
+  moodboardIds?: string[]
+  notes?: Array<{ title: string; body: string; pinned?: boolean }>
+}
+
+export interface ProjectPatch {
+  title?: string
+  status?: ProjectStatus
+  tags?: string[]
+  dateWindow?: Partial<ProjectDateWindow>
+  concept?: Partial<ProjectConcept>
+  locationIds?: string[]
+  moodboardIds?: string[]
+  notes?: ProjectNote[]
+}
+
+export type ProjectPhotoResult = { ok: true; project: Project } | { ok: false; error: string }
 
 export interface ApiKeys {
   googleApiKey: string | null
@@ -450,6 +529,7 @@ export type MenuCommand =
   | 'open-settings'
   | 'open-palette'
   | 'open-shortcuts'
+  | 'open-projects'
   | 'mode-photorealistic'
   | 'mode-map'
   | 'toggle-fps'
@@ -491,6 +571,21 @@ export interface PhotoEarthApi {
     create(profile: NewProfile): Promise<SavedProfile | null>
     update(id: string, patch: ProfilePatch): Promise<SavedProfile | null>
     remove(id: string): Promise<boolean>
+  }
+  projects: {
+    list(): Promise<Project[]>
+    create(input: NewProject): Promise<Project>
+    update(id: string, patch: ProjectPatch): Promise<Project | null>
+    remove(id: string): Promise<boolean>
+    setCoverPhoto(id: string, photo: PhotoUpload): Promise<ProjectPhotoResult>
+    setCoverPhotoFromPhoto(id: string, photo: LocationPhoto): Promise<ProjectPhotoResult>
+    clearCoverPhoto(id: string): Promise<Project | null>
+    pickCoverPhoto(id: string): Promise<PickedPhoto | null>
+    readPickedPhoto(token: string): Promise<PickedPhotoData>
+    linkLocation(projectId: string, locationId: string): Promise<Project | null>
+    unlinkLocation(projectId: string, locationId: string): Promise<Project | null>
+    linkMoodboard(projectId: string, moodboardId: string): Promise<Project | null>
+    unlinkMoodboard(projectId: string, moodboardId: string): Promise<Project | null>
   }
   places: {
     autocomplete(request: AutocompleteRequest): Promise<Result<PlaceSuggestion[]>>

@@ -37,8 +37,9 @@ import {
   type MapView,
   type Point
 } from '../lib/webMercator'
-import { shellState } from '../shell/shellStore'
+import { shellState, useShellStore } from '../shell/shellStore'
 import { appState, useAppStore } from '../store/appStore'
+import { projectsState, useProjectsStore } from '../store/projectsStore'
 
 /** Light pollution tiles kept (1024 px atlas tiles are ~4 MB decoded). */
 const LIGHT_POLLUTION_CACHE = 40
@@ -244,10 +245,12 @@ class MapRenderer implements MapControl {
         () => this.invalidate()
       ),
       useAppStore.subscribe(
-        (s) => [s.bookmarks, s.locationFilter, s.activeLocation, s.settings.showLocationMarkers, s.destination] as const,
+        (s) => [s.bookmarks, s.locationFilter, s.locationScope, s.dimOtherLocations, s.activeLocation, s.settings.showLocationMarkers, s.destination] as const,
         () => this.syncPins(),
         { equalityFn: (a, b) => a.every((v, i) => v === b[i]) }
-      )
+      ),
+      useShellStore.subscribe((s) => s.activeProjectId, () => this.syncPins()),
+      useProjectsStore.subscribe((s) => s.projects, () => this.syncPins())
     )
     this.syncPins()
     this.invalidate()
@@ -691,11 +694,28 @@ class MapRenderer implements MapControl {
     if (!off) pin.el.style.transform = `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px)`
   }
 
-  /** Saved locations (as the panel's filter shows them) and the search pin. */
+  /** Saved locations (as the panel's filter & active project scope show them) and the search pin. */
   private syncPins(): void {
-    const { bookmarks, locationFilter, activeLocation, panels, settings, destination } = appState()
+    const { bookmarks, locationFilter, locationScope, dimOtherLocations, activeLocation, panels, settings, destination } = appState()
     const active = panels.bookmarks ? activeLocation : null
-    const shown: Bookmark[] = settings.showLocationMarkers ? bookmarks.filter((b) => b.id === active || matchesFilter(b, locationFilter)) : []
+    const activeProjectId = shellState().activeProjectId
+    const activeProject = activeProjectId ? projectsState().projects.find((p) => p.id === activeProjectId) ?? null : null
+    const scopedToProject = locationScope === 'project' && !!activeProject
+    const projectIds = scopedToProject ? new Set(activeProject.locationIds) : null
+    const shown: Bookmark[] = []
+    const dimmed = new Set<string>()
+    if (settings.showLocationMarkers) {
+      for (const b of bookmarks) {
+        const passesFilter = b.id === active || matchesFilter(b, locationFilter)
+        if (!passesFilter) continue
+        if (!projectIds || projectIds.has(b.id) || b.id === active) {
+          shown.push(b)
+        } else if (dimOtherLocations) {
+          shown.push(b)
+          dimmed.add(b.id)
+        }
+      }
+    }
     const keep = new Set(shown.map((b) => b.id))
     for (const [id, pin] of this.pins) {
       if (!keep.has(id)) {
@@ -720,7 +740,7 @@ class MapRenderer implements MapControl {
       }
       pin.longitude = b.position.longitude
       pin.latitude = b.position.latitude
-      pin.el.className = `map-pin ${b.status === 'visited' ? 'visited' : ''} ${b.id === active ? 'active' : ''}`
+      pin.el.className = `map-pin ${b.status === 'visited' ? 'visited' : ''} ${b.id === active ? 'active' : ''} ${dimmed.has(b.id) ? 'dimmed' : ''}`
       pin.el.setAttribute('aria-label', `Saved location: ${b.name}`)
       pin.el.innerHTML = '<span class="dot"></span><span class="name"></span>'
       pin.el.querySelector('.name')!.textContent = b.name
