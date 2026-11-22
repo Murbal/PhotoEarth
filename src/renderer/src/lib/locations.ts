@@ -5,6 +5,7 @@ import type { Bookmark, BookmarkPatch, SavedProfile } from '@shared/types'
 import { getEngine } from '../engine/instance'
 import { shellState } from '../shell/shellStore'
 import { appState } from '../store/appStore'
+import { projectsState } from '../store/projectsStore'
 import { formatLatLon } from '@shared/coords'
 import { makeThumbnail } from './photos'
 import { haversine } from './profile'
@@ -15,26 +16,49 @@ function replaceBookmark(updated: Bookmark): void {
 }
 
 /**
- * Saves the current view as a location (Ctrl/Cmd+B). `edit` opens it in the editor, as the
- * panel's button does; the shortcut only opens the list, so the keyboard stays on the map.
+ * Saves the current view (or inspected/search spot) as a location (Ctrl/Cmd+B).
+ * `edit` opens it in the editor; `openPanel: false` keeps the map uncluttered (used when
+ * adding spots straight from the inspect card or search chip); `projectId` explicitly links
+ * the saved spot to that project.
  */
-export async function saveCurrentView(opts: { name?: string; edit?: boolean } = {}): Promise<Bookmark | null> {
+export async function saveCurrentView(
+  opts: { name?: string; edit?: boolean; projectId?: string | null; openPanel?: boolean } = {}
+): Promise<Bookmark | null> {
   const engine = getEngine()
   if (!engine) return null
-  const { settings, destination, bookmarks, set, togglePanel } = appState()
+  const { settings, destination, inspect, bookmarks, set, togglePanel } = appState()
   const { showToast } = shellState()
   // In Map mode the location is at the map's center.
   const target = settings.map.open ? engine.mapView() : appState().target
+  const trimmedName = opts.name?.trim()
   const label =
-    opts.name ??
-    destination?.name ??
-    (target ? `View ${formatLatLon(target.latitude, target.longitude, 'decimal')}` : `View ${bookmarks.length + 1}`)
+    trimmedName ||
+    (inspect && !settings.map.open
+      ? formatLatLon(inspect.latitude, inspect.longitude, 'decimal')
+      : destination?.name ??
+        (target ? `View ${formatLatLon(target.latitude, target.longitude, 'decimal')}` : `View ${bookmarks.length + 1}`))
   const saved = await window.photoearth.bookmarks.create(await engine.bookmarkFromView(label, settings.bookmarkIncludeTime))
   // Opens on the new location, or on the list where it now is: never on another location's
   // details left open from before.
-  set({ bookmarks: [...appState().bookmarks, saved], activeLocation: opts.edit ? saved.id : null })
-  togglePanel('bookmarks', true)
-  showToast('Location saved')
+  set({
+    bookmarks: [...appState().bookmarks, saved],
+    activeLocation: opts.edit ? saved.id : opts.openPanel === false ? appState().activeLocation : null
+  })
+  if (opts.openPanel !== false) togglePanel('bookmarks', true)
+  const targetProjectId =
+    opts.projectId !== undefined
+      ? opts.projectId
+      : appState().saveToActiveProject
+        ? shellState().activeProjectId
+        : null
+  const targetProject = targetProjectId ? projectsState().projects.find((p) => p.id === targetProjectId) ?? null : null
+  if (targetProject) {
+    const updated = await window.photoearth.projects.linkLocation(targetProject.id, saved.id)
+    if (updated) projectsState().replaceProject(updated)
+    showToast(`Added “${saved.name}” to “${targetProject.title}”`)
+  } else {
+    showToast('Location saved')
+  }
   return saved
 }
 
@@ -64,10 +88,12 @@ export async function deleteLocation(id: string): Promise<void> {
     profiles: s.profiles.filter((p) => p.locationId !== id),
     activeLocation: s.activeLocation === id ? null : s.activeLocation
   })
+  projectsState().unlinkLocationFromState(id)
   if (sh.photoViewer?.locationId === id) sh.set({ photoViewer: null })
 }
 
 export function flyToBookmark(b: Bookmark): void {
+  if (shellState().activeModule !== 'globe') shellState().setActiveModule('globe')
   void getEngine()?.flyToBookmark(b)
 }
 
@@ -180,6 +206,7 @@ export async function saveProfile(name: string, locationId: string | null): Prom
 }
 
 export function openProfile(p: SavedProfile): void {
+  if (shellState().activeModule !== 'globe') shellState().setActiveModule('globe')
   void getEngine()?.openSavedProfile(p)
 }
 

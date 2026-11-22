@@ -1,9 +1,13 @@
+import { useState } from 'react'
 import { getEngine } from '../engine/instance'
 import { formatLatLon } from '@shared/coords'
+import { saveCurrentView } from '../lib/locations'
+import { openProjectWorkspace } from '../lib/projects'
 import { formatClock, formatDuration, formatShortDate, utcToZoned } from '../lib/time'
 import { formatElevation, formatPointForClipboard } from '../lib/units'
 import { shellState, useShellStore } from '../shell/shellStore'
 import { appState, useAppStore, type SpotSunInfo } from '../store/appStore'
+import { useProjectsStore } from '../store/projectsStore'
 import { Icon } from './Icon'
 import { SkyReadout, skySummary } from './LightPollution'
 import { ViewshedReadout } from './ViewshedPanel'
@@ -84,8 +88,52 @@ export function StatusChips() {
           </button>
         </span>
       )}
+      <ScoutingChip />
       <DestinationChip />
     </div>
+  )
+}
+
+/** Persistent banner chip when the user clicked "Scout in 3D Globe" from a project. */
+function ScoutingChip() {
+  const scoutingProjectId = useAppStore((s) => s.scoutingProjectId)
+  const setApp = useAppStore((s) => s.set)
+  const bookmarks = useAppStore((s) => s.bookmarks)
+  const project = useProjectsStore((s) =>
+    scoutingProjectId ? s.projects.find((p) => p.id === scoutingProjectId) ?? null : null
+  )
+  if (!project) return null
+  const bookmarkIds = new Set(bookmarks.map((b) => b.id))
+  const count = project.locationIds.filter((id) => bookmarkIds.has(id)).length
+  return (
+    <span className="panel chip scouting-chip" role="status">
+      <Icon name="projects" size={14} style={{ color: 'var(--accent)', flex: 'none' }} />
+      <span>
+        Scouting for <strong>{project.title}</strong>
+        <span className="faint"> · {count} {count === 1 ? 'spot' : 'spots'} — click any spot on the globe to add</span>
+      </span>
+      <button
+        type="button"
+        className="btn ghost"
+        style={{ height: 22, padding: '0 8px', fontSize: 11.5 }}
+        onClick={() => {
+          setApp({ scoutingProjectId: null })
+          openProjectWorkspace(project.id, 'locations')
+        }}
+      >
+        Back to project
+      </button>
+      <button
+        type="button"
+        className="icon-btn small"
+        style={{ width: 22, height: 22 }}
+        aria-label="Finish scouting"
+        title="Dismiss scouting banner"
+        onClick={() => setApp({ scoutingProjectId: null })}
+      >
+        <Icon name="close" size={12} />
+      </button>
+    </span>
   )
 }
 
@@ -93,6 +141,12 @@ export function StatusChips() {
 function DestinationChip() {
   const destination = useAppStore((s) => s.destination)
   const format = useAppStore((s) => s.settings.coordFormat)
+  const scoutingProjectId = useAppStore((s) => s.scoutingProjectId)
+  const activeProjectId = useShellStore((s) => s.activeProjectId)
+  const targetProjectId = scoutingProjectId ?? activeProjectId
+  const targetProject = useProjectsStore((s) =>
+    targetProjectId ? s.projects.find((p) => p.id === targetProjectId) ?? null : null
+  )
   if (!destination) return null
   const coords = formatLatLon(destination.latitude, destination.longitude, format)
   const showCoords = coords !== destination.name
@@ -102,6 +156,22 @@ function DestinationChip() {
       <span className="name">{destination.name}</span>
       {destination.detail && <span className="detail">{destination.detail}</span>}
       {showCoords && <span className="mono faint">{coords}</span>}
+      <button
+        type="button"
+        className="btn primary"
+        style={{ height: 22, padding: '0 8px', fontSize: 11.5 }}
+        title={targetProject ? `Save this spot into “${targetProject.title}”` : 'Save this spot to Saved Locations'}
+        onClick={() => {
+          void saveCurrentView({
+            name: destination.name,
+            projectId: targetProject?.id ?? null,
+            openPanel: !targetProject
+          })
+        }}
+      >
+        <Icon name="plus" size={11} />
+        {targetProject ? `Add to ${targetProject.title}` : 'Save spot'}
+      </button>
       <button className="icon-btn small" style={{ width: 22, height: 22 }} aria-label="Remove search pin" title="Remove search pin (Esc)" onClick={() => getEngine()?.searchMarker.clear()}>
         <Icon name="close" size={12} />
       </button>
@@ -191,6 +261,89 @@ export function InspectCard() {
       <ViewshedReadout />
       <SpotSunTimes />
       <SkyReadout />
+      <InspectSaveBar key={`${inspect.latitude.toFixed(6)},${inspect.longitude.toFixed(6)}`} />
+    </div>
+  )
+}
+
+/** One-click save of the inspected globe spot directly to the active/selected project or Saved Locations. */
+function InspectSaveBar() {
+  const scoutingProjectId = useAppStore((s) => s.scoutingProjectId)
+  const activeProjectId = useShellStore((s) => s.activeProjectId)
+  const projects = useProjectsStore((s) => s.projects)
+  const activeProjects = projects.filter((p) => p.status !== 'archived')
+  const defaultProjectId = scoutingProjectId ?? activeProjectId ?? ''
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(defaultProjectId)
+  const [name, setName] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const effectiveProjectId = scoutingProjectId
+    ? scoutingProjectId
+    : selectedProjectId && projects.some((p) => p.id === selectedProjectId)
+      ? selectedProjectId
+      : ''
+  const targetProject = effectiveProjectId ? projects.find((p) => p.id === effectiveProjectId) ?? null : null
+
+  const save = async () => {
+    if (saving) return
+    setSaving(true)
+    try {
+      const saved = await saveCurrentView({
+        name: name.trim() || undefined,
+        projectId: targetProject?.id ?? null,
+        openPanel: false
+      })
+      if (saved) getEngine()?.inspector.clear()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="inspect-save-bar">
+      <input
+        className="input inspect-name-input"
+        aria-label="Spot name"
+        placeholder="Spot name (optional)"
+        maxLength={200}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            void save()
+          }
+        }}
+      />
+      <div className="inspect-save-row">
+        {!scoutingProjectId && activeProjects.length > 0 && (
+          <select
+            className="input inspect-project-select"
+            aria-label="Target project"
+            value={effectiveProjectId}
+            onChange={(e) => setSelectedProjectId(e.target.value)}
+          >
+            <option value="">Saved locations only</option>
+            {activeProjects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.title}
+              </option>
+            ))}
+          </select>
+        )}
+        <button
+          type="button"
+          className="btn primary inspect-save-btn grow"
+          disabled={saving}
+          onClick={() => void save()}
+          title={targetProject ? `Save this spot and add it to “${targetProject.title}”` : 'Save this spot'}
+        >
+          <Icon name="plus" size={13} />
+          <span className="truncate">
+            {targetProject ? `Add to ${targetProject.title}` : 'Save spot'}
+          </span>
+        </button>
+      </div>
     </div>
   )
 }

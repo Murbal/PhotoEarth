@@ -33,6 +33,7 @@ export function buildMenu(): void {
     {
       label: '&View',
       submenu: [
+        { label: 'Projects Hub', click: () => send('open-projects') },
         { label: 'Photorealistic Mode', click: () => send('mode-photorealistic') },
         { label: 'Map Mode', click: () => send('mode-map') },
         { type: 'separator' },

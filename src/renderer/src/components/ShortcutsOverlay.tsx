@@ -4,7 +4,33 @@ import { shortcutLabel } from '../lib/platform'
 import { useShellStore } from '../shell/shellStore'
 import { Icon } from './Icon'
 
-const GROUPS: Array<[string, Array<[string, string]>]> = [
+type ShortcutGroup = [string, Array<[string, string]>]
+
+const GLOBAL_GROUPS: ShortcutGroup[] = [
+  [
+    'Workspace',
+    [
+      [shortcutLabel('Mod+1'), 'Switch to Projects Hub'],
+      [shortcutLabel('Mod+2'), 'Switch to 3D Globe'],
+      [shortcutLabel('Mod+K'), 'Search & command palette'],
+      [shortcutLabel('Mod+,'), 'Settings'],
+      ['?', 'This overlay']
+    ]
+  ]
+]
+
+const PROJECTS_GROUPS: ShortcutGroup[] = [
+  [
+    'Projects Hub',
+    [
+      ['N', 'New project (on Projects index)'],
+      ['/', 'Focus search filter (on Projects index)'],
+      ['Esc', 'Back to Projects index / close dialog']
+    ]
+  ]
+]
+
+const GLOBE_GROUPS: ShortcutGroup[] = [
   [
     'Mouse',
     [
@@ -46,9 +72,7 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
   [
     'Tools & time',
     [
-      [shortcutLabel('Mod+K'), 'Search & command palette'],
-      [shortcutLabel('Mod+B'), 'Save location'],
-      [shortcutLabel('Mod+,'), 'Settings'],
+      [shortcutLabel('Mod+B'), 'Save location (links to active project when on)'],
       ['T', 'Time & sun panel'],
       ['L', 'Layers: light pollution, viewshed, exaggeration'],
       ['P', 'Elevation profile'],
@@ -61,8 +85,7 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
       ['Space', 'Play / pause sun (time panel open)'],
       ['[ / ]', 'Time ±15 min'],
       [shortcutLabel('Shift+[ / ]'), 'Date ±1 day'],
-      ['Esc', 'Close / finish / clear marker'],
-      ['?', 'This overlay']
+      ['Esc', 'Close / finish / clear marker']
     ]
   ]
 ]
@@ -74,9 +97,11 @@ export function ShortcutsOverlay() {
 
 function ShortcutsDialog() {
   const set = useShellStore((s) => s.set)
+  const activeModule = useShellStore((s) => s.activeModule)
   const dialogRef = useRef<HTMLDivElement>(null)
   useDialogFocus(dialogRef)
   const close = () => set({ shortcutsOpen: false })
+  const groups = [...GLOBAL_GROUPS, ...(activeModule === 'projects' ? PROJECTS_GROUPS : GLOBE_GROUPS)]
   return (
     <div className="scrim center" onPointerDown={(e) => e.target === e.currentTarget && close()}>
       <div ref={dialogRef} tabIndex={-1} className="panel dialog" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" style={{ width: 'min(760px, calc(100% - 32px))' }}>
@@ -88,11 +113,11 @@ function ShortcutsDialog() {
         </div>
         <div className="dialog-body">
           <div className="shortcut-grid">
-            {GROUPS.map(([title, rows]) => (
+            {groups.map(([title, rows]) => (
               <div key={title} style={{ display: 'contents' }}>
                 <h3>{title}</h3>
                 {rows.map(([keys, label]) => (
-                  <div key={keys} className="shortcut-row">
+                  <div key={`${title}-${keys}`} className="shortcut-row">
                     <span className="muted">{label}</span>
                     <span className="kbd">{keys}</span>
                   </div>

@@ -25,6 +25,8 @@ export interface BookmarkStoreOptions {
    * `cleanOrphanPhotos` once after all photo-owning stores have loaded).
    */
   cleanupOrphans?: boolean
+  /** Coordinator hook invoked after a location is removed (e.g. to unlink from projects). */
+  onRemove?: (locationId: string) => void
 }
 
 /**
@@ -38,8 +40,10 @@ export class BookmarkStore implements PhotoOwner {
   readonly photos: PhotoStore
   readonly canCleanOrphans: boolean
   private readonly file: JsonFile<BookmarksFile>
+  private readonly onRemove?: (locationId: string) => void
 
   constructor(dir: string, options?: BookmarkStoreOptions) {
+    this.onRemove = options?.onRemove
     const path = join(dir, 'bookmarks.json')
     const version = readVersion(path)
     if (version !== null && version !== BOOKMARKS_FILE_VERSION) {
@@ -104,6 +108,7 @@ export class BookmarkStore implements PhotoOwner {
     // never a location pointing at missing photos.
     this.file.flush()
     for (const photo of gone.photos) this.photos.remove(photo)
+    this.onRemove?.(id)
     return true
   }
 

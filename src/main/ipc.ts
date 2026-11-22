@@ -8,6 +8,7 @@ import type { BookmarkStore } from './bookmarks'
 import type { JsonFile } from './jsonStore'
 import { PhotoPicker } from './photoPicker'
 import type { PhotoInput } from './photos'
+import type { ProjectStore } from './projects'
 import {
   GOOGLE_REFERER,
   mapsShortLink,
@@ -25,6 +26,7 @@ interface Stores {
   settings: JsonFile<Settings>
   secrets: SecretStore
   bookmarks: BookmarkStore
+  projects: ProjectStore
   disable3dTiles?: boolean
   isTrustedSender: (event: IpcMainInvokeEvent | Electron.IpcMainEvent) => boolean
   /** Called after the stored keys change. */
@@ -33,7 +35,7 @@ interface Stores {
 
 const str = (v: unknown, max = 500): string => (typeof v === 'string' ? v.slice(0, max) : '')
 
-export function registerIpc({ settings, secrets, bookmarks, disable3dTiles, isTrustedSender, onKeysChanged }: Stores): void {
+export function registerIpc({ settings, secrets, bookmarks, projects, disable3dTiles, isTrustedSender, onKeysChanged }: Stores): void {
   const handle = <A extends unknown[], R>(channel: string, fn: (...args: A) => R) => {
     ipcMain.handle(channel, (event, ...args) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender')
@@ -96,6 +98,35 @@ export function registerIpc({ settings, secrets, bookmarks, disable3dTiles, isTr
   handle(IPC.profilesCreate, (input: unknown) => bookmarks.createProfile(input))
   handle(IPC.profilesUpdate, (id: unknown, patch: unknown) => bookmarks.updateProfile(str(id, 100), patch))
   handle(IPC.profilesRemove, (id: unknown) => bookmarks.removeProfile(str(id, 100)))
+
+  // Projects: payloads sanitized in shared/projects.ts; cover photos stored in shared PhotoStore.
+  handle(IPC.projectsList, () => projects.list())
+  handle(IPC.projectsCreate, (input: unknown) => projects.create(input))
+  handle(IPC.projectsUpdate, (id: unknown, patch: unknown) => projects.update(str(id, 100), patch))
+  handle(IPC.projectsRemove, (id: unknown) => projects.remove(str(id, 100)))
+  handle(IPC.projectsSetCoverPhoto, (id: unknown, photo: unknown) => {
+    const p = (photo ?? {}) as Partial<PhotoInput>
+    return projects.setCoverPhoto(str(id, 100), { name: p.name, data: p.data, thumb: p.thumb, width: p.width, height: p.height })
+  })
+  handle(IPC.projectsSetCoverPhotoFromPhoto, (id: unknown, photo: unknown) => projects.setCoverPhotoFromPhoto(str(id, 100), photo))
+  handle(IPC.projectsClearCoverPhoto, (id: unknown) => projects.clearCoverPhoto(str(id, 100)))
+  ipcMain.handle(IPC.projectsPickCoverPhoto, async (event, id: unknown) => {
+    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender')
+    const project = projects.get(str(id, 100))
+    if (!project) return null
+    pickerWindow = BrowserWindow.fromWebContents(event.sender)
+    const picked = await picker.pick(`Choose cover photo for “${project.title}”`, { multi: false })
+    return picked[0] ?? null
+  })
+  handle(IPC.projectsReadPickedPhoto, (token: unknown) => picker.read(str(token, 100)))
+  handle(IPC.projectsLinkLocation, (projectId: unknown, locationId: unknown) => {
+    const locId = str(locationId, 100)
+    if (!bookmarks.list().some((b) => b.id === locId)) return null
+    return projects.linkLocation(str(projectId, 100), locId)
+  })
+  handle(IPC.projectsUnlinkLocation, (projectId: unknown, locationId: unknown) => projects.unlinkLocation(str(projectId, 100), str(locationId, 100)))
+  handle(IPC.projectsLinkMoodboard, (projectId: unknown, moodboardId: unknown) => projects.linkMoodboard(str(projectId, 100), str(moodboardId, 100)))
+  handle(IPC.projectsUnlinkMoodboard, (projectId: unknown, moodboardId: unknown) => projects.unlinkMoodboard(str(projectId, 100), str(moodboardId, 100)))
 
   handle(IPC.placesAutocomplete, (req: unknown) => {
     const r = (req ?? {}) as Partial<AutocompleteRequest>

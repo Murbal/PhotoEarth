@@ -32,6 +32,21 @@ const api: PhotoEarthApi = {
     update: (id, patch) => ipcRenderer.invoke(IPC.profilesUpdate, id, patch),
     remove: (id) => ipcRenderer.invoke(IPC.profilesRemove, id)
   },
+  projects: {
+    list: () => ipcRenderer.invoke(IPC.projectsList),
+    create: (input) => ipcRenderer.invoke(IPC.projectsCreate, input),
+    update: (id, patch) => ipcRenderer.invoke(IPC.projectsUpdate, id, patch),
+    remove: (id) => ipcRenderer.invoke(IPC.projectsRemove, id),
+    setCoverPhoto: (id, photo) => ipcRenderer.invoke(IPC.projectsSetCoverPhoto, id, photo),
+    setCoverPhotoFromPhoto: (id, photo) => ipcRenderer.invoke(IPC.projectsSetCoverPhotoFromPhoto, id, photo),
+    clearCoverPhoto: (id) => ipcRenderer.invoke(IPC.projectsClearCoverPhoto, id),
+    pickCoverPhoto: (id) => ipcRenderer.invoke(IPC.projectsPickCoverPhoto, id),
+    readPickedPhoto: (token) => ipcRenderer.invoke(IPC.projectsReadPickedPhoto, token),
+    linkLocation: (projectId, locationId) => ipcRenderer.invoke(IPC.projectsLinkLocation, projectId, locationId),
+    unlinkLocation: (projectId, locationId) => ipcRenderer.invoke(IPC.projectsUnlinkLocation, projectId, locationId),
+    linkMoodboard: (projectId, moodboardId) => ipcRenderer.invoke(IPC.projectsLinkMoodboard, projectId, moodboardId),
+    unlinkMoodboard: (projectId, moodboardId) => ipcRenderer.invoke(IPC.projectsUnlinkMoodboard, projectId, moodboardId)
+  },
   places: {
     autocomplete: (request) => ipcRenderer.invoke(IPC.placesAutocomplete, request),
     details: (placeId, sessionToken) => ipcRenderer.invoke(IPC.placesDetails, placeId, sessionToken),

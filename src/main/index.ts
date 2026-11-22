@@ -7,6 +7,7 @@ import { registerIpc } from './ipc'
 import { JsonFile } from './jsonStore'
 import { buildMenu } from './menu'
 import { cleanOrphanPhotos, PhotoStore } from './photos'
+import { ProjectStore } from './projects'
 import { handleAppScheme, handlePhotoScheme, registerAppScheme } from './protocol'
 import { SecretStore } from './secrets'
 import { mapTilesNeedsReferer } from './network'
@@ -89,8 +90,14 @@ void app.whenReady().then(async () => {
   }
   const userData = app.getPath('userData')
   const photos = new PhotoStore(join(userData, 'photos'))
-  const bookmarks = new BookmarkStore(userData, { photos })
-  cleanOrphanPhotos(photos, [bookmarks])
+  const projects = new ProjectStore(userData, { photos })
+  const bookmarks = new BookmarkStore(userData, {
+    photos,
+    onRemove: (locationId) => {
+      projects.unlinkLocationFromAll(locationId)
+    }
+  })
+  cleanOrphanPhotos(photos, [bookmarks, projects])
 
   hardenSession(session.defaultSession, devServer)
   handleAppScheme(join(__dirname, '../renderer'))
@@ -120,6 +127,7 @@ void app.whenReady().then(async () => {
     settings,
     secrets,
     bookmarks,
+    projects,
     disable3dTiles,
     isTrustedSender,
     onKeysChanged: (keys) => updateRefererHook(keys.googleApiKey)
@@ -139,7 +147,7 @@ void app.whenReady().then(async () => {
   })
 
   app.on('before-quit', () => {
-    for (const store of [settings, bookmarks]) {
+    for (const store of [settings, bookmarks, projects]) {
       try {
         store.flush()
       } catch (err) {

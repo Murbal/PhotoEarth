@@ -20,8 +20,9 @@ import { cameraForView, LOOKING_DOWN, sameView, viewFromCamera, zoomForMetersPer
 import { loadGeoid } from '../lib/geoid'
 import type { GeoPoint } from '../lib/profile'
 import { haversine } from '../lib/profile'
-import { shellState } from '../shell/shellStore'
+import { shellState, useShellStore } from '../shell/shellStore'
 import { appState, useAppStore, type AppState } from '../store/appStore'
+import { projectsState, useProjectsStore } from '../store/projectsStore'
 import { AlignmentTool } from './AlignmentTool'
 import { CameraController } from './CameraController'
 import { GlobeMaterial } from './GlobeMaterial'
@@ -527,23 +528,39 @@ export class Engine {
     )
     s.push(
       useAppStore.subscribe(
-        (st) => [st.bookmarks, st.locationFilter, st.activeLocation, st.panels.bookmarks, st.settings.showLocationMarkers] as const,
+        (st) => [st.bookmarks, st.locationFilter, st.locationScope, st.dimOtherLocations, st.activeLocation, st.panels.bookmarks, st.settings.showLocationMarkers] as const,
         () => this.updateMarkers(),
         { equalityFn: (a, b) => a.every((v, i) => v === b[i]) }
       )
     )
+    s.push(useShellStore.subscribe((st) => st.activeProjectId, () => this.updateMarkers()))
+    s.push(useProjectsStore.subscribe((st) => st.projects, () => this.updateMarkers()))
     s.push(useAppStore.subscribe((st) => st.terrainReady, (ready) => ready && this.markers.resample()))
   }
 
-  /** Pins for the locations the panel's filter shows, plus the one being edited. */
+  /** Pins for the locations the panel's filter & active project scope show, plus the one being edited. */
   private updateMarkers(): void {
-    const { bookmarks, locationFilter, panels, settings } = appState()
+    const { bookmarks, locationFilter, locationScope, dimOtherLocations, panels, settings } = appState()
     const activeLocation = panels.bookmarks ? appState().activeLocation : null
+    const activeProjectId = shellState().activeProjectId
+    const activeProject = activeProjectId ? projectsState().projects.find((p) => p.id === activeProjectId) ?? null : null
+    const scopedToProject = locationScope === 'project' && !!activeProject
+    const projectIds = scopedToProject ? new Set(activeProject.locationIds) : null
     this.markers.setVisible(settings.showLocationMarkers)
-    this.markers.update(
-      bookmarks.filter((b) => b.id === activeLocation || matchesFilter(b, locationFilter)),
-      activeLocation
-    )
+    const shown: Bookmark[] = []
+    const dimmed = new Set<string>()
+    for (const b of bookmarks) {
+      const inProject = !projectIds || projectIds.has(b.id)
+      const passesFilter = b.id === activeLocation || matchesFilter(b, locationFilter)
+      if (!passesFilter) continue
+      if (inProject || b.id === activeLocation) {
+        shown.push(b)
+      } else if (dimOtherLocations) {
+        shown.push(b)
+        dimmed.add(b.id)
+      }
+    }
+    this.markers.update(shown, activeLocation, dimmed.size > 0 ? dimmed : undefined)
   }
 
   private applyMode(): void {
@@ -964,6 +981,23 @@ export class Engine {
     }
     await this.camera.flyToView(b.camera)
     if (b.position.height === null) void this.measureLocation(b)
+  }
+
+  /** Frames the bounding box of a project's linked locations in the 3D view. */
+  async flyToProjectLocations(locations: Bookmark[]): Promise<void> {
+    if (locations.length === 0) return
+    if (locations.length === 1) {
+      await this.flyToBookmark(locations[0])
+      return
+    }
+    await this.closeMap(false)
+    const points = locations.map((b) => Cartesian3.fromDegrees(b.position.longitude, b.position.latitude, b.position.height ?? 0))
+    const sphere = BoundingSphere.fromPoints(points)
+    const c = cartographicDeg(sphere.center)
+    if (!c) return
+    const ground = locations.reduce((sum, b) => sum + (b.position.height ?? 0), 0) / locations.length
+    const range = Math.min(4.0e6, Math.max(sphere.radius * 2.6, 2500))
+    await this.camera.flyToLocation(c.latitude, c.longitude, { range, groundHeight: ground, pitch: -45 })
   }
 
   /**

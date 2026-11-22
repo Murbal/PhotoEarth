@@ -19,9 +19,11 @@ import {
   updateLocation
 } from '../lib/locations'
 import { shortcutLabel } from '../lib/platform'
+import { linkLocationToProject, openProjectWorkspace, unlinkLocationFromProject } from '../lib/projects'
 import { formatClock, formatShortDate, utcToZoned } from '../lib/time'
 import { shellState, useShellStore } from '../shell/shellStore'
 import { useAppStore } from '../store/appStore'
+import { useProjectsStore } from '../store/projectsStore'
 import { Icon } from './Icon'
 
 const STATUS_LABEL: Record<LocationStatus, string> = { 'to-visit': 'To visit', visited: 'Visited' }
@@ -61,11 +63,26 @@ function LocationList() {
   const bookmarks = useAppStore((s) => s.bookmarks)
   const profiles = useAppStore((s) => s.profiles)
   const filter = useAppStore((s) => s.locationFilter)
+  const scope = useAppStore((s) => s.locationScope)
+  const dimOther = useAppStore((s) => s.dimOtherLocations)
+  const saveToProject = useAppStore((s) => s.saveToActiveProject)
   const includeTime = useAppStore((s) => s.settings.bookmarkIncludeTime)
   const patch = useAppStore((s) => s.patchSettings)
   const set = useAppStore((s) => s.set)
-  const tags = useMemo(() => tagCounts(bookmarks), [bookmarks])
-  const shown = useMemo(() => [...bookmarks].reverse().filter((b) => matchesFilter(b, filter)), [bookmarks, filter])
+  const activeProjectId = useShellStore((s) => s.activeProjectId)
+  const activeProject = useProjectsStore((s) => (activeProjectId ? s.projects.find((p) => p.id === activeProjectId) ?? null : null))
+  const scoped = scope === 'project' && !!activeProject
+  const projectLocationIds = useMemo(() => (activeProject ? new Set(activeProject.locationIds) : null), [activeProject])
+  const scopedBookmarks = useMemo(
+    () => (scoped && projectLocationIds ? bookmarks.filter((b) => projectLocationIds.has(b.id)) : bookmarks),
+    [bookmarks, scoped, projectLocationIds]
+  )
+  const projectSpotCount = useMemo(
+    () => (projectLocationIds ? bookmarks.filter((b) => projectLocationIds.has(b.id)).length : 0),
+    [bookmarks, projectLocationIds]
+  )
+  const tags = useMemo(() => tagCounts(scopedBookmarks), [scopedBookmarks])
+  const shown = useMemo(() => [...scopedBookmarks].reverse().filter((b) => matchesFilter(b, filter)), [scopedBookmarks, filter])
   const general = profiles.filter((p) => !p.locationId)
   // Selected tags no longer in use (their last location was deleted or retagged) stop filtering.
   useEffect(() => {
@@ -80,16 +97,57 @@ function LocationList() {
   return (
     <>
       <div className="panel-body">
+        {activeProject && (
+          <div className="location-project-scope">
+            <div className="segmented" role="group" aria-label="Location scope">
+              <button
+                className={!scoped ? 'active' : ''}
+                aria-pressed={!scoped}
+                onClick={() => set({ locationScope: 'all' })}
+              >
+                All ({bookmarks.length})
+              </button>
+              <button
+                className={scoped ? 'active' : ''}
+                aria-pressed={scoped}
+                title={`Active project: ${activeProject.title}`}
+                onClick={() => set({ locationScope: 'project' })}
+              >
+                <span className="truncate">{activeProject.title}</span> ({projectSpotCount})
+              </button>
+            </div>
+            {scoped && (
+              <label className="switch small muted" style={{ marginTop: 4 }}>
+                <input
+                  type="checkbox"
+                  checked={dimOther}
+                  onChange={(e) => set({ dimOtherLocations: e.target.checked })}
+                />
+                Show other pins dimmed on map
+              </label>
+            )}
+          </div>
+        )}
         <div className="row">
           <button className="btn primary grow" onClick={() => void saveCurrentView({ edit: true })}>
             <Icon name="plus" size={14} /> Save current view
           </button>
         </div>
+        {activeProject && (
+          <label className="switch small muted" style={{ marginTop: 6 }}>
+            <input
+              type="checkbox"
+              checked={saveToProject}
+              onChange={(e) => set({ saveToActiveProject: e.target.checked })}
+            />
+            <span className="truncate">Link new spots to “{activeProject.title}”</span>
+          </label>
+        )}
         <label className="switch small muted" style={{ marginTop: 6 }}>
           <input type="checkbox" checked={includeTime} onChange={(e) => patch((d) => void (d.bookmarkIncludeTime = e.target.checked))} />
           Include simulated date & time
         </label>
-        {bookmarks.length > 0 && (
+        {scopedBookmarks.length > 0 && (
           <div className="location-filters">
             <div className="segmented" role="group" aria-label="Filter by status">
               {(['all', 'to-visit', 'visited'] as const).map((s) => (
@@ -117,12 +175,20 @@ function LocationList() {
         )}
       </div>
       <div className="scroll" style={{ padding: '0 6px 8px' }}>
-        {bookmarks.length === 0 && (
+        {scopedBookmarks.length === 0 && (
           <div className="muted" style={{ padding: '6px 8px 10px' }}>
-            No saved locations yet. Press <span className="kbd">{shortcutLabel('Mod+B')}</span> to save the current view.
+            {scoped && activeProject ? (
+              <>
+                No spots linked to <strong>{activeProject.title}</strong> yet. Press <span className="kbd">{shortcutLabel('Mod+B')}</span> to save the current view here.
+              </>
+            ) : (
+              <>
+                No saved locations yet. Press <span className="kbd">{shortcutLabel('Mod+B')}</span> to save the current view.
+              </>
+            )}
           </div>
         )}
-        {bookmarks.length > 0 && shown.length === 0 && (
+        {scopedBookmarks.length > 0 && shown.length === 0 && (
           <div className="muted" style={{ padding: '6px 8px 10px' }}>
             No location matches the filter.
           </div>
@@ -311,6 +377,9 @@ function LocationEditor({ location: b }: { location: Bookmark }) {
         <Field label={`Photos${b.photos.length ? ` (${b.photos.length})` : ''}`}>
           <PhotoGrid location={b} />
         </Field>
+        <Field label="Projects">
+          <LocationProjectsField locationId={b.id} />
+        </Field>
         <Field label="Elevation profiles">
           {profiles.map((p) => (
             <ProfileRow key={p.id} profile={p} />
@@ -345,6 +414,61 @@ function LocationEditor({ location: b }: { location: Bookmark }) {
         </div>
       </div>
     </>
+  )
+}
+
+function LocationProjectsField({ locationId }: { locationId: string }) {
+  const projects = useProjectsStore((s) => s.projects)
+  const linked = projects.filter((p) => p.locationIds.includes(locationId))
+  const unlinked = projects.filter((p) => !p.locationIds.includes(locationId) && p.status !== 'archived')
+  if (projects.length === 0) {
+    return <div className="small faint">No projects yet. Create one in Projects Hub to organize spots.</div>
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {linked.length > 0 && (
+        <div className="tag-row">
+          {linked.map((p) => (
+            <span key={p.id} className="tag active">
+              <button
+                type="button"
+                className="link-btn"
+                style={{ marginLeft: 0, color: 'inherit' }}
+                title={`Open ${p.title}`}
+                onClick={() => openProjectWorkspace(p.id, 'locations')}
+              >
+                {p.title}
+              </button>
+              <button
+                type="button"
+                aria-label={`Remove from ${p.title}`}
+                title={`Remove from ${p.title}`}
+                onClick={() => void unlinkLocationFromProject(p.id, locationId)}
+              >
+                <Icon name="close" size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {unlinked.length > 0 && (
+        <select
+          className="input"
+          aria-label="Add location to project"
+          value=""
+          onChange={(e) => {
+            if (e.target.value) void linkLocationToProject(e.target.value, locationId)
+          }}
+        >
+          <option value="">+ Add to project…</option>
+          {unlinked.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.title}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
   )
 }
 

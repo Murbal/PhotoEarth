@@ -1738,6 +1738,10 @@ input[type='color'] {
   border-color: rgba(255, 181, 71, 0.4);
 }
 
+.chip.scouting-chip {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--panel-border));
+}
+
 .fps {
   position: absolute;
   left: 12px;
@@ -1828,6 +1832,42 @@ input[type='color'] {
   background: var(--panel-solid);
   border-right: 1px solid var(--panel-border);
   border-bottom: 1px solid var(--panel-border);
+}
+
+.inspect-save-bar {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 260px;
+}
+
+.inspect-name-input {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.inspect-save-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.inspect-project-select {
+  height: 26px;
+  padding: 0 6px;
+  font-size: 11.5px;
+  max-width: 132px;
+}
+
+.inspect-save-btn {
+  height: 26px;
+  padding: 0 9px;
+  font-size: 11.5px;
+  min-width: 0;
 }
 
 .spot-sun {
@@ -3095,4 +3135,180 @@ input[type='color'] {
 
 .vs-dot.hidden {
   background: var(--text-faint);
+}
+
+
+/* ───────────── map pin dimmed (active project scope) ───────────── */
+
+.map-pin.dimmed {
+  opacity: 0.36;
+  filter: saturate(0.4);
+}
+
+.map-pin.dimmed:hover {
+  opacity: 0.85;
+  filter: none;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.location-project-scope {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.location-project-scope .segmented {
+  width: 100%;
+}
+
+.location-project-scope .segmented button {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+/* ───────────── activity rail active project pill ───────────── */
+
+.activity-rail-divider {
+  width: 24px;
+  height: 1px;
+  background: var(--panel-border);
+  margin: 4px 0;
+}
+
+.activity-project-slot {
+  position: relative;
+}
+
+.activity-project-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1.5px dashed var(--panel-border);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.activity-project-pill:hover,
+.activity-project-pill.open {
+  background: var(--panel-hover);
+  color: var(--text);
+  border-color: var(--text-faint);
+}
+
+.activity-project-pill.has-project {
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--panel-active);
+  color: var(--text);
+}
+
+.activity-project-monogram {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.activity-project-popover {
+  position: absolute;
+  left: 46px;
+  top: -4px;
+  width: 248px;
+  padding: 10px;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--panel-solid);
+}
+
+.activity-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+.activity-popover-current {
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-hover);
+  border: 1px solid var(--panel-border);
+}
+
+.activity-popover-current-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-popover-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.activity-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.activity-popover-item:hover {
+  background: var(--panel-hover);
+}
+
+.activity-popover-item.active {
+  background: var(--panel-active);
+  color: var(--accent);
+}
+
+.activity-popover-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.activity-popover-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-popover-footer {
+  border-top: 1px solid var(--panel-border);
+  padding-top: 6px;
+  display: flex;
 }

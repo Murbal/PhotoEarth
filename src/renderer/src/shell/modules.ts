@@ -9,8 +9,9 @@ export interface ModuleDescriptor {
 
 /**
  * Registered workspace modules shown in the Activity Rail, in shortcut order (Mod+1..9).
- * Phase 1 ships with the 3D Globe; Projects Hub and Moodboards register here in Phases 2 & 3.
+ * Projects Hub (`Mod+1`), 3D Globe (`Mod+2`), and Moodboards (`Mod+3` in Phase 3).
  */
 export const WORKSPACE_MODULES: readonly ModuleDescriptor[] = [
+  { id: 'projects', label: 'Projects Hub', icon: 'projects' },
   { id: 'globe', label: '3D Globe', icon: 'globe' }
 ]

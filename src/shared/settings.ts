@@ -120,6 +120,7 @@ export function defaultSettings(): Settings {
     viewshed: defaultViewshed(),
     bookmarkIncludeTime: true,
     showLocationMarkers: true,
+    lastProjectId: null,
     onboardingComplete: false
   }
 }
@@ -272,6 +273,7 @@ export function sanitizeSettings(raw: Json): Settings {
     },
     bookmarkIncludeTime: bool(r.bookmarkIncludeTime, d.bookmarkIncludeTime),
     showLocationMarkers: bool(r.showLocationMarkers, d.showLocationMarkers),
+    lastProjectId: typeof r.lastProjectId === 'string' && r.lastProjectId.trim() ? r.lastProjectId.slice(0, 100) : null,
     onboardingComplete: bool(r.onboardingComplete, d.onboardingComplete)
   }
 }
