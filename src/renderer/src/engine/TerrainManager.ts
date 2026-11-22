@@ -13,7 +13,7 @@ import { httpStatusOf, responseTextOf } from './util'
 const WORLD_TERRAIN_ASSET = 1
 
 /**
- * Heightmap terrain for Elevation mode, profiles and the terrain shadow overlay.
+ * Heightmap terrain for the stand-in globe, profiles, the horizon, viewshed and the terrain shadow overlay.
  * Everything outside this class only sees `provider` and `sample()`, so another source
  * (e.g. AWS Terrain Tiles) can be swapped in here without touching the rest of the app.
  */
@@ -38,7 +38,7 @@ export class TerrainManager {
     Ion.defaultAccessToken = token
     try {
       const provider = await CesiumTerrainProvider.fromIonAssetId(WORLD_TERRAIN_ASSET, {
-        // Normals drive slope, hillshade and lighting; the water mask isn't needed.
+        // Normals drive the globe's lighting; the water mask isn't needed.
         requestVertexNormals: true,
         requestWaterMask: false
       })

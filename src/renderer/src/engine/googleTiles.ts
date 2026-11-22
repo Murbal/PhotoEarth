@@ -7,8 +7,6 @@ export const TILES_ENDPOINT = 'https://tile.googleapis.com'
 export const GOOGLE_LOGO_URL = 'https://assets.ion.cesium.com/google-credit.png'
 
 export interface TileSessionOptions {
-  /** Overlay the roadmap's roads and labels on satellite imagery (hybrid). */
-  labels?: boolean
   /** 2× tiles (same coverage, twice the pixels) for dense displays. */
   highDpi?: boolean
 }
@@ -29,8 +27,8 @@ export interface TileSessionError {
 
 export function sessionBody(mapType: ImageryType, opts: TileSessionOptions = {}): Record<string, unknown> {
   const body: Record<string, unknown> = { mapType, language: 'en-US', region: 'US' }
-  // The terrain map type requires the roadmap layer; on satellite it is optional (hybrid).
-  if (mapType === 'terrain' || (mapType === 'satellite' && opts.labels)) body.layerTypes = ['layerRoadmap']
+  // The terrain map type requires the roadmap layer.
+  if (mapType === 'terrain') body.layerTypes = ['layerRoadmap']
   if (opts.highDpi) {
     body.scale = 'scaleFactor2x'
     body.highDpi = true

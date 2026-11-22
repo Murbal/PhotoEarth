@@ -112,7 +112,7 @@ void main() {
 `
 
 /**
- * Receiver side, shared by the 3D Tiles custom shader and the Elevation-mode globe material.
+ * Receiver side, shared by the 3D Tiles custom shader and the stand-in globe's material.
  * Expects these uniforms declared by the host:
  *   u_vsMask0..2 (sampler2D), u_vsRect0..2 (vec4: minX, minY, cell, n),
  *   u_vsEyeToLocal (mat4), u_vsParams (vec4: base height, enabled, viewerOffset, 1 / radius),

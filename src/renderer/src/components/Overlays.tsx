@@ -2,6 +2,7 @@ import { getEngine } from '../engine/instance'
 import { formatLatLon } from '@shared/coords'
 import { formatClock, formatDuration, formatShortDate, utcToZoned } from '../lib/time'
 import { formatElevation, formatPointForClipboard } from '../lib/units'
+import { shellState, useShellStore } from '../shell/shellStore'
 import { appState, useAppStore, type SpotSunInfo } from '../store/appStore'
 import { Icon } from './Icon'
 import { SkyReadout, skySummary } from './LightPollution'
@@ -19,7 +20,7 @@ export function StatusChips() {
   const alignPick = useAppStore((s) => (s.alignment.open ? s.alignment.pickMode : null))
   const viewshedPicking = useAppStore((s) => s.viewshed.picking)
   // The light pollution layer drapes on the globe, which Photorealistic mode hides.
-  const lpHidden = useAppStore((s) => s.settings.lightPollution.enabled && s.mode === 'photorealistic' && s.tilesetReady)
+  const lpHidden = useAppStore((s) => s.settings.lightPollution.enabled && !s.settings.map.open && s.tilesetReady)
   return (
     <div className="chip-row">
       {exaggeration !== 1 && (
@@ -68,8 +69,8 @@ export function StatusChips() {
       )}
       {lpHidden && (
         <span className="panel chip" role="status">
-          <Icon name="night" size={14} /> Light pollution: map in Elevation mode · click a point for its sky
-          <button className="btn ghost" style={{ height: 20, padding: '0 6px' }} onClick={() => getEngine()?.setMode('elevation')}>
+          <Icon name="night" size={14} /> Light pollution: map in Map mode · click a point for its sky
+          <button className="btn ghost" style={{ height: 20, padding: '0 6px' }} onClick={() => getEngine()?.setMode('map')}>
             Show map
           </button>
           <button
@@ -134,7 +135,7 @@ export function Crosshair() {
 }
 
 export function Toast() {
-  const toast = useAppStore((s) => s.toast)
+  const toast = useShellStore((s) => s.toast)
   return toast ? <div className="panel toast">{toast.message}</div> : null
 }
 
@@ -148,7 +149,7 @@ export function InspectCard() {
     const text = formatPointForClipboard(inspect.latitude, inspect.longitude, inspect.elevation, units, sky ? [skySummary(sky)] : [])
     void navigator.clipboard
       .writeText(text)
-      .then(() => appState().showToast('Copied to clipboard'))
+      .then(() => shellState().showToast('Copied to clipboard'))
   }
   return (
     <div className="panel inspect-card" style={{ left: inspect.screen.x, top: inspect.screen.y }}>

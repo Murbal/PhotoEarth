@@ -3,6 +3,7 @@
 import { MAX_PHOTO_BYTES, MAX_PHOTOS_PER_LOCATION } from '@shared/locations'
 import type { Bookmark, BookmarkPatch, SavedProfile } from '@shared/types'
 import { getEngine } from '../engine/instance'
+import { shellState } from '../shell/shellStore'
 import { appState } from '../store/appStore'
 import { formatLatLon } from '@shared/coords'
 import { makeThumbnail } from './photos'
@@ -20,7 +21,8 @@ function replaceBookmark(updated: Bookmark): void {
 export async function saveCurrentView(opts: { name?: string; edit?: boolean } = {}): Promise<Bookmark | null> {
   const engine = getEngine()
   if (!engine) return null
-  const { settings, destination, bookmarks, set, togglePanel, showToast } = appState()
+  const { settings, destination, bookmarks, set, togglePanel } = appState()
+  const { showToast } = shellState()
   // In Map mode the location is at the map's center.
   const target = settings.map.open ? engine.mapView() : appState().target
   const label =
@@ -49,19 +51,20 @@ export async function setLocationToCurrentView(id: string): Promise<void> {
   if (!engine || !b) return
   const view = await engine.bookmarkFromView(b.name, appState().settings.bookmarkIncludeTime)
   await updateLocation(id, { ...view, time: view.time ?? null, viewfinder: view.viewfinder ?? null })
-  appState().showToast('Location updated to the current view')
+  shellState().showToast('Location updated to the current view')
 }
 
 /** Deletes a location with its photos and attached profiles. */
 export async function deleteLocation(id: string): Promise<void> {
   await window.photoearth.bookmarks.remove(id)
   const s = appState()
+  const sh = shellState()
   s.set({
     bookmarks: s.bookmarks.filter((b) => b.id !== id),
     profiles: s.profiles.filter((p) => p.locationId !== id),
-    activeLocation: s.activeLocation === id ? null : s.activeLocation,
-    photoViewer: s.photoViewer?.locationId === id ? null : s.photoViewer
+    activeLocation: s.activeLocation === id ? null : s.activeLocation
   })
+  if (sh.photoViewer?.locationId === id) sh.set({ photoViewer: null })
 }
 
 export function flyToBookmark(b: Bookmark): void {
@@ -82,7 +85,7 @@ interface PhotoSource {
  * main process, which checks it again.
  */
 async function importPhotos(id: string, sources: Iterable<PhotoSource>): Promise<void> {
-  const { showToast } = appState()
+  const { showToast } = shellState()
   let added = 0
   const problems: string[] = []
   for (const source of sources) {
@@ -146,8 +149,8 @@ export async function pickPhotos(id: string): Promise<void> {
 export async function removePhoto(id: string, photoId: string): Promise<void> {
   const updated = await window.photoearth.bookmarks.removePhoto(id, photoId)
   if (updated) replaceBookmark(updated)
-  const viewer = appState().photoViewer
-  if (viewer?.photoId === photoId) appState().set({ photoViewer: null })
+  const viewer = shellState().photoViewer
+  if (viewer?.photoId === photoId) shellState().set({ photoViewer: null })
 }
 
 // ───────────────────────────── profiles ─────────────────────────────
@@ -167,12 +170,12 @@ export async function saveProfile(name: string, locationId: string | null): Prom
   const points = engine.profile.vertexPositions()
   const saved = await window.photoearth.profiles.create({ name, points, locationId })
   if (!saved) {
-    appState().showToast('A profile needs at least two points')
+    shellState().showToast('A profile needs at least two points')
     return null
   }
   appState().set({ profiles: [...appState().profiles, saved] })
   appState().patchProfile({ savedId: saved.id })
-  appState().showToast(saved.locationId ? 'Profile saved with the location' : 'Profile saved')
+  shellState().showToast(saved.locationId ? 'Profile saved with the location' : 'Profile saved')
   return saved
 }
 

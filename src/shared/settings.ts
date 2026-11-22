@@ -4,8 +4,6 @@ import type {
   FrameAspect,
   ImageryType,
   LightPollutionSourceId,
-  MapMode,
-  PaletteId,
   QualityOverrides,
   QualityPreset,
   ScrollGesture,
@@ -27,7 +25,6 @@ export const DEFAULT_VIEW: CameraView = {
 }
 
 export const QUALITY_PRESETS: readonly QualityPreset[] = ['low', 'medium', 'high', 'ultra']
-export const PALETTES: readonly PaletteId[] = ['terrain', 'viridis', 'spectral', 'magma', 'grayscale']
 export const SCROLL_GESTURES: readonly ScrollGesture[] = ['auto', 'pan', 'zoom']
 export const LIGHT_POLLUTION_SOURCES: readonly LightPollutionSourceId[] = [
   'atlas-2025',
@@ -40,10 +37,7 @@ export const LIGHT_POLLUTION_SOURCES: readonly LightPollutionSourceId[] = [
 ]
 /** Hosts of the light pollution tiles, allowed by the CSP (src/main/security.ts). */
 export const LIGHT_POLLUTION_ORIGINS: readonly string[] = ['https://djlorenz.github.io', 'https://gibs.earthdata.nasa.gov']
-export const IMAGERY_TYPES: readonly ImageryType[] = ['satellite', 'terrain', 'roadmap']
-export const CONTOUR_INTERVALS = [10, 20, 50, 100, 200, 500] as const
-/** Imperial contour intervals in feet (stored as meters). */
-export const CONTOUR_INTERVALS_FT = [25, 50, 100, 200, 500, 1000, 2000] as const
+export const IMAGERY_TYPES: readonly ImageryType[] = ['roadmap', 'terrain']
 export const SENSOR_IDS: readonly SensorId[] = ['ff', 'apsc', 'apsc-canon', 'm43', '1in', 'mf44', 'phone', 'custom']
 export const FRAME_ASPECTS: readonly FrameAspect[] = ['native', '3:2', '4:3', '1:1', '4:5', '5:4', '16:9', '65:24']
 export const COMPOSITION_GUIDES: readonly CompositionGuide[] = ['none', 'thirds', 'phi', 'center', 'diagonals']
@@ -108,16 +102,9 @@ export function defaultSettings(): Settings {
       scrollGesture: 'auto'
     },
     lastCamera: null,
-    lastMode: 'photorealistic',
     map: { open: false, longitude: DEFAULT_VIEW.longitude, latitude: DEFAULT_VIEW.latitude, zoom: 12, type: 'roadmap' },
-    imagery: 'satellite',
+    imagery: 'roadmap',
     placeLabels: true,
-    elevation: {
-      tint: { enabled: true, opacity: 0.55, palette: 'terrain', autoRange: true, min: 0, max: 4500 },
-      contours: { enabled: true, interval: 50, width: 1.2, color: '#ffffff', opacity: 0.75 },
-      slope: { enabled: false, opacity: 0.6 },
-      hillshade: { enabled: true, opacity: 0.5, followSun: true }
-    },
     lightPollution: { enabled: false, opacity: 0.6, source: 'atlas-2025' },
     verticalExaggeration: 1,
     lighting: 'sun',
@@ -168,10 +155,6 @@ function nullableBool(v: Json): boolean | null {
   return typeof v === 'boolean' ? v : null
 }
 
-function color(v: Json, fallback: string): string {
-  return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v : fallback
-}
-
 export function sanitizeCameraView(v: Json): CameraView | null {
   if (!isObject(v)) return null
   const { longitude, latitude, height, heading, pitch, roll } = v
@@ -211,21 +194,12 @@ export function sanitizeSettings(raw: Json): Settings {
   const q = isObject(r.quality) ? r.quality : {}
   const o = isObject(q.overrides) ? q.overrides : {}
   const n = isObject(r.navigation) ? r.navigation : {}
-  const e = isObject(r.elevation) ? r.elevation : {}
-  const tint = isObject(e.tint) ? e.tint : {}
-  const contours = isObject(e.contours) ? e.contours : {}
-  const slope = isObject(e.slope) ? e.slope : {}
-  const hill = isObject(e.hillshade) ? e.hillshade : {}
   const horizon = isObject(r.horizon) ? r.horizon : {}
   const astro = isObject(r.astro) ? r.astro : {}
   const vs = isObject(r.viewshed) ? r.viewshed : {}
   const lp = isObject(r.lightPollution) ? r.lightPollution : {}
   const map = isObject(r.map) ? r.map : {}
-  const modes: readonly MapMode[] = ['photorealistic', 'elevation']
   const cascades = o.shadowCascades === 1 || o.shadowCascades === 4 ? o.shadowCascades : null
-
-  const tintMin = num(tint.min, d.elevation.tint.min, -500, 9000)
-  const tintMax = num(tint.max, d.elevation.tint.max, -500, 9000)
 
   return {
     version: 1,
@@ -256,7 +230,6 @@ export function sanitizeSettings(raw: Json): Settings {
       scrollGesture: oneOf(n.scrollGesture, SCROLL_GESTURES, d.navigation.scrollGesture)
     },
     lastCamera: sanitizeCameraView(r.lastCamera),
-    lastMode: oneOf(r.lastMode, modes, d.lastMode),
     map: {
       open: bool(map.open, d.map.open),
       longitude: num(map.longitude, d.map.longitude, -180, 180),
@@ -266,32 +239,6 @@ export function sanitizeSettings(raw: Json): Settings {
     },
     imagery: oneOf(r.imagery, IMAGERY_TYPES, d.imagery),
     placeLabels: bool(r.placeLabels, d.placeLabels),
-    elevation: {
-      tint: {
-        enabled: bool(tint.enabled, d.elevation.tint.enabled),
-        opacity: num(tint.opacity, d.elevation.tint.opacity, 0, 1),
-        palette: oneOf(tint.palette, PALETTES, d.elevation.tint.palette),
-        autoRange: bool(tint.autoRange, d.elevation.tint.autoRange),
-        min: Math.min(tintMin, tintMax - 1),
-        max: Math.max(tintMax, tintMin + 1)
-      },
-      contours: {
-        enabled: bool(contours.enabled, d.elevation.contours.enabled),
-        interval: num(contours.interval, d.elevation.contours.interval, 1, 1000),
-        width: num(contours.width, d.elevation.contours.width, 0.5, 6),
-        color: color(contours.color, d.elevation.contours.color),
-        opacity: num(contours.opacity, d.elevation.contours.opacity, 0, 1)
-      },
-      slope: {
-        enabled: bool(slope.enabled, d.elevation.slope.enabled),
-        opacity: num(slope.opacity, d.elevation.slope.opacity, 0, 1)
-      },
-      hillshade: {
-        enabled: bool(hill.enabled, d.elevation.hillshade.enabled),
-        opacity: num(hill.opacity, d.elevation.hillshade.opacity, 0, 1),
-        followSun: bool(hill.followSun, d.elevation.hillshade.followSun)
-      }
-    },
     lightPollution: {
       enabled: bool(lp.enabled, d.lightPollution.enabled),
       opacity: num(lp.opacity, d.lightPollution.opacity, 0, 1),

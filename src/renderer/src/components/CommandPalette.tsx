@@ -8,6 +8,7 @@ import { flyToBookmark, openProfile } from '../lib/locations'
 import { coordinateProblem, formatLatLon, isShortMapsLink, parseLocationInput } from '@shared/coords'
 import { DEBOUNCE_MS, PlacesSession } from '../lib/places'
 import { resolveShortLink } from '../lib/shortLinks'
+import { shellState, useShellStore } from '../shell/shellStore'
 import { useAppStore } from '../store/appStore'
 import { Icon, type IconName } from './Icon'
 
@@ -31,7 +32,7 @@ function matches(query: string, ...fields: Array<string | undefined>): number {
 }
 
 export function CommandPalette() {
-  const open = useAppStore((s) => s.paletteOpen)
+  const open = useShellStore((s) => s.paletteOpen)
   return open ? <PaletteDialog /> : null
 }
 
@@ -54,7 +55,7 @@ interface ShortLinkResult {
 const MAPS_LINK_DETAIL = 'From Google Maps link'
 
 function PaletteDialog() {
-  const set = useAppStore((s) => s.set)
+  const setShell = useShellStore((s) => s.set)
   const bookmarks = useAppStore((s) => s.bookmarks)
   const profiles = useAppStore((s) => s.profiles)
   const hasGoogleKey = useAppStore((s) => !!s.keys.googleApiKey)
@@ -67,7 +68,7 @@ function PaletteDialog() {
   const dialogRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
-  const close = () => set({ paletteOpen: false })
+  const close = () => setShell({ paletteOpen: false })
   useDialogFocus(dialogRef)
 
   const q = query.trim()
@@ -149,7 +150,7 @@ function PaletteDialog() {
         run: async () => {
           const res = await resolveShortLink(q)
           if (res.ok) await getEngine()?.goToCoordinates(res.data.location, MAPS_LINK_DETAIL)
-          else useAppStore.getState().showToast(res.error.message)
+          else shellState().showToast(res.error.message)
         }
       })
     }
@@ -163,7 +164,7 @@ function PaletteDialog() {
         run: async () => {
           const res = await session.details(p.placeId)
           if (res.ok) await getEngine()?.goToPlace(res.data, { name: p.mainText, detail: p.secondaryText })
-          else useAppStore.getState().showToast(res.error.message)
+          else shellState().showToast(res.error.message)
         }
       })
     }

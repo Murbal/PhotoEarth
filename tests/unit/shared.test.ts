@@ -18,6 +18,8 @@ describe('settings sanitization', () => {
       navigation: { minClearance: -5, inertia: 0.5, scrollGesture: 'sideways' },
       quality: { preset: 'ultra', overrides: { shadowCascades: 2, msaaSamples: 4 } },
       lastCamera: { longitude: 7, latitude: 46, height: 1000, heading: 10, pitch: -20, roll: 0 },
+      // Elevation mode is gone: its saved mode and styling are dropped.
+      lastMode: 'elevation',
       elevation: { contours: { color: 'red', interval: 20 } },
       extra: true
     })
@@ -31,8 +33,8 @@ describe('settings sanitization', () => {
     expect(s.quality.overrides.shadowCascades).toBeNull()
     expect(s.quality.overrides.msaaSamples).toBe(4)
     expect(s.lastCamera?.latitude).toBe(46)
-    expect(s.elevation.contours.color).toBe('#ffffff')
-    expect(s.elevation.contours.interval).toBe(20)
+    expect('elevation' in s).toBe(false)
+    expect('lastMode' in s).toBe(false)
     expect('extra' in s).toBe(false)
   })
 

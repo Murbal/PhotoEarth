@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { defaultSettings, LIGHT_POLLUTION_ORIGINS, LIGHT_POLLUTION_SOURCES, sanitizeSettings } from '@shared/settings'
 import {
+  creditText,
   LIGHT_POLLUTION_SOURCE_LIST,
   lightPollutionSource,
+  mapLightPollutionZoom,
   readoutSource,
   tileUrl
 } from '../../src/renderer/src/lib/lightPollutionSources'
@@ -288,5 +290,27 @@ describe('light pollution sources', () => {
       source: 'atlas-2025'
     })
     expect(sanitizeSettings({ lightPollution: { source: 'black-marble' } }).lightPollution.source).toBe('black-marble')
+  })
+})
+
+describe('light pollution in Map mode', () => {
+  const atlas = lightPollutionSource('atlas-2025').imagery
+  const marble = lightPollutionSource('black-marble').imagery
+
+  it('draws 1024 px atlas tiles two zooms below the map tiles, enlarged past the last level', () => {
+    expect(mapLightPollutionZoom(2, atlas)).toBe(0)
+    expect(mapLightPollutionZoom(7, atlas)).toBe(5)
+    expect(mapLightPollutionZoom(8, atlas)).toBe(6)
+    expect(mapLightPollutionZoom(15, atlas)).toBe(6)
+  })
+
+  it('draws 256 px tiles at the map zoom, up to their last level', () => {
+    expect(mapLightPollutionZoom(5, marble)).toBe(5)
+    expect(mapLightPollutionZoom(12, marble)).toBe(8)
+  })
+
+  it('shows credits as plain text', () => {
+    expect(creditText('Sky: <a href="https://x" target="_blank">Atlas 2025</a>,  D. Lorenz')).toBe('Sky: Atlas 2025, D. Lorenz')
+    expect(creditText(atlas.credit)).not.toContain('<')
   })
 })

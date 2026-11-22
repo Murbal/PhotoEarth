@@ -6,6 +6,7 @@ import { DEV_ENV_KEYS, loadDevEnvFlags, loadDevEnvKeys } from './devEnv'
 import { registerIpc } from './ipc'
 import { JsonFile } from './jsonStore'
 import { buildMenu } from './menu'
+import { cleanOrphanPhotos, PhotoStore } from './photos'
 import { handleAppScheme, handlePhotoScheme, registerAppScheme } from './protocol'
 import { SecretStore } from './secrets'
 import { mapTilesNeedsReferer } from './network'
@@ -86,11 +87,14 @@ void app.whenReady().then(async () => {
     disable3dTiles = loadDevEnvFlags(app.getAppPath()).disable3dTiles
     if (disable3dTiles) console.log('[photoearth] dev: 3D Tiles disabled (PHOTOEARTH_NO_3D_TILES)')
   }
-  const bookmarks = new BookmarkStore(app.getPath('userData'))
+  const userData = app.getPath('userData')
+  const photos = new PhotoStore(join(userData, 'photos'))
+  const bookmarks = new BookmarkStore(userData, { photos })
+  cleanOrphanPhotos(photos, [bookmarks])
 
   hardenSession(session.defaultSession, devServer)
   handleAppScheme(join(__dirname, '../renderer'))
-  handlePhotoScheme(bookmarks.photos)
+  handlePhotoScheme(photos)
 
   // Drop the per-request Referer hook when the key doesn't need it. It goes back on while a
   // new key is probed, so requests never go out without it while that's unknown.

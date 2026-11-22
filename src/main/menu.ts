@@ -34,7 +34,6 @@ export function buildMenu(): void {
       label: '&View',
       submenu: [
         { label: 'Photorealistic Mode', click: () => send('mode-photorealistic') },
-        { label: 'Elevation Mode', click: () => send('mode-elevation') },
         { label: 'Map Mode', click: () => send('mode-map') },
         { type: 'separator' },
         { label: 'Saved Locations', click: () => send('toggle-bookmarks') },

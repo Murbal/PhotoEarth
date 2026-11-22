@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { useDialogFocus } from '../hooks/useDialogFocus'
 import { shortcutLabel } from '../lib/platform'
-import { useAppStore } from '../store/appStore'
+import { useShellStore } from '../shell/shellStore'
 import { Icon } from './Icon'
 
 const GROUPS: Array<[string, Array<[string, string]>]> = [
@@ -37,7 +37,7 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
       ['N', 'Face north'],
       ['U', 'Top-down view'],
       ['R', 'Level the horizon'],
-      ['1 / 2 / 3', 'Photorealistic / Elevation / Map mode'],
+      ['1 / 2', 'Photorealistic 3D / Map mode'],
       ['Arrows / W A S D (Map)', 'Pan the map (Shift: faster)'],
       ['M', 'Place names on / off'],
       ['K', 'Light pollution overlay on / off']
@@ -50,7 +50,7 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
       [shortcutLabel('Mod+B'), 'Save location'],
       [shortcutLabel('Mod+,'), 'Settings'],
       ['T', 'Time & sun panel'],
-      ['L', 'Elevation styling panel'],
+      ['L', 'Layers: light pollution, viewshed, exaggeration'],
       ['P', 'Elevation profile'],
       ['H', 'Horizon panorama: skyline, sun & moon paths'],
       [shortcutLabel('Shift+V'), 'Viewshed analysis: line-of-sight overlay'],
@@ -68,12 +68,12 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
 ]
 
 export function ShortcutsOverlay() {
-  const open = useAppStore((s) => s.shortcutsOpen)
+  const open = useShellStore((s) => s.shortcutsOpen)
   return open ? <ShortcutsDialog /> : null
 }
 
 function ShortcutsDialog() {
-  const set = useAppStore((s) => s.set)
+  const set = useShellStore((s) => s.set)
   const dialogRef = useRef<HTMLDivElement>(null)
   useDialogFocus(dialogRef)
   const close = () => set({ shortcutsOpen: false })

@@ -24,8 +24,8 @@ On first launch PhotoEarth asks for two keys, validates them with a test request
 
 | Key | Used for | Where |
 |---|---|---|
-| Google Maps Platform API key | Photorealistic 3D Tiles, 2D satellite/terrain imagery (Map Tiles API), place search and the place names on the map (Places API (New)) | [Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials). Enable **Map Tiles API** and **Places API (New)**. |
-| Cesium ion access token | Cesium World Terrain: Elevation mode, profiles, long-range terrain shadows, horizon panorama, viewshed analysis | [ion.cesium.com/tokens](https://ion.cesium.com/tokens) |
+| Google Maps Platform API key | 2D road/terrain maps (Map Tiles API; satellite isn't offered because Google doesn't serve it to EEA accounts), place search and the place names on the map (Places API (New)) | [Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials). Enable **Map Tiles API** and **Places API (New)**. |
+| Cesium ion access token | Photorealistic 3D Tiles (streamed through Cesium ion) and Cesium World Terrain: profiles, long-range terrain shadows, horizon panorama, viewshed analysis | [ion.cesium.com/tokens](https://ion.cesium.com/tokens) |
 
 Both work on their free tiers. Either can be skipped and added later in **Settings → API keys**.
 
@@ -57,10 +57,10 @@ They're loaded in the main process only, so they never end up in the renderer bu
 | `F` | First-person fly mode (pointer lock; `Esc` exits) |
 | `G` | Eye level (1.7 m) at the cursor; WASD then walks along the ground |
 | `N` / `U` / `R` | Face north / top-down / level horizon |
-| `1` / `2` | Photorealistic / Elevation mode |
+| `1` / `2` | Photorealistic 3D / Map mode |
 | `Ctrl+K` | Search places, paste coordinates (decimal, DMS, Google Maps URLs), saved locations and profiles, commands |
 | `Ctrl+B` | Save the view as a scouting location |
-| `T` / `L` / `P` | Time & sun panel / elevation styling / elevation profile |
+| `T` / `L` / `P` | Time & sun panel / layers (light pollution, viewshed, exaggeration) / elevation profile |
 | `V` | Viewfinder: frame the view through a real sensor and focal length |
 | `Shift+V` | Viewshed analysis: highlight all terrain with line of sight to a target |
 | `H` | Horizon panorama: the skyline with the sun, moon and Milky Way paths |
@@ -78,7 +78,7 @@ Scroll to zoom, drag to turn, or jump to the sunrise or sunset close-up; *1:1* s
 
 ### Viewshed analysis
 
-`Shift+V` (or *Viewshed from here* on the inspect card, the right rail, the Elevation panel or the command palette) answers "where can I stand to see that mountain peak or landmark?". Using three nested grids of Cesium World Terrain heights centered on the target (5 / 15 / 30 / 50 km radius, sharing the terrain-shadow tile cache), a GPU compute pass ray-marches line of sight with Earth curvature and terrestrial refraction (`k = 0.13`) and drapes the visible terrain onto both Photorealistic 3D Tiles and Elevation mode alongside terrain shadows.
+`Shift+V` (or *Viewshed from here* on the inspect card, the right rail, the Layers panel or the command palette) answers "where can I stand to see that mountain peak or landmark?". Using three nested grids of Cesium World Terrain heights centered on the target (5 / 15 / 30 / 50 km radius, sharing the terrain-shadow tile cache), a GPU compute pass ray-marches line of sight with Earth curvature and terrestrial refraction (`k = 0.13`) and drapes the visible terrain onto the Photorealistic 3D Tiles (or the terrain globe standing in for them) alongside terrain shadows.
 
 Adjust target height offset (ground/peak 0 m, eye level 1.7 m, tower or drone up to 500 m), surrounding viewer height offset, overlay opacity, distance-tinted or uniform coloring, and concentric distance rings for judging focal-length range, with live visible-area coverage stats. Clicking any point while exploring inspects it as usual, reports whether it has unobstructed line of sight to the target (with distance, bearing, elevation angle and clearance), and lets you drop straight to eye level or open the viewfinder aimed back at the target. Needs a Cesium ion token.
 
@@ -92,7 +92,7 @@ Adjust target height offset (ground/peak 0 m, eye level 1.7 m, tower or drone up
 
 ### Saved scouting locations
 
-`Ctrl+B` (or *Save current view* in the locations panel, the bookmark button in the right rail) saves the view as a location: its camera, mode, lens and, optionally, the simulated date and time, plus the spot itself (the inspected point or search pin, else the view center). Give it notes, tags, a free-text "best time", a *to visit* / *visited* status, reference photos, and elevation profiles. The list filters by status and tags, and the map shows a pin for each location it lists; clicking a pin or a list entry flies there and restores the saved time. Photos are copied into the app's own data folder (at most 40 MB each), so moving or deleting the originals doesn't affect them. A drawn elevation profile can be saved (*Save path*) on its own or with a location, and reopened later. Bookmarks from earlier versions become locations to visit; the original `bookmarks.json` is kept as `bookmarks.v1.backup.json`.
+`Ctrl+B` (or *Save current view* in the locations panel, the bookmark button in the right rail) saves the view as a location: its camera, lens and, optionally, the simulated date and time, plus the spot itself (the inspected point or search pin, else the view center). Give it notes, tags, a free-text "best time", a *to visit* / *visited* status, reference photos, and elevation profiles. The list filters by status and tags, and the map shows a pin for each location it lists; clicking a pin or a list entry flies there and restores the saved time. Photos are copied into the app's own data folder (at most 40 MB each), so moving or deleting the originals doesn't affect them. A drawn elevation profile can be saved (*Save path*) on its own or with a location, and reopened later. Bookmarks from earlier versions become locations to visit; the original `bookmarks.json` is kept as `bookmarks.v1.backup.json`.
 
 ### Viewfinder
 
@@ -146,14 +146,14 @@ src/
   renderer/src/
     engine/    Engine (owns the CesiumWidget) and its managers:
                TilesetManager, TerrainManager, GoogleImagery, CameraController,
-               SunController, MoonController, MilkyWayController, ElevationStyler, ProfileTool, HorizonTool,
+               SunController, MoonController, MilkyWayController, GlobeMaterial, ProfileTool, HorizonTool,
                ViewshedTool, AlignmentTool, PointInspector, Readouts, LocationMarkers,
                TerrainShadows, quality presets
     components/ React overlay UI (the canvas belongs to Cesium)
     store/     Zustand app state; React writes it, the engine subscribes to it
     lib/       pure, unit-tested logic: time zones, sun, moon, milky way & astro windows, alignment, seasons, coordinates, geoid,
                profile math, terrain-shadow & viewshed ray marching, horizon panorama,
-               weather outlook, palettes, units
+               weather outlook, units
 ```
 
 Notable decisions:
@@ -161,8 +161,9 @@ Notable decisions:
 - **`app://photoearth/` protocol** instead of `file://`, so Cesium's module workers and wasm load from a real origin, and the strict CSP (no `unsafe-eval`) has a `'self'`. The window runs with `contextIsolation`, `sandbox`, `nodeIntegration: false`; navigation and new windows are blocked (external links open in the browser).
 - **Places API calls and key validation run in the main process.** One autocomplete session token covers a whole search. Input is debounced at 250 ms with a 3-character minimum, and the field masks request only location fields.
 - **Place names come from Places API (New) Nearby Search** (towns and mountain peaks), queried in the main process for grid cells around the view once the camera settles. Labels stay upright, anchored on the ground (a downward CPU ray cast onto the loaded 3D tiles or terrain, redone once finer tiles have loaded), and are hidden as a whole when a CPU ray cast finds a ridge or building in the line of sight. These ray casts run on a time budget while the camera rests, never while it moves. They fade with distance and are decluttered on screen. Nearby Search has no population or prominence for towns, and its "popularity" order mostly follows distance from the query's center. So towns named like their district or state (Interlaken, Thun, San Francisco), or that a nearby town is named after ("Matten bei Interlaken"), win the space on screen and stay visible from farther away. From high up, small cells would only find whatever lies nearest their centers, so wide views also ask Text Search for the region's most relevant attractions, train stations and city halls, grouped by the city in their address (New York, Philadelphia; Zürich, Bern, Luzern). States/cantons and countries come from Nearby Search too, and fade in as the camera rises.
-- **Heights are shown above mean sea level.** Google tiles and Cesium terrain report ellipsoidal heights; readouts, profiles and contours are corrected with the EGM96 geoid (loaded lazily).
-- **One custom globe material** composites hypsometric tint, slope classes, hillshade and contours (every 5th an index line). Hillshade follows the simulated sun (fading to flat shading at night) or uses the classic NW 45° light. It corrects for vertical exaggeration.
+- **Heights are shown above mean sea level.** Google tiles and Cesium terrain report ellipsoidal heights; readouts and profiles are corrected with the EGM96 geoid (loaded lazily).
+- **The terrain globe stands in for the 3D Tiles** when they aren't loaded (no token, `PHOTOEARTH_NO_3D_TILES`, or an outage). Its material (`GlobeMaterial`) draws the same terrain shadows and viewshed the tiles get from their custom shader.
+- **Light pollution in Map mode** draws the same Web Mercator tiles as the globe layer into the map's canvas, over the Google map, enlarging the coarsest level past the source's native zoom.
 - **Local time follows the camera target.** The time slider is wall-clock time in the target's IANA zone, resolved offline. Crossing into another zone keeps the local time, so "07:30" means 07:30 wherever you look.
 - **Google 2D Tiles** use the session-token flow, with renewal before expiry and on repeated 4xx tile failures. Attribution comes from the viewport endpoint for what's on screen. The 3D tileset shows its copyright data on screen.
 - **Tiles load ahead of a moving camera.** Cesium skips requesting tiles that are on screen only briefly while the camera moves, so a fast flight used to load little until it slowed down. `TilePreloader` drives Cesium's preload-flight pass with the camera's pose predicted 1.5 s ahead (smoothed velocity and turn rate, widened culling for turns) whenever it moves faster than 2 m/s, so tiles arrive before the view does. This covers fly mode, fast pans and inertia glides, in Photorealistic mode; Cesium's own `flyTo` animations keep preloading their destination. The predicted-pose pass is a full extra tileset traversal, so it runs on every 6th frame and at half the level of detail.
@@ -186,7 +187,7 @@ Cesium's shadow maps on Google's 3D tiles miss off-screen and distant ridges, lo
 
 - **Terrain shadows** (needs the ion token): three nested grids of Cesium World Terrain heights follow the view. With the High preset they are ±5 km at ~20 m, ±20 km at ~80 m and ±80 km at ~400 m. Tiles are fetched directly from the provider, independent of what the globe has loaded, and rasterized into a local tangent-plane frame (`engine/shadows/HeightField.ts`).
 - **GPU ray-march** (`engine/shadows/ShadowCompute.ts`, `shaders.ts`): a pass inside Cesium's compute stage marches each cell toward the sun through all three grids. It accounts for earth curvature, terrestrial refraction and the sun setting behind the horizon beyond the data. Each cell stores a *shadow top*, the height above which its vertical is sunlit, plus the occluder distance. Receivers compare their own height with it, so roofs, tree tops and cliff faces inside a coarse cell still shade correctly. The penumbra widens with occluder distance from the sun's 0.53° disc. The pass reruns only when the sun or the data changes, one level per frame, so playback stays smooth and a still sun costs nothing.
-- **Receivers**: the 3D tiles' custom shader and the Elevation-mode globe material share one GLSL receiver (`RECEIVER_GLSL`). It uses true heights under vertical exaggeration and cross-fades between levels.
+- **Receivers**: the 3D tiles' custom shader and the stand-in globe's material share one GLSL receiver (`RECEIVER_GLSL`). It uses true heights under vertical exaggeration and cross-fades between levels.
 - **Detail shadows** (*Buildings & trees*, Photorealistic mode): a short-range Cesium shadow map near a low camera (600 m–2.5 km by preset; off on Low). A patch to Cesium's receive shader (`detailShadowPatch.ts`) derives normals for the normal-less tiles to remove acne, and folds the result into the terrain shadow instead of darkening twice.
 - Without an ion token, shadow maps do everything (previous behavior, with the acne fix).
 - The CPU reference in `lib/terrainShadow.ts` mirrors the GPU pass. Unit tests cover its geometry.

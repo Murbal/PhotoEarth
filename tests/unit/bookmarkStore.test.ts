@@ -35,7 +35,6 @@ describe('BookmarkStore', () => {
     const created = store.create({
       name: 'Oeschinensee',
       camera,
-      mode: 'photorealistic',
       position: { longitude: 7.72, latitude: 46.5, height: 1580 },
       tags: ['Lake', 'sunrise'],
       notes: 'Cable car from Kandersteg',
@@ -56,8 +55,8 @@ describe('BookmarkStore', () => {
   it('updates and removes', () => {
     const dir = tempDir()
     let store = new BookmarkStore(dir)
-    const a = store.create({ name: 'A', camera, mode: 'photorealistic' })
-    const b = store.create({ name: 'B', camera, mode: 'elevation' })
+    const a = store.create({ name: 'A', camera })
+    const b = store.create({ name: 'B', camera })
     expect(store.update(a.id, { status: 'visited', notes: 'ok' })).toMatchObject({ status: 'visited', notes: 'ok' })
     expect(store.update('missing', { name: 'x' })).toBeNull()
     expect(store.remove(b.id)).toBe(true)
@@ -77,7 +76,7 @@ describe('BookmarkStore', () => {
     writeFileSync(join(dir, 'bookmarks.json'), JSON.stringify(v1))
     let store = new BookmarkStore(dir)
     expect(store.list()).toHaveLength(1)
-    expect(store.list()[0]).toMatchObject({ id: 'old', name: 'Old view', mode: 'elevation', status: 'to-visit', tags: [], photos: [] })
+    expect(store.list()[0]).toMatchObject({ id: 'old', name: 'Old view', status: 'to-visit', tags: [], photos: [] })
     expect(store.list()[0].time?.timeZone).toBe('Europe/Zurich')
     expect(JSON.parse(readFileSync(join(dir, 'bookmarks.v1.backup.json'), 'utf8'))).toEqual(v1)
     store = reopen(store, dir)
@@ -100,7 +99,7 @@ describe('BookmarkStore', () => {
   it('copies photos in, serves only their files, and deletes them with the location', () => {
     const dir = tempDir()
     let store = new BookmarkStore(dir)
-    const loc = store.create({ name: 'A', camera, mode: 'photorealistic' })
+    const loc = store.create({ name: 'A', camera })
     const res = store.addPhoto(loc.id, photo())
     expect(res.ok).toBe(true)
     if (!res.ok) return
@@ -128,7 +127,7 @@ describe('BookmarkStore', () => {
   it('refuses huge files, non-images and missing locations', () => {
     const dir = tempDir()
     const store = new BookmarkStore(dir)
-    const loc = store.create({ name: 'A', camera, mode: 'photorealistic' })
+    const loc = store.create({ name: 'A', camera })
     const huge = new Uint8Array(MAX_PHOTO_BYTES + 1)
     huge.set(JPEG)
     expect(store.addPhoto(loc.id, photo(huge))).toEqual({ ok: false, error: expect.stringContaining('at most 40 MB') })
@@ -143,7 +142,7 @@ describe('BookmarkStore', () => {
   it('removes orphaned photo files at start, and nothing else', () => {
     const dir = tempDir()
     const store = new BookmarkStore(dir)
-    const loc = store.create({ name: 'A', camera, mode: 'photorealistic' })
+    const loc = store.create({ name: 'A', camera })
     const res = store.addPhoto(loc.id, photo())
     const kept = res.ok ? res.bookmark.photos[0] : null
     const photos = join(dir, 'photos')
@@ -158,7 +157,7 @@ describe('BookmarkStore', () => {
     for (const contents of ['{ "version": 2, "bookmarks": [ ,] }', (v: string) => v.replace('"version": 2', '"version": 99')]) {
       const dir = tempDir()
       const store = new BookmarkStore(dir)
-      const loc = store.create({ name: 'A', camera, mode: 'photorealistic' })
+      const loc = store.create({ name: 'A', camera })
       expect(store.addPhoto(loc.id, photo()).ok).toBe(true)
       store.flush()
       const photos = join(dir, 'photos')
@@ -173,7 +172,7 @@ describe('BookmarkStore', () => {
   it('saves profiles on their own or with a location, and drops them with it', () => {
     const dir = tempDir()
     let store = new BookmarkStore(dir)
-    const loc = store.create({ name: 'A', camera, mode: 'photorealistic' })
+    const loc = store.create({ name: 'A', camera })
     const points = [
       { longitude: 7.9, latitude: 46.5, height: 2100 },
       { longitude: 7.95, latitude: 46.52, height: 2300 }

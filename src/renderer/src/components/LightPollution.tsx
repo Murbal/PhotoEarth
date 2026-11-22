@@ -62,11 +62,11 @@ function Opacity({ value, onChange, disabled }: { value: number; onChange: (v: n
   )
 }
 
-/** The overlay's toggle, opacity, source and legend, in the Elevation panel. */
+/** The overlay's toggle, opacity, source and legend, in the Layers panel. */
 export function LightPollutionSection() {
   const lp = useAppStore((s) => s.settings.lightPollution)
-  const elevationMode = useAppStore((s) => s.mode === 'elevation')
-  const covered = useAppStore((s) => s.terrainReady && (s.settings.elevation.tint.enabled || s.settings.elevation.slope.enabled))
+  // Drawn over Map mode's map, and on the 3D view only where the terrain globe stands in for the 3D Tiles.
+  const shown = useAppStore((s) => s.settings.map.open || !s.tilesetReady)
   const patch = useAppStore((s) => s.patchSettings)
   const source = lightPollutionSource(lp.source)
   return (
@@ -92,18 +92,12 @@ export function LightPollutionSection() {
           ))}
         </select>
       </div>
-      {lp.enabled && !elevationMode && (
+      {lp.enabled && !shown && (
         <div className="notice" style={{ margin: '4px 0' }}>
-          The map layer drapes on the terrain globe, so it shows in Elevation mode. Clicked points get a sky brightness estimate in
-          either mode.{' '}
-          <a href="#" onClick={(ev) => (ev.preventDefault(), getEngine()?.setMode('elevation'))}>
-            Switch now
+          The map layer shows in Map mode. In the 3D view, clicked points get a sky brightness estimate.{' '}
+          <a href="#" onClick={(ev) => (ev.preventDefault(), getEngine()?.setMode('map'))}>
+            Show map
           </a>
-        </div>
-      )}
-      {lp.enabled && elevationMode && covered && (
-        <div className="small faint" style={{ margin: '4px 0' }}>
-          Hypsometric tint and slope shading are paused while this layer shows, so its colors read as the legend.
         </div>
       )}
       {lp.enabled &&

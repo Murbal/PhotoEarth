@@ -174,7 +174,6 @@ export function sanitizeBookmark(raw: Json, now = new Date().toISOString()): Boo
     createdAt,
     updatedAt: isoDate(raw.updatedAt, createdAt),
     camera,
-    mode: raw.mode === 'elevation' ? 'elevation' : 'photorealistic',
     time: sanitizeTime(raw.time),
     viewfinder: raw.viewfinder === undefined || raw.viewfinder === null ? undefined : sanitizeViewfinder(raw.viewfinder),
     position: sanitizePosition(raw.position) ?? estimateTarget(camera),
@@ -190,7 +189,7 @@ export function sanitizeBookmark(raw: Json, now = new Date().toISOString()): Boo
 export function applyBookmarkPatch(current: Bookmark, patch: Json, now = new Date().toISOString()): Bookmark | null {
   const p: Partial<Record<keyof BookmarkPatch, Json>> = isObject(patch) ? patch : {}
   const next: Record<string, Json> = { ...current, updatedAt: now }
-  for (const key of ['name', 'camera', 'mode', 'position', 'status', 'notes', 'tags', 'bestTime'] as const) {
+  for (const key of ['name', 'camera', 'position', 'status', 'notes', 'tags', 'bestTime'] as const) {
     if (p[key] !== undefined) next[key] = p[key]
   }
   // null clears; undefined leaves alone.

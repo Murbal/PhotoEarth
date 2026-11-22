@@ -17,6 +17,7 @@ import {
   type Scene
 } from 'cesium'
 import type { CameraView, NavigationSettings } from '@shared/types'
+import { LockedMouse } from '../lib/lockedMouse'
 import { MovementSpeed } from './MovementSpeed'
 import { cameraTarget, clamp, pickSurface, pickSurfaceCpu, raycastSurface, surfaceHeight, toDeg, toRad } from './util'
 import { GESTURE_GAP_MS, WheelClassifier } from './WheelInput'
@@ -114,6 +115,7 @@ export class CameraController {
   /** Last known height above the ground below, kept while the ground is briefly unknown. */
   private lastAgl: number | null = null
   private flyMode = false
+  private readonly lockedMouse = new LockedMouse()
   private eyeLevel = false
   /** The view before dropping to eye level, and where we stood, for leaving it again. */
   private eyeLevelReturn: { position: Cartesian3; heading: number; pitch: number; roll: number; spot: Cartesian3 } | null = null
@@ -470,6 +472,7 @@ export class CameraController {
     const active = document.pointerLockElement === this.scene.canvas
     if (active === this.flyMode) return
     this.flyMode = active
+    this.lockedMouse.reset()
     this.endFollow()
     this.scene.screenSpaceCameraController.enableInputs = !active
     if (!active) this.keys.clear()
@@ -533,10 +536,12 @@ export class CameraController {
 
   private onFlyLook(e: MouseEvent): void {
     if (!this.flyMode) return
+    const move = this.lockedMouse.movement(e.movementX, e.movementY, window.innerWidth, window.innerHeight)
+    if (!move) return
     const sensitivity = 0.0022 * this.lookScale()
     // Mouse right turns right (clockwise from above = negative about the local up axis).
-    this.turn(this.localUp(), -e.movementX * sensitivity)
-    const dy = (this.settings.invertFlyY ? 1 : -1) * e.movementY * sensitivity
+    this.turn(this.localUp(), -move.x * sensitivity)
+    const dy = (this.settings.invertFlyY ? 1 : -1) * move.y * sensitivity
     this.pitchBy(dy)
   }
 

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { NO_FILTER, type LocationFilter } from '@shared/locations'
 import { defaultSettings } from '@shared/settings'
-import type { ApiKeys, Bookmark, MapMode, SavedProfile, SecretsStatus, Settings } from '@shared/types'
+import type { ApiKeys, Bookmark, SavedProfile, SecretsStatus, Settings } from '@shared/types'
 import type { MapSession } from '../engine/MapTiles'
 import type { BodyDay } from '../lib/celestial'
 import {
@@ -104,7 +104,7 @@ export interface MilkyWayInfo extends GalacticCoreState, BodyDay {
   utc: number
 }
 
-export type Panel = 'time' | 'elevation' | 'bookmarks'
+export type Panel = 'time' | 'layers' | 'bookmarks'
 
 export interface ProfileState {
   active: boolean
@@ -260,11 +260,6 @@ export interface Destination {
   longitude: number
 }
 
-export interface Toast {
-  id: number
-  message: string
-}
-
 const emptyHorizon: HorizonState = {
   open: false,
   status: 'idle',
@@ -338,7 +333,6 @@ export interface AppState {
   settings: Settings
   keys: ApiKeys
   secrets: SecretsStatus | null
-  mode: MapMode
   camera: CameraInfo | null
   target: { longitude: number; latitude: number } | null
   cursor: CursorInfo | null
@@ -349,10 +343,6 @@ export interface AppState {
   milkyWay: MilkyWayInfo | null
   banners: Banner[]
   panels: Record<Panel, boolean>
-  paletteOpen: boolean
-  shortcutsOpen: boolean
-  settingsOpen: boolean
-  onboardingOpen: boolean
   profile: ProfileState
   horizon: HorizonState
   alignment: AlignmentState
@@ -378,9 +368,6 @@ export interface AppState {
   locationFilter: LocationFilter
   /** The location open in the editor, highlighted on the map. */
   activeLocation: string | null
-  /** A reference photo shown full size. */
-  photoViewer: { locationId: string; photoId: string } | null
-  autoRange: { min: number; max: number } | null
   terrainReady: boolean
   tilesetReady: boolean
   /** Dev-only toggle (PHOTOEARTH_NO_3D_TILES=1): skip loading Photorealistic 3D Tiles. */
@@ -389,7 +376,6 @@ export interface AppState {
   mapSession: MapSession | null
   /** Heightmap terrain shadows. */
   terrainShadows: 'off' | 'loading' | 'ready' | 'unavailable'
-  toast: Toast | null
 
   set: (partial: Partial<AppState>) => void
   patchSettings: (recipe: (draft: Settings) => void) => void
@@ -406,7 +392,6 @@ export interface AppState {
   resetAlignment: () => void
   patchViewshed: (patch: Partial<ViewshedState>) => void
   resetViewshed: () => void
-  showToast: (message: string) => void
 }
 
 function todayIn(): { date: string; minutes: number } {
@@ -418,15 +403,12 @@ function todayIn(): { date: string; minutes: number } {
   }
 }
 
-let toastId = 0
-
 export const useAppStore = create<AppState>()(
   subscribeWithSelector((set, get) => ({
     booted: false,
     settings: defaultSettings(),
     keys: { googleApiKey: null, cesiumIonToken: null },
     secrets: null,
-    mode: 'photorealistic',
     camera: null,
     target: null,
     cursor: null,
@@ -436,11 +418,7 @@ export const useAppStore = create<AppState>()(
     moon: null,
     milkyWay: null,
     banners: [],
-    panels: { time: false, elevation: false, bookmarks: false },
-    paletteOpen: false,
-    shortcutsOpen: false,
-    settingsOpen: false,
-    onboardingOpen: false,
+    panels: { time: false, layers: false, bookmarks: false },
     profile: emptyProfile,
     horizon: emptyHorizon,
     alignment: emptyAlignment(todayIn().date),
@@ -460,14 +438,11 @@ export const useAppStore = create<AppState>()(
     profiles: [],
     locationFilter: NO_FILTER,
     activeLocation: null,
-    photoViewer: null,
-    autoRange: null,
     terrainReady: false,
     tilesetReady: false,
     disable3dTiles: false,
     mapSession: null,
     terrainShadows: 'off',
-    toast: null,
 
     set: (partial) => set(partial),
     patchSettings: (recipe) => {
@@ -498,14 +473,7 @@ export const useAppStore = create<AppState>()(
         }
       })),
     patchViewshed: (patch) => set((s) => ({ viewshed: { ...s.viewshed, ...patch } })),
-    resetViewshed: () => set({ viewshed: emptyViewshed, inspectViewshed: null }),
-    showToast: (message) => {
-      const id = ++toastId
-      set({ toast: { id, message } })
-      setTimeout(() => {
-        if (get().toast?.id === id) set({ toast: null })
-      }, 2600)
-    }
+    resetViewshed: () => set({ viewshed: emptyViewshed, inspectViewshed: null })
   }))
 )
 

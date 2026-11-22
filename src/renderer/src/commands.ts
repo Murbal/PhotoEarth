@@ -6,9 +6,10 @@ import { GUIDES, nudgeFocal, stepFocal } from './lib/lens'
 import { astroNight, LOW_MOON_ILLUMINATION } from './lib/milkyWay'
 import { shortcutLabel } from './lib/platform'
 import { addDays } from './lib/time'
+import { shellState } from './shell/shellStore'
 import { appState } from './store/appStore'
 
-export type CommandGroup = 'View' | 'Navigation' | 'Time & sun' | 'Elevation' | 'Tools' | 'App'
+export type CommandGroup = 'View' | 'Navigation' | 'Time & sun' | 'Layers' | 'Tools' | 'App'
 
 export interface Command {
   id: string
@@ -24,13 +25,6 @@ const engine = () => getEngine()
 
 function toggleSetting(fn: (d: ReturnType<typeof appState>['settings']) => void): () => void {
   return () => appState().patchSettings(fn)
-}
-
-function setImagery(type: ImageryType): () => void {
-  return () =>
-    appState().patchSettings((d) => {
-      d.imagery = type
-    })
 }
 
 function setQuality(preset: QualityPreset): () => void {
@@ -72,9 +66,6 @@ function zoom(steps: number): () => void {
  */
 const NEEDS_3D = new Set([
   'toggle-place-labels',
-  'toggle-light-pollution',
-  'light-pollution-atlas',
-  'light-pollution-black-marble',
   'toggle-viewfinder',
   'focal-longer',
   'focal-shorter',
@@ -98,20 +89,10 @@ const NEEDS_3D = new Set([
   'profile-clear',
   'horizon-panorama',
   'clear-marker',
-  'toggle-elevation-panel',
-  'toggle-tint',
-  'toggle-contours',
-  'toggle-slope',
-  'toggle-hillshade',
-  'toggle-hillshade-sun',
   'exaggeration-reset',
-  'imagery-satellite',
-  'imagery-terrain',
-  'imagery-roadmap',
   'toggle-forecast',
   'toggle-horizon-moon',
   'toggle-horizon-peaks',
-  'toggle-tint-auto-range',
   'viewshed-toggle',
   'viewshed-pick',
   'viewshed-clear',
@@ -129,9 +110,10 @@ function leavingMap(command: Command): Command {
   return {
     ...command,
     run: () => {
+      if (shellState().activeModule !== 'globe') shellState().setActiveModule('globe')
       const e = engine()
       if (!e || !appState().settings.map.open) return command.run()
-      void e.setMode(appState().mode).then(() => command.run())
+      void e.setMode('photorealistic').then(() => command.run())
     }
   }
 }
@@ -143,17 +125,15 @@ export function getCommands(): Command[] {
 function commandList(): Command[] {
   return [
     { id: 'mode-photorealistic', title: 'Photorealistic mode', group: 'View', keys: '1', keywords: '3d tiles google', run: () => void engine()?.setMode('photorealistic') },
-    { id: 'mode-elevation', title: 'Elevation mode', group: 'View', keys: '2', keywords: 'terrain contours', run: () => void engine()?.setMode('elevation') },
     {
       id: 'mode-map',
       title: 'Map mode (2D map for getting around)',
       group: 'View',
-      keys: '3',
-      keywords: '2d flat google maps road satellite navigate overview minimap',
+      keys: '2',
+      keywords: '2d flat google maps road terrain navigate overview minimap',
       run: () => void engine()?.setMode('map')
     },
     { id: 'map-roadmap', title: 'Map mode: road map', group: 'View', keywords: '2d streets', run: setMapType('roadmap') },
-    { id: 'map-satellite', title: 'Map mode: satellite with labels', group: 'View', keywords: '2d hybrid aerial', run: setMapType('satellite') },
     { id: 'map-terrain', title: 'Map mode: terrain', group: 'View', keywords: '2d relief topographic', run: setMapType('terrain') },
     {
       id: 'toggle-place-labels',
@@ -274,7 +254,7 @@ function commandList(): Command[] {
           eng.sun.setInstant(targetUtc)
           s.togglePanel('time', true)
         } else {
-          s.showToast('No astronomical dark window on this night')
+          shellState().showToast('No astronomical dark window on this night')
         }
       }
     },
@@ -454,28 +434,8 @@ function commandList(): Command[] {
     },
     { id: 'clear-marker', title: 'Clear inspection marker', group: 'Tools', keys: 'Esc', run: () => engine()?.inspector.clear() },
     { id: 'clear-search-pin', title: 'Clear search result pin', group: 'Tools', keywords: 'destination marker', run: () => engine()?.searchMarker.clear() },
-    { id: 'toggle-elevation-panel', title: 'Show / hide elevation styling', group: 'Elevation', keys: 'L', run: () => appState().togglePanel('elevation') },
-    { id: 'toggle-tint', title: 'Toggle hypsometric tint', group: 'Elevation', run: toggleSetting((d) => void (d.elevation.tint.enabled = !d.elevation.tint.enabled)) },
-    {
-      id: 'toggle-tint-auto-range',
-      title: 'Hypsometric tint: auto-fit range on / off',
-      group: 'Elevation',
-      keywords: 'color ramp elevation range min max',
-      run: toggleSetting((d) => void (d.elevation.tint.autoRange = !d.elevation.tint.autoRange))
-    },
-    { id: 'toggle-contours',title: 'Toggle contour lines', group: 'Elevation', run: toggleSetting((d) => void (d.elevation.contours.enabled = !d.elevation.contours.enabled)) },
-    { id: 'toggle-slope', title: 'Toggle slope shading', group: 'Elevation', run: toggleSetting((d) => void (d.elevation.slope.enabled = !d.elevation.slope.enabled)) },
-    { id: 'toggle-hillshade', title: 'Toggle hillshade', group: 'Elevation', run: toggleSetting((d) => void (d.elevation.hillshade.enabled = !d.elevation.hillshade.enabled)) },
-    {
-      id: 'toggle-hillshade-sun',
-      title: 'Hillshade light: follow sun / classic NW',
-      group: 'Elevation',
-      run: toggleSetting((d) => void (d.elevation.hillshade.followSun = !d.elevation.hillshade.followSun))
-    },
-    { id: 'exaggeration-reset', title: 'Reset vertical exaggeration to 1.0×', group: 'Elevation', run: toggleSetting((d) => void (d.verticalExaggeration = 1)) },
-    { id: 'imagery-satellite', title: 'Imagery: satellite', group: 'Elevation', run: setImagery('satellite') },
-    { id: 'imagery-terrain', title: 'Imagery: terrain map', group: 'Elevation', run: setImagery('terrain') },
-    { id: 'imagery-roadmap', title: 'Imagery: road map', group: 'Elevation', run: setImagery('roadmap') },
+    { id: 'toggle-layers-panel', title: 'Show / hide layers (light pollution, viewshed, exaggeration)', group: 'Layers', keys: 'L', run: () => appState().togglePanel('layers') },
+    { id: 'exaggeration-reset', title: 'Reset vertical exaggeration to 1.0×', group: 'Layers', run: toggleSetting((d) => void (d.verticalExaggeration = 1)) },
     { id: 'quality-low', title: 'Quality: Low', group: 'App', run: setQuality('low') },
     { id: 'quality-medium', title: 'Quality: Medium', group: 'App', run: setQuality('medium') },
     { id: 'quality-high', title: 'Quality: High', group: 'App', run: setQuality('high') },
@@ -498,8 +458,8 @@ function commandList(): Command[] {
     { id: 'toggle-units',title: 'Switch units: metric / imperial', group: 'App', run: toggleSetting((d) => void (d.units = d.units === 'metric' ? 'imperial' : 'metric')) },
     { id: 'toggle-coord-format', title: 'Switch coordinates: decimal / DMS', group: 'App', run: toggleSetting((d) => void (d.coordFormat = d.coordFormat === 'decimal' ? 'dms' : 'decimal')) },
     { id: 'toggle-theme', title: 'Switch theme: dark / light', group: 'App', run: toggleSetting((d) => void (d.theme = d.theme === 'dark' ? 'light' : 'dark')) },
-    { id: 'open-settings', title: 'Open settings', group: 'App', keys: shortcutLabel('Mod+,'), keywords: 'api key preferences', run: () => appState().set({ settingsOpen: true }) },
-    { id: 'open-shortcuts', title: 'Keyboard shortcuts', group: 'App', keys: '?', run: () => appState().set({ shortcutsOpen: true }) },
+    { id: 'open-settings', title: 'Open settings', group: 'App', keys: shortcutLabel('Mod+,'), keywords: 'api key preferences', run: () => shellState().set({ settingsOpen: true }) },
+    { id: 'open-shortcuts', title: 'Keyboard shortcuts', group: 'App', keys: '?', run: () => shellState().set({ shortcutsOpen: true }) },
     { id: 'retry-providers', title: 'Retry loading map data', group: 'App', run: () => void engine()?.retryProviders() },
     { id: 'reload-window', title: 'Reload window', group: 'App', keywords: 'restart refresh', run: () => window.location.reload() }
   ]

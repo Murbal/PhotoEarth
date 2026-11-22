@@ -11,6 +11,7 @@ import {
   VIEWSHED_VIEWER_PRESETS,
   viewshedRingInterval
 } from '../lib/viewshed'
+import { shellState } from '../shell/shellStore'
 import { useAppStore } from '../store/appStore'
 import { Icon } from './Icon'
 
@@ -82,7 +83,6 @@ export function ViewshedPanel() {
   const coordFormat = useAppStore((s) => s.settings.coordFormat)
   const hasIon = useAppStore((s) => !!s.keys.cesiumIonToken)
   const patchSettings = useAppStore((s) => s.patchSettings)
-  const set = useAppStore((s) => s.set)
   const [collapsed, setCollapsed] = useState(false)
 
   if (!state.open) return null
@@ -157,7 +157,7 @@ export function ViewshedPanel() {
         <div className="notice row" style={{ marginTop: 6 }}>
           <span className="grow">{state.error}</span>
           {!hasIon && (
-            <button className="btn ghost vs-btn" onClick={() => set({ settingsOpen: true })}>
+            <button className="btn ghost vs-btn" onClick={() => shellState().set({ settingsOpen: true })}>
               Settings
             </button>
           )}
@@ -375,7 +375,7 @@ export function ViewshedSection() {
       )}
 
       <div className="small faint" style={{ marginTop: 4 }}>
-        Highlights all terrain with an unobstructed line of sight to the target (with Earth curvature and refraction), in both Photorealistic and Elevation modes.
+        Highlights all terrain with an unobstructed line of sight to the target (with Earth curvature and refraction).
       </div>
     </div>
   )

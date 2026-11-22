@@ -1,31 +1,30 @@
-import type { ImageryType, MapMode } from '@shared/types'
+import type { ImageryType } from '@shared/types'
 import { getEngine } from '../engine/instance'
 import { isMac, shortcutLabel } from '../lib/platform'
+import { useShellStore } from '../shell/shellStore'
 import { useAppStore } from '../store/appStore'
 import { Icon } from './Icon'
 
-const MODES: Array<{ id: MapMode | 'map'; label: string; title: string }> = [
+const MODES: Array<{ id: 'photorealistic' | 'map'; label: string; title: string }> = [
   { id: 'photorealistic', label: 'Photorealistic', title: 'Photorealistic 3D (1)' },
-  { id: 'elevation', label: 'Elevation', title: 'Elevation (2)' },
-  { id: 'map', label: 'Map', title: '2D map for getting around (3)' }
+  { id: 'map', label: 'Map', title: '2D map for getting around (2)' }
 ]
 
 const MAP_TYPES: Array<{ id: ImageryType; label: string }> = [
   { id: 'roadmap', label: 'Road' },
-  { id: 'satellite', label: 'Satellite' },
   { id: 'terrain', label: 'Terrain' }
 ]
 
 export function TopBar() {
-  const mode = useAppStore((s) => (s.settings.map.open ? 'map' : s.mode))
+  const mode = useAppStore((s) => (s.settings.map.open ? 'map' : 'photorealistic'))
   const mapType = useAppStore((s) => s.settings.map.type)
-  const set = useAppStore((s) => s.set)
+  const setShell = useShellStore((s) => s.set)
   const patchSettings = useAppStore((s) => s.patchSettings)
   return (
     <div className="topbar">
       <button
         className="panel search-pill"
-        onClick={() => set({ paletteOpen: true })}
+        onClick={() => setShell({ paletteOpen: true })}
         title={`Search (${shortcutLabel('Mod+K')})`}
         aria-keyshortcuts={isMac ? 'Meta+K' : 'Control+K'}
       >
