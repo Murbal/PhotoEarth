@@ -23,6 +23,8 @@ export interface ProjectStoreOptions {
    * owns its own PhotoStore and `false` when a shared PhotoStore is injected.
    */
   cleanupOrphans?: boolean
+  /** Called after a project is removed so MoodboardStore can clear primary projectId links. */
+  onRemove?: (projectId: string) => void
 }
 
 /**
@@ -33,8 +35,10 @@ export class ProjectStore implements PhotoOwner {
   readonly photos: PhotoStore
   readonly canCleanOrphans: boolean
   private readonly file: JsonFile<ProjectsFile>
+  private readonly onRemove?: (projectId: string) => void
 
   constructor(dir: string, options?: ProjectStoreOptions) {
+    this.onRemove = options?.onRemove
     const path = join(dir, 'projects.json')
     const version = readVersion(path)
     if (version !== null && version !== PROJECTS_FILE_VERSION) {
@@ -115,6 +119,7 @@ export class ProjectStore implements PhotoOwner {
     // Flush record removal before deleting files so a crash never leaves a dangling photo pointer.
     this.file.flush()
     if (gone.coverPhoto) this.photos.remove(gone.coverPhoto)
+    this.onRemove?.(id)
     return true
   }
 

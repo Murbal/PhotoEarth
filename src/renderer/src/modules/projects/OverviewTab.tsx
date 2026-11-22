@@ -10,6 +10,11 @@ import {
 import type { Bookmark, Project } from '@shared/types'
 import { Icon } from '../../components/Icon'
 import {
+  createMoodboard,
+  openMoodboard,
+  syncProjectColorStoryFromMoodboards
+} from '../../lib/moodboards'
+import {
   addProjectNote,
   flyToProjectLocation,
   scoutNewSpotForProject,
@@ -17,6 +22,7 @@ import {
 } from '../../lib/projects'
 import { shellState } from '../../shell/shellStore'
 import { useAppStore } from '../../store/appStore'
+import { useMoodboardStore } from '../../store/moodboardStore'
 import { useProjectsStore } from '../../store/projectsStore'
 import { ProjectDraftField } from './projectHelpers'
 
@@ -28,11 +34,20 @@ export function OverviewTab({
   onOpenLinkLocations: () => void
 }) {
   const bookmarks = useAppStore((s) => s.bookmarks)
+  const moodboards = useMoodboardStore((s) => s.summaries)
   const setProjectsState = useProjectsStore((s) => s.set)
   const linkedLocations = useMemo(() => {
     const byId = new Map(bookmarks.map((b) => [b.id, b]))
     return project.locationIds.map((id) => byId.get(id)).filter((b): b is Bookmark => !!b)
   }, [bookmarks, project.locationIds])
+  const linkedMoodboards = useMemo(() => {
+    const byId = new Map(moodboards.map((b) => [b.id, b]))
+    const out = project.moodboardIds.map((id) => byId.get(id)).filter((b): b is NonNullable<typeof b> => !!b)
+    for (const b of moodboards) {
+      if (b.projectId === project.id && !out.some((x) => x.id === b.id)) out.push(b)
+    }
+    return out
+  }, [moodboards, project.id, project.moodboardIds])
   const pinnedNotes = useMemo(() => project.notes.filter((n) => n.pinned), [project.notes])
 
   return (
@@ -220,12 +235,12 @@ export function OverviewTab({
           </div>
         </section>
 
-        <section className="proj-surface proj-surface-muted">
+        <section className="proj-surface">
           <div className="proj-surface-head">
             <div className="proj-surface-title">
               <Icon name="moodboard" size={14} />
               <h3>Moodboards</h3>
-              <span className="proj-tab-num">{project.moodboardIds.length}</span>
+              <span className="proj-tab-num">{linkedMoodboards.length}</span>
             </div>
             <span className="spacer" />
             <button
@@ -233,12 +248,69 @@ export function OverviewTab({
               className="proj-subtle-link"
               onClick={() => setProjectsState({ activeTab: 'moodboards' })}
             >
-              Details
+              Manage
             </button>
           </div>
-          <p className="muted small" style={{ margin: 0, lineHeight: 1.5 }}>
-            Infinite reference canvases, Viewfinder snapshots, and automatic palette extraction connect here in Phase 3.
-          </p>
+          {linkedMoodboards.length === 0 ? (
+            <div className="proj-aside-empty">
+              <p className="muted small">
+                Create a visual canvas for references, 3D Viewfinder snapshots, and extracted color stories.
+              </p>
+            </div>
+          ) : (
+            <div className="proj-mini-locations">
+              {linkedMoodboards.slice(0, 4).map((board) => (
+                <div key={board.id} className="proj-mini-loc">
+                  <div className="proj-mini-loc-thumb">
+                    {board.previewFiles[0] ? (
+                      <img src={photoUrl(board.previewFiles[0])} alt="" loading="lazy" decoding="async" />
+                    ) : (
+                      <Icon name="moodboard" size={14} />
+                    )}
+                  </div>
+                  <div className="proj-mini-loc-info">
+                    <div className="proj-mini-loc-name">
+                      <span className="truncate">{board.title}</span>
+                    </div>
+                    <div className="small faint">
+                      {board.itemCount} {board.itemCount === 1 ? 'item' : 'items'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="proj-mini-fly"
+                    title={`Open ${board.title}`}
+                    aria-label={`Open ${board.title}`}
+                    onClick={() => void openMoodboard(board.id)}
+                  >
+                    <Icon name="moodboard" size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="proj-aside-actions">
+            <button
+              type="button"
+              className="btn grow"
+              onClick={() =>
+                void createMoodboard({
+                  title: `${project.title} — Moodboard`,
+                  projectId: project.id,
+                  template: 'blank'
+                })
+              }
+            >
+              <Icon name="plus" size={13} /> New board
+            </button>
+            <button
+              type="button"
+              className="btn grow"
+              onClick={() => setProjectsState({ activeTab: 'moodboards' })}
+            >
+              <Icon name="link" size={13} /> Link board
+            </button>
+          </div>
         </section>
       </aside>
     </div>
@@ -296,14 +368,8 @@ function ColorStoryPalette({ project }: { project: Project }) {
         <button
           type="button"
           className="proj-subtle-link"
-          title="Pull dominant tones from a linked Moodboard once the Moodboard module ships"
-          onClick={() =>
-            shellState().showToast(
-              project.moodboardIds.length === 0
-                ? 'Link a Moodboard (coming in Phase 3) to sync palettes automatically.'
-                : 'Moodboard palette sync arrives with the Moodboard canvas module.'
-            )
-          }
+          title="Pull dominant tones from this project's linked Moodboards"
+          onClick={() => void syncProjectColorStoryFromMoodboards(project)}
         >
           Sync from Moodboard
         </button>

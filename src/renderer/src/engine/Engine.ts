@@ -14,8 +14,10 @@ import {
 } from 'cesium'
 import { estimateTarget, matchesFilter } from '@shared/locations'
 import { DEFAULT_VIEW } from '@shared/settings'
-import type { ApiCheck, ApiKeys, Bookmark, CameraView, GeoPosition, NewBookmark, PlaceDetails, SavedProfile } from '@shared/types'
+import type { ApiCheck, ApiKeys, Bookmark, BookmarkTime, CameraView, GeoPosition, MoodboardGlobeSnapshot, NewBookmark, PlaceDetails, SavedProfile, ViewfinderSettings } from '@shared/types'
 import { formatLatLon, type ParsedLocation } from '@shared/coords'
+import { fitFrame, formatFocal, FRAME_INSET, lensView } from '../lib/lens'
+import { compassPoint } from '../lib/units'
 import { cameraForView, LOOKING_DOWN, sameView, viewFromCamera, zoomForMetersPerPixel, clampZoom, type MapView } from '../lib/webMercator'
 import { loadGeoid } from '../lib/geoid'
 import type { GeoPoint } from '../lib/profile'
@@ -981,6 +983,83 @@ export class Engine {
     }
     await this.camera.flyToView(b.camera)
     if (b.position.height === null) void this.measureLocation(b)
+  }
+
+  /** Restores a Moodboard Globe Snapshot's exact camera, simulated time, and optional Viewfinder lens. */
+  async restoreGlobeSnapshot(snapshot: MoodboardGlobeSnapshot): Promise<void> {
+    await this.closeMap(false)
+    if (snapshot.time) this.sun.setInstant(Date.parse(snapshot.time.utc), snapshot.time.timeZone)
+    if (snapshot.viewfinder) {
+      const lens = snapshot.viewfinder
+      appState().patchSettings((d) => void (d.viewfinder = structuredClone(lens)))
+      appState().set({ viewfinder: true })
+    }
+    await this.camera.flyToView(snapshot.camera)
+  }
+
+  /**
+   * Captures the current 3D WebGL frame (cropped to the active Viewfinder aspect ratio when
+   * Viewfinder mode is open, or the full viewport otherwise) along with camera, lens & time metadata.
+   */
+  async captureViewfinderFrame(): Promise<{
+    blob: Blob
+    width: number
+    height: number
+    camera: CameraView
+    time: BookmarkTime
+    viewfinder?: ViewfinderSettings
+    label: string
+  } | null> {
+    if (this.destroyed) return null
+    const canvas = this.scene.canvas
+    if (!canvas.width || !canvas.height) return null
+    // Force a synchronous render right before reading WebGL pixels (preserveDrawingBuffer is false).
+    this.scene.render()
+
+    const { viewfinder, settings, sim } = appState()
+    let sx = 0
+    let sy = 0
+    let sw = canvas.width
+    let sh = canvas.height
+
+    if (viewfinder) {
+      const cssW = canvas.clientWidth || window.innerWidth
+      const cssH = canvas.clientHeight || window.innerHeight
+      const lens = lensView(settings.viewfinder)
+      const f = fitFrame(cssW, cssH, lens.ratio, FRAME_INSET)
+      const rx = canvas.width / Math.max(1, cssW)
+      const ry = canvas.height / Math.max(1, cssH)
+      sx = Math.max(0, Math.round(f.x * rx))
+      sy = Math.max(0, Math.round(f.y * ry))
+      sw = Math.min(canvas.width - sx, Math.max(1, Math.round(f.width * rx)))
+      sh = Math.min(canvas.height - sy, Math.max(1, Math.round(f.height * ry)))
+    }
+
+    const out = document.createElement('canvas')
+    out.width = sw
+    out.height = sh
+    const ctx = out.getContext('2d')
+    if (!ctx) return null
+    ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh)
+
+    const blob = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, 'image/png'))
+    if (!blob) return null
+
+    const camera = this.currentView()
+    const bearing = ((camera.heading % 360) + 360) % 360
+    const labelParts = [
+      viewfinder ? formatFocal(settings.viewfinder.focalLength) : '3D View',
+      `${Math.round(bearing)}° ${compassPoint(bearing)}`
+    ]
+    return {
+      blob,
+      width: sw,
+      height: sh,
+      camera,
+      time: { utc: new Date(this.sun.utc).toISOString(), timeZone: sim.timeZone },
+      viewfinder: viewfinder ? structuredClone(settings.viewfinder) : undefined,
+      label: labelParts.join(' · ')
+    }
   }
 
   /** Frames the bounding box of a project's linked locations in the 3D view. */

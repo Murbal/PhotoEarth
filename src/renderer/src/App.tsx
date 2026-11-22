@@ -13,22 +13,27 @@ import { ActivityRail } from './shell/ActivityRail'
 import { ModuleViewport } from './shell/ModuleViewport'
 import { shellState, useShellStore } from './shell/shellStore'
 import { appState, useAppStore } from './store/appStore'
+import { moodboardState, useMoodboardStore } from './store/moodboardStore'
 import { projectsState } from './store/projectsStore'
 
 async function boot(): Promise<void> {
   const api = window.photoearth
-  const [info, settings, keys, secrets, bookmarks, profiles, projects] = await Promise.all([
+  const [info, settings, keys, secrets, bookmarks, profiles, projects, moodboards] = await Promise.all([
     api.info(),
     api.settings.get(),
     api.keys.get(),
     api.keys.status(),
     api.bookmarks.list(),
     api.profiles.list(),
-    api.projects.list()
+    api.projects.list(),
+    api.moodboards.list()
   ])
   projectsState().set({ projects })
+  moodboardState().set({ summaries: moodboards })
   const restoredProjectId =
     settings.lastProjectId && projects.some((p) => p.id === settings.lastProjectId) ? settings.lastProjectId : null
+  const restoredMoodboardId =
+    settings.lastMoodboardId && moodboards.some((b) => b.id === settings.lastMoodboardId) ? settings.lastMoodboardId : null
   appState().set({
     settings,
     keys,
@@ -40,6 +45,7 @@ async function boot(): Promise<void> {
   })
   shellState().set({
     activeProjectId: restoredProjectId,
+    activeMoodboardId: restoredMoodboardId,
     onboardingOpen: !settings.onboardingComplete
   })
 }
@@ -59,6 +65,7 @@ function usePersistence(): void {
       const settings = structuredClone(appState().settings)
       if (engine) settings.lastCamera = engine.currentView()
       window.photoearth.settings.flush(settings)
+      moodboardState().flushSaveSync()
     }
     window.addEventListener('beforeunload', flush)
     return () => {
@@ -83,6 +90,8 @@ function useMenuCommands(): void {
             return sh.set({ shortcutsOpen: true })
           case 'open-projects':
             return sh.setActiveModule('projects')
+          case 'open-moodboards':
+            return sh.setActiveModule('moodboard')
           case 'mode-photorealistic':
             sh.setActiveModule('globe')
             return runCommand('mode-photorealistic')
@@ -112,7 +121,10 @@ function useMenuCommands(): void {
 export function App() {
   const booted = useAppStore((s) => s.booted)
   const theme = useAppStore((s) => s.settings.theme)
+  const activeModule = useShellStore((s) => s.activeModule)
   const modalOpen = useShellStore((s) => s.paletteOpen || s.settingsOpen || s.shortcutsOpen || s.onboardingOpen || !!s.photoViewer)
+  const presentationMode = useMoodboardStore((s) => s.presentationMode && !!s.activeBoard)
+  const hideRail = activeModule === 'moodboard' && presentationMode
   const [bootError, setBootError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -139,7 +151,7 @@ export function App() {
   return (
     <>
       <div className="workspace-shell">
-        <ActivityRail inert={modalOpen} />
+        {!hideRail && <ActivityRail inert={modalOpen} />}
         <ModuleViewport booted={booted} modalOpen={modalOpen} />
       </div>
       <PartBoundary name="Command palette" onCrash={() => shellState().set({ paletteOpen: false })}>

@@ -12,6 +12,7 @@ const GLOBAL_GROUPS: ShortcutGroup[] = [
     [
       [shortcutLabel('Mod+1'), 'Switch to Projects Hub'],
       [shortcutLabel('Mod+2'), 'Switch to 3D Globe'],
+      [shortcutLabel('Mod+3'), 'Switch to Moodboards'],
       [shortcutLabel('Mod+K'), 'Search & command palette'],
       [shortcutLabel('Mod+,'), 'Settings'],
       ['?', 'This overlay']
@@ -26,6 +27,35 @@ const PROJECTS_GROUPS: ShortcutGroup[] = [
       ['N', 'New project (on Projects index)'],
       ['/', 'Focus search filter (on Projects index)'],
       ['Esc', 'Back to Projects index / close dialog']
+    ]
+  ]
+]
+
+const MOODBOARD_GROUPS: ShortcutGroup[] = [
+  [
+    'Canvas navigation',
+    [
+      ['Space + Left-drag / Middle-drag', 'Pan infinite canvas'],
+      ['Scroll wheel / Pinch', 'Zoom toward cursor (10%–400%)'],
+      ['F', 'Fit selection (or entire board)'],
+      ['0', 'Reset zoom to 100%'],
+      ['Tab', 'Presentation Mode (hide all chrome)'],
+      ['B', 'Toggle Inspiration Browser panel']
+    ]
+  ],
+  [
+    'Tools & editing',
+    [
+      ['V / T / G / C', 'Select / Note / Group Frame / Connector'],
+      ['I', 'Add image from disk'],
+      [shortcutLabel('Mod+V'), 'Paste image or text onto canvas'],
+      [shortcutLabel('Mod+A'), 'Select all items'],
+      [shortcutLabel('Mod+D'), 'Duplicate selection'],
+      ['[ / ]', 'Send to back / Bring to front'],
+      [shortcutLabel('Mod+Z'), 'Undo'],
+      [shortcutLabel('Mod+Shift+Z'), 'Redo'],
+      ['Delete / Backspace', 'Delete selected items or connector'],
+      ['Shift + Resize', 'Free-stretch image (unlock aspect ratio)']
     ]
   ]
 ]
@@ -101,7 +131,9 @@ function ShortcutsDialog() {
   const dialogRef = useRef<HTMLDivElement>(null)
   useDialogFocus(dialogRef)
   const close = () => set({ shortcutsOpen: false })
-  const groups = [...GLOBAL_GROUPS, ...(activeModule === 'projects' ? PROJECTS_GROUPS : GLOBE_GROUPS)]
+  const moduleGroups =
+    activeModule === 'projects' ? PROJECTS_GROUPS : activeModule === 'moodboard' ? MOODBOARD_GROUPS : GLOBE_GROUPS
+  const groups = [...GLOBAL_GROUPS, ...moduleGroups]
   return (
     <div className="scrim center" onPointerDown={(e) => e.target === e.currentTarget && close()}>
       <div ref={dialogRef} tabIndex={-1} className="panel dialog" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" style={{ width: 'min(760px, calc(100% - 32px))' }}>

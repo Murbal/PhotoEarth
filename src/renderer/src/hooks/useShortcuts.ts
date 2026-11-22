@@ -1,10 +1,12 @@
 import { useEffect } from 'react'
 import { runCommand } from '../commands'
 import { getEngine } from '../engine/instance'
+import { pickImagesForActiveBoard } from '../lib/moodboards'
 import { hasPrimaryModifier } from '../lib/platform'
 import { WORKSPACE_MODULES } from '../shell/modules'
 import { shellState } from '../shell/shellStore'
 import { appState } from '../store/appStore'
+import { moodboardState } from '../store/moodboardStore'
 import { projectsState } from '../store/projectsStore'
 
 function isTyping(target: EventTarget | null): boolean {
@@ -56,6 +58,13 @@ export function useShortcuts(): void {
           const ps = projectsState()
           if (ps.createDialogOpen) ps.set({ createDialogOpen: false })
           else if (ps.openProjectId) ps.closeProject()
+        } else if (sh.activeModule === 'moodboard') {
+          const ms = moodboardState()
+          if (ms.createDialogOpen) ms.set({ createDialogOpen: false })
+          else if (ms.editingItemId) ms.set({ editingItemId: null })
+          else if (ms.presentationMode) ms.set({ presentationMode: false })
+          else if (ms.tool !== 'select') ms.set({ tool: 'select' })
+          else if (ms.selectedIds.length > 0 || ms.selectedConnectorId) ms.clearSelection()
         } else if (sh.activeModule === 'globe') {
           if (s.profile.active) getEngine()?.profile.cancelOrFinish()
           else if (s.alignment.open && s.alignment.pickMode !== null) getEngine()?.alignment.setPickMode(null)
@@ -88,6 +97,106 @@ export function useShortcuts(): void {
           e.preventDefault()
           ps.requestFocusSearch()
           return
+        }
+        return
+      }
+
+      // Module-scoped shortcuts: Moodboard Module.
+      if (sh.activeModule === 'moodboard') {
+        const ms = moodboardState()
+        if (ms.createDialogOpen) return
+        // Index view shortcuts
+        if (!ms.activeBoard) {
+          if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return
+          if (key === 'n') {
+            e.preventDefault()
+            ms.set({ createDialogOpen: true })
+            return
+          }
+          if (e.key === '/') {
+            e.preventDefault()
+            ms.requestFocusSearch()
+            return
+          }
+          return
+        }
+        // Canvas view shortcuts
+        if (mod && key === 'z') {
+          e.preventDefault()
+          if (e.shiftKey) ms.redo()
+          else ms.undo()
+          return
+        }
+        if (mod && key === 'y') {
+          e.preventDefault()
+          ms.redo()
+          return
+        }
+        if (mod && key === 'a') {
+          e.preventDefault()
+          ms.selectAll()
+          return
+        }
+        if (mod && key === 'd') {
+          e.preventDefault()
+          ms.duplicateSelection()
+          return
+        }
+        if (e.ctrlKey || e.metaKey || e.altKey) return
+        if (e.key === 'Tab') {
+          e.preventDefault()
+          ms.set({ presentationMode: !ms.presentationMode })
+          return
+        }
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault()
+          ms.deleteSelection()
+          return
+        }
+        if (e.repeat) return
+        if (e.code === 'BracketRight') {
+          e.preventDefault()
+          ms.bringToFront()
+          return
+        }
+        if (e.code === 'BracketLeft') {
+          e.preventDefault()
+          ms.sendToBack()
+          return
+        }
+        switch (key) {
+          case 'v':
+            e.preventDefault()
+            ms.set({ tool: 'select' })
+            return
+          case 't':
+            e.preventDefault()
+            ms.set({ tool: ms.tool === 'note' ? 'select' : 'note' })
+            return
+          case 'g':
+            e.preventDefault()
+            ms.set({ tool: ms.tool === 'group' ? 'select' : 'group' })
+            return
+          case 'c':
+            e.preventDefault()
+            ms.set({ tool: ms.tool === 'connect' ? 'select' : 'connect' })
+            return
+          case 'i':
+            e.preventDefault()
+            void pickImagesForActiveBoard()
+            return
+          case 'f':
+            e.preventDefault()
+            ms.requestFitView()
+            return
+          case '0':
+            e.preventDefault()
+            ms.requestResetZoom()
+            return
+          case 'b':
+            e.preventDefault()
+            ms.set({ browserDrawerOpen: !ms.browserDrawerOpen })
+            return
         }
         return
       }
