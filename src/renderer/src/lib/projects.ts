@@ -6,7 +6,9 @@ import type { Bookmark, LocationPhoto, NewProject, Project, ProjectNote, Project
 import { getEngine } from '../engine/instance'
 import { shellState } from '../shell/shellStore'
 import { appState } from '../store/appStore'
+import { moodboardState } from '../store/moodboardStore'
 import { projectsState, type ProjectTab } from '../store/projectsStore'
+import { deleteMoodboard } from './moodboards'
 import { makeThumbnail } from './photos'
 
 export function getActiveProject(): Project | null {
@@ -55,11 +57,31 @@ export async function updateProject(id: string, patch: ProjectPatch): Promise<Pr
   return updated
 }
 
-export async function deleteProject(id: string): Promise<boolean> {
+export async function deleteProject(id: string, opts?: { deleteExclusiveMoodboards?: boolean }): Promise<boolean> {
   const existing = projectsState().projects.find((p) => p.id === id)
+  const exclusiveBoardIds: string[] = []
+  if (opts?.deleteExclusiveMoodboards && existing) {
+    const otherProjects = projectsState().projects.filter((p) => p.id !== id)
+    for (const board of moodboardState().summaries) {
+      const ownedByThis = board.projectId === id || existing.moodboardIds.includes(board.id)
+      const sharedElsewhere = otherProjects.some((p) => p.moodboardIds.includes(board.id))
+      if (ownedByThis && !sharedElsewhere) exclusiveBoardIds.push(board.id)
+    }
+  }
   const ok = await window.photoearth.projects.remove(id)
   if (!ok) return false
   projectsState().removeProjectFromState(id)
+  // Clear primary projectId on remaining moodboard summaries in renderer state.
+  moodboardState().set({
+    summaries: moodboardState().summaries.map((b) => (b.projectId === id ? { ...b, projectId: null } : b))
+  })
+  const activeBoard = moodboardState().activeBoard
+  if (activeBoard && activeBoard.projectId === id) {
+    moodboardState().set({ activeBoard: { ...activeBoard, projectId: null } })
+  }
+  for (const boardId of exclusiveBoardIds) {
+    await deleteMoodboard(boardId)
+  }
   if (shellState().activeProjectId === id) {
     setActiveProject(null, { silent: true })
   }

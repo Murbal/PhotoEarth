@@ -1,6 +1,7 @@
 import { PartBoundary } from '../components/ErrorBoundary'
 import { Toast } from '../components/Overlays'
 import { GlobeModule } from '../modules/globe/GlobeModule'
+import { MoodboardModule } from '../modules/moodboard/MoodboardModule'
 import { ProjectsModule } from '../modules/projects/ProjectsModule'
 import { useShellStore } from './shellStore'
 
@@ -29,6 +30,13 @@ export function ModuleViewport({ booted, modalOpen }: { booted: boolean; modalOp
         <div className="module-layer" data-module="projects" inert={modalOpen}>
           <PartBoundary name="Projects Hub">
             <ProjectsModule />
+          </PartBoundary>
+        </div>
+      )}
+      {booted && activeModule === 'moodboard' && (
+        <div className="module-layer" data-module="moodboard" inert={modalOpen}>
+          <PartBoundary name="Moodboards">
+            <MoodboardModule modalOpen={modalOpen} />
           </PartBoundary>
         </div>
       )}

@@ -21,6 +21,7 @@ import {
 } from '../../lib/projects'
 import { useShellStore } from '../../shell/shellStore'
 import { useAppStore } from '../../store/appStore'
+import { useMoodboardStore } from '../../store/moodboardStore'
 import { useProjectsStore } from '../../store/projectsStore'
 import { projectCoverGradient, templatePreviewGradient } from './projectHelpers'
 
@@ -230,9 +231,16 @@ function ProjectCard({
   isActive: boolean
 }) {
   const cover = resolveProjectCover(project, bookmarksById)
+  const moodboards = useMoodboardStore((s) => s.summaries)
+  const linkedBoards = useMemo(
+    () => moodboards.filter((b) => project.moodboardIds.includes(b.id) || b.projectId === project.id),
+    [moodboards, project.id, project.moodboardIds]
+  )
+  const fallbackBoardPreview = !cover ? linkedBoards.find((b) => b.previewFiles.length > 0)?.previewFiles[0] ?? null : null
+  const coverSrc = cover ? photoUrl(thumbFile(cover)) : fallbackBoardPreview ? photoUrl(fallbackBoardPreview) : null
   const dateChip = formatDateWindow(project.dateWindow)
   const spotCount = project.locationIds.filter((id) => bookmarksById.has(id)).length
-  const boardCount = project.moodboardIds.length
+  const boardCount = linkedBoards.length
   const noteCount = project.notes.length
   const isArchived = project.status === 'archived'
 
@@ -252,11 +260,11 @@ function ProjectCard({
     >
       <div
         className="project-card-cover"
-        style={!cover ? { background: projectCoverGradient(project) } : undefined}
+        style={!coverSrc ? { background: projectCoverGradient(project) } : undefined}
       >
-        {cover ? (
+        {coverSrc ? (
           <img
-            src={photoUrl(thumbFile(cover))}
+            src={coverSrc}
             alt=""
             loading="lazy"
             decoding="async"

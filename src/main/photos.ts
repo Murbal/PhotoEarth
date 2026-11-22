@@ -23,7 +23,17 @@ export function sniffImage(bytes: Uint8Array): PhotoType | null {
   if (bytes[0] === 0x89 && ascii(bytes, 1, 4) === 'PNG' && bytes[4] === 0x0d && bytes[5] === 0x0a) return 'png'
   if (ascii(bytes, 0, 6) === 'GIF87a' || ascii(bytes, 0, 6) === 'GIF89a') return 'gif'
   if (ascii(bytes, 0, 4) === 'RIFF' && ascii(bytes, 8, 12) === 'WEBP') return 'webp'
-  if (ascii(bytes, 4, 8) === 'ftyp' && ['avif', 'avis'].includes(ascii(bytes, 8, 12))) return 'avif'
+  if (ascii(bytes, 4, 8) === 'ftyp') {
+    const major = ascii(bytes, 8, 12)
+    if (major === 'avif' || major === 'avis') return 'avif'
+    if (major === 'mif1' || major === 'msf1') {
+      const end = Math.min(bytes.length, 64)
+      for (let i = 16; i + 4 <= end; i += 4) {
+        const brand = ascii(bytes, i, i + 4)
+        if (brand === 'avif' || brand === 'avis') return 'avif'
+      }
+    }
+  }
   return null
 }
 

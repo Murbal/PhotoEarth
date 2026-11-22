@@ -6,12 +6,14 @@ import { getCommands, type Command } from '../commands'
 import { getEngine } from '../engine/instance'
 import { useDialogFocus } from '../hooks/useDialogFocus'
 import { flyToBookmark, openProfile } from '../lib/locations'
+import { openMoodboard } from '../lib/moodboards'
 import { openProjectInGlobe, openProjectWorkspace } from '../lib/projects'
 import { coordinateProblem, formatLatLon, isShortMapsLink, parseLocationInput } from '@shared/coords'
 import { DEBOUNCE_MS, PlacesSession } from '../lib/places'
 import { resolveShortLink } from '../lib/shortLinks'
 import { shellState, useShellStore } from '../shell/shellStore'
 import { useAppStore } from '../store/appStore'
+import { useMoodboardStore } from '../store/moodboardStore'
 import { useProjectsStore } from '../store/projectsStore'
 import { Icon, type IconName } from './Icon'
 
@@ -62,6 +64,7 @@ function PaletteDialog() {
   const bookmarks = useAppStore((s) => s.bookmarks)
   const profiles = useAppStore((s) => s.profiles)
   const projects = useProjectsStore((s) => s.projects)
+  const moodboards = useMoodboardStore((s) => s.summaries)
   const hasGoogleKey = useAppStore((s) => !!s.keys.googleApiKey)
   const target = useAppStore((s) => s.target)
   const [query, setQuery] = useState('')
@@ -223,6 +226,29 @@ function PaletteDialog() {
         })
       }
     }
+    // Moodboards, found by title or linked project title.
+    const projTitleById = new Map(projects.map((p) => [p.id, p.title]))
+    const matchedBoards = moodboards
+      .map((b) => ({
+        b,
+        score: matches(q, b.title, b.projectId ? projTitleById.get(b.projectId) : undefined, 'moodboard canvas')
+      }))
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score || b.b.updatedAt.localeCompare(a.b.updatedAt))
+      .slice(0, q ? 6 : 4)
+    for (const { b } of matchedBoards) {
+      const projTitle = b.projectId ? projTitleById.get(b.projectId) : undefined
+      const subtitle = [projTitle, `${b.itemCount} ${b.itemCount === 1 ? 'item' : 'items'}`].filter(Boolean).join(' · ')
+      out.push({
+        key: `mb-${b.id}`,
+        group: 'Moodboards',
+        icon: 'moodboard',
+        title: b.title,
+        subtitle,
+        hint: 'Canvas',
+        run: () => void openMoodboard(b.id)
+      })
+    }
     // Saved locations, found by name, tags, best time or notes.
     const bm = bookmarks
       .map((b) => ({ b, score: matches(q, b.name, b.tags.join(' '), b.bestTime, b.notes, b.status === 'visited' ? 'visited' : 'to visit') }))
@@ -249,7 +275,7 @@ function PaletteDialog() {
       out.push({ key: `cmd-${c.id}`, group: 'Commands', icon: 'command', title: c.title, hint: c.keys, run: c.run })
     }
     return out
-  }, [q, coords, shortCoords, resolving, places, projects, bookmarks, profiles, session])
+  }, [q, coords, shortCoords, resolving, places, projects, moodboards, bookmarks, profiles, session])
 
   useEffect(() => setSelected(0), [q, places.length])
   useEffect(() => {

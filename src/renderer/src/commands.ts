@@ -2,12 +2,14 @@ import type { ImageryType, QualityPreset } from '@shared/types'
 import { getEngine } from './engine/instance'
 import { getMapControl } from './engine/mapControl'
 import { saveCurrentView } from './lib/locations'
+import { captureGlobeToMoodboard } from './lib/moodboards'
 import { GUIDES, nudgeFocal, stepFocal } from './lib/lens'
 import { astroNight, LOW_MOON_ILLUMINATION } from './lib/milkyWay'
 import { shortcutLabel } from './lib/platform'
 import { addDays } from './lib/time'
 import { shellState } from './shell/shellStore'
 import { appState } from './store/appStore'
+import { moodboardState } from './store/moodboardStore'
 import { projectsState } from './store/projectsStore'
 
 export type CommandGroup = 'Workspace' | 'View' | 'Navigation' | 'Time & sun' | 'Layers' | 'Tools' | 'App'
@@ -103,7 +105,8 @@ const NEEDS_3D = new Set([
   'alignment-pick-camera',
   'alignment-pick-subject',
   'alignment-look',
-  'alignment-clear'
+  'alignment-clear',
+  'snap-to-moodboard'
 ])
 
 function leavingMap(command: Command): Command {
@@ -142,6 +145,14 @@ function commandList(): Command[] {
       run: () => shellState().setActiveModule('globe')
     },
     {
+      id: 'module-moodboard',
+      title: 'Switch to Moodboards',
+      group: 'Workspace',
+      keys: shortcutLabel('Mod+3'),
+      keywords: 'moodboard canvas references inspiration palette pureref',
+      run: () => shellState().setActiveModule('moodboard')
+    },
+    {
       id: 'new-project',
       title: 'New project',
       group: 'Workspace',
@@ -150,6 +161,24 @@ function commandList(): Command[] {
         shellState().setActiveModule('projects')
         projectsState().set({ createDialogOpen: true })
       }
+    },
+    {
+      id: 'new-moodboard',
+      title: 'New moodboard',
+      group: 'Workspace',
+      keywords: 'create moodboard canvas references board',
+      run: () => {
+        shellState().setActiveModule('moodboard')
+        moodboardState().setActiveBoard(null)
+        moodboardState().set({ createDialogOpen: true })
+      }
+    },
+    {
+      id: 'snap-to-moodboard',
+      title: 'Snap 3D view / Viewfinder to Moodboard',
+      group: 'Tools',
+      keywords: 'capture screenshot snapshot viewfinder moodboard reference',
+      run: () => void captureGlobeToMoodboard()
     },
     { id: 'mode-photorealistic', title: 'Photorealistic mode', group: 'View', keys: '1', keywords: '3d tiles google', run: () => { shellState().setActiveModule('globe'); void engine()?.setMode('photorealistic') } },
     {

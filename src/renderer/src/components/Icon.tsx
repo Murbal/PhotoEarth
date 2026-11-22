@@ -250,7 +250,125 @@ const PATHS: Record<string, ReactElement> = {
     </>
   ),
   /** Back arrow icon. */
-  arrowLeft: <path d="M19 12H5M11 6l-6 6 6 6" />
+  arrowLeft: <path d="M19 12H5M11 6l-6 6 6 6" />,
+  /** Forward arrow icon. */
+  arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
+  /** Selection pointer cursor icon. */
+  cursor: <path d="m5 3 6.5 17.5 2.5-6.5L20.5 11.5z" />,
+  /** Hand pan icon. */
+  hand: (
+    <>
+      <path d="M18 11V6a2 2 0 0 0-4 0v4M14 10V4a2 2 0 0 0-4 0v6M10 10V6a2 2 0 0 0-4 0v8" />
+      <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2a8 8 0 0 1-7.2-4.5L3.3 14a2 2 0 0 1 3.3-2.2L8 13" />
+    </>
+  ),
+  /** Section / group frame icon. */
+  group: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" strokeDasharray="3.5 2.5" />
+      <path d="M7.5 9h5" />
+    </>
+  ),
+  /** Curved connector arrow icon. */
+  connector: (
+    <>
+      <circle cx="5.5" cy="18" r="2" />
+      <path d="M7.5 18C12 18 12 6 17.5 6" />
+      <path d="m15 3.5 3.5 2.5-3.5 2.5" />
+    </>
+  ),
+  /** Lock icon. */
+  lock: (
+    <>
+      <rect x="5" y="11" width="14" height="9.5" rx="2" />
+      <path d="M8 11V7.5a4 4 0 0 1 8 0V11" />
+    </>
+  ),
+  /** Unlock icon. */
+  unlock: (
+    <>
+      <rect x="5" y="11" width="14" height="9.5" rx="2" />
+      <path d="M8 11V7.5a4 4 0 0 1 7.7-1.5" />
+    </>
+  ),
+  /** Fit view / maximize frame icon. */
+  fit: (
+    <>
+      <path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15" />
+    </>
+  ),
+  /** Download / export icon. */
+  download: (
+    <>
+      <path d="M12 4v11M8 11l4 4 4-4" />
+      <path d="M4 18.5v1A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5v-1" />
+    </>
+  ),
+  /** Embedded browser panel icon. */
+  browser: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9h18M15 9v11" />
+    </>
+  ),
+  /** Reload / refresh icon. */
+  refresh: (
+    <>
+      <path d="M20 12a8 8 0 1 1-2.3-5.7L20 8.5" />
+      <path d="M20 4v4.5h-4.5" />
+    </>
+  ),
+  /** Open in external browser icon. */
+  external: (
+    <>
+      <path d="M14 4h6v6M20 4 10.5 13.5" />
+      <path d="M18 14v5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 19V7.5A1.5 1.5 0 0 1 5.5 6h5" />
+    </>
+  ),
+  /** Camera shutter / snapshot icon. */
+  camera: (
+    <>
+      <path d="M4 8.5A2 2 0 0 1 6 6.5h2.2l1.3-2h5l1.3 2H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+      <circle cx="12" cy="12.5" r="3.2" />
+    </>
+  ),
+  /** Redo icon. */
+  redo: <path d="m15 14 5-5-5-5M20 9H9a5 5 0 0 0 0 10h3" />,
+  /** Bring to front icon. */
+  bringFront: (
+    <>
+      <rect x="4" y="4" width="10" height="10" rx="1.5" />
+      <path d="M14 10h4.5A1.5 1.5 0 0 1 20 11.5v7A1.5 1.5 0 0 1 18.5 20h-7A1.5 1.5 0 0 1 10 18.5V14" />
+    </>
+  ),
+  /** Send to back icon. */
+  sendBack: (
+    <>
+      <rect x="10" y="10" width="10" height="10" rx="1.5" />
+      <path d="M10 14H5.5A1.5 1.5 0 0 1 4 12.5v-7A1.5 1.5 0 0 1 5.5 4h7A1.5 1.5 0 0 1 14 5.5V10" />
+    </>
+  ),
+  /** Presentation mode / clean canvas icon. */
+  present: (
+    <>
+      <rect x="3" y="4.5" width="18" height="13" rx="2" />
+      <path d="M8.5 20.5h7M12 17.5v3" />
+    </>
+  ),
+  /** Grid / snap icon. */
+  grid: (
+    <>
+      <circle cx="6" cy="6" r="1.2" fill="currentColor" />
+      <circle cx="12" cy="6" r="1.2" fill="currentColor" />
+      <circle cx="18" cy="6" r="1.2" fill="currentColor" />
+      <circle cx="6" cy="12" r="1.2" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.2" fill="currentColor" />
+      <circle cx="18" cy="12" r="1.2" fill="currentColor" />
+      <circle cx="6" cy="18" r="1.2" fill="currentColor" />
+      <circle cx="12" cy="18" r="1.2" fill="currentColor" />
+      <circle cx="18" cy="18" r="1.2" fill="currentColor" />
+    </>
+  )
 }
 
 export type IconName = keyof typeof PATHS

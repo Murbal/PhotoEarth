@@ -2,10 +2,12 @@ import { join } from 'node:path'
 import { app, BrowserWindow, session, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { sanitizeSettings } from '@shared/settings'
 import { BookmarkStore } from './bookmarks'
+import { BrowserDrawerController } from './browserDrawer'
 import { DEV_ENV_KEYS, loadDevEnvFlags, loadDevEnvKeys } from './devEnv'
 import { registerIpc } from './ipc'
 import { JsonFile } from './jsonStore'
 import { buildMenu } from './menu'
+import { MoodboardStore } from './moodboards'
 import { cleanOrphanPhotos, PhotoStore } from './photos'
 import { ProjectStore } from './projects'
 import { handleAppScheme, handlePhotoScheme, registerAppScheme } from './protocol'
@@ -90,14 +92,29 @@ void app.whenReady().then(async () => {
   }
   const userData = app.getPath('userData')
   const photos = new PhotoStore(join(userData, 'photos'))
-  const projects = new ProjectStore(userData, { photos })
+  const moodboards = new MoodboardStore(userData, {
+    photos,
+    onRemove: (boardId) => {
+      projects.unlinkMoodboardFromAll(boardId)
+    },
+    onCreate: (summary) => {
+      if (summary.projectId) projects.linkMoodboard(summary.projectId, summary.id)
+    }
+  })
+  const projects = new ProjectStore(userData, {
+    photos,
+    onRemove: (projectId) => {
+      moodboards.unlinkProjectFromAll(projectId)
+    }
+  })
   const bookmarks = new BookmarkStore(userData, {
     photos,
     onRemove: (locationId) => {
       projects.unlinkLocationFromAll(locationId)
     }
   })
-  cleanOrphanPhotos(photos, [bookmarks, projects])
+  cleanOrphanPhotos(photos, [bookmarks, projects, moodboards])
+  const browserDrawer = new BrowserDrawerController(() => mainWindow, photos)
 
   hardenSession(session.defaultSession, devServer)
   handleAppScheme(join(__dirname, '../renderer'))
@@ -128,6 +145,8 @@ void app.whenReady().then(async () => {
     secrets,
     bookmarks,
     projects,
+    moodboards,
+    browserDrawer,
     disable3dTiles,
     isTrustedSender,
     onKeysChanged: (keys) => updateRefererHook(keys.googleApiKey)
@@ -147,7 +166,8 @@ void app.whenReady().then(async () => {
   })
 
   app.on('before-quit', () => {
-    for (const store of [settings, bookmarks, projects]) {
+    browserDrawer.destroy()
+    for (const store of [settings, bookmarks, projects, moodboards]) {
       try {
         store.flush()
       } catch (err) {

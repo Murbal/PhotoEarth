@@ -22,6 +22,7 @@ import {
 } from '../../lib/projects'
 import { useShellStore } from '../../shell/shellStore'
 import { useAppStore } from '../../store/appStore'
+import { useMoodboardStore } from '../../store/moodboardStore'
 import { useProjectsStore, type ProjectTab } from '../../store/projectsStore'
 import { LinkLocationsDialog, LocationsTab } from './LocationsTab'
 import { MoodboardsTab } from './MoodboardsTab'
@@ -42,10 +43,12 @@ export function ProjectWorkspace({ project }: { project: Project }) {
   const closeProject = useProjectsStore((s) => s.closeProject)
   const activeProjectId = useShellStore((s) => s.activeProjectId)
   const bookmarks = useAppStore((s) => s.bookmarks)
+  const moodboards = useMoodboardStore((s) => s.summaries)
   const [linkDialogOpen, setLinkDialogOpen] = useState(false)
   const [datePopoverOpen, setDatePopoverOpen] = useState(false)
   const [coverMenuOpen, setCoverMenuOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleteBoardsToo, setDeleteBoardsToo] = useState(false)
   const [coverDragging, setCoverDragging] = useState(false)
 
   const bookmarksById = useMemo(() => new Map(bookmarks.map((b) => [b.id, b])), [bookmarks])
@@ -53,11 +56,30 @@ export function ProjectWorkspace({ project }: { project: Project }) {
     () => project.locationIds.map((id) => bookmarksById.get(id)).filter((b): b is Bookmark => !!b),
     [bookmarksById, project.locationIds]
   )
+  const linkedBoardIds = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...project.moodboardIds,
+          ...moodboards.filter((b) => b.projectId === project.id).map((b) => b.id)
+        ])
+      ),
+    [moodboards, project.id, project.moodboardIds]
+  )
   const linkedPhotos = useMemo(
     () => linkedLocations.flatMap((loc) => loc.photos.map((photo) => ({ loc, photo }))),
     [linkedLocations]
   )
   const displayCover = resolveProjectCover(project, bookmarksById)
+  const fallbackMoodboardThumb = useMemo(() => {
+    if (displayCover) return null
+    for (const id of linkedBoardIds) {
+      const b = moodboards.find((x) => x.id === id)
+      if (b?.previewFiles[0]) return b.previewFiles[0]
+    }
+    return null
+  }, [displayCover, linkedBoardIds, moodboards])
+  const displayCoverSrc = displayCover ? photoUrl(thumbFile(displayCover)) : fallbackMoodboardThumb ? photoUrl(fallbackMoodboardThumb) : null
   const dateChip = formatDateWindow(project.dateWindow)
   const isActive = activeProjectId === project.id
 
@@ -66,8 +88,8 @@ export function ProjectWorkspace({ project }: { project: Project }) {
       <header className="proj-ws-header">
         {/* Atmospheric backdrop softly tinted from cover photo or color story */}
         <div className="proj-ws-backdrop" aria-hidden="true">
-          {displayCover ? (
-            <img src={photoUrl(thumbFile(displayCover))} alt="" />
+          {displayCoverSrc ? (
+            <img src={displayCoverSrc} alt="" />
           ) : (
             <div className="proj-ws-backdrop-grad" style={{ background: projectCoverGradient(project) }} />
           )}
@@ -112,17 +134,30 @@ export function ProjectWorkspace({ project }: { project: Project }) {
             {confirmDelete ? (
               <div className="proj-delete-confirm">
                 <span className="small muted">Delete project? Linked spots stay safe.</span>
+                {linkedBoardIds.length > 0 && (
+                  <label className="small muted" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={deleteBoardsToo}
+                      onChange={(e) => setDeleteBoardsToo(e.target.checked)}
+                    />
+                    Also delete exclusive moodboards
+                  </label>
+                )}
                 <button
                   type="button"
                   className="btn danger small"
-                  onClick={() => void deleteProject(project.id)}
+                  onClick={() => void deleteProject(project.id, { deleteExclusiveMoodboards: deleteBoardsToo })}
                 >
                   Delete
                 </button>
                 <button
                   type="button"
                   className="btn ghost small"
-                  onClick={() => setConfirmDelete(false)}
+                  onClick={() => {
+                    setConfirmDelete(false)
+                    setDeleteBoardsToo(false)
+                  }}
                 >
                   Cancel
                 </button>
@@ -157,8 +192,8 @@ export function ProjectWorkspace({ project }: { project: Project }) {
                 if (file) void setProjectCoverPhotoFile(project.id, file)
               }}
             >
-              {displayCover ? (
-                <img src={photoUrl(thumbFile(displayCover))} alt="" decoding="async" />
+              {displayCoverSrc ? (
+                <img src={displayCoverSrc} alt="" decoding="async" />
               ) : (
                 <div className="proj-ws-cover-placeholder">
                   <Icon name="image" size={20} />
@@ -176,6 +211,7 @@ export function ProjectWorkspace({ project }: { project: Project }) {
                 <CoverPickerPopover
                   project={project}
                   linkedPhotos={linkedPhotos}
+                  linkedBoardIds={linkedBoardIds}
                   onClose={() => setCoverMenuOpen(false)}
                 />
               )}
@@ -240,7 +276,7 @@ export function ProjectWorkspace({ project }: { project: Project }) {
                 tab.id === 'locations'
                   ? linkedLocations.length
                   : tab.id === 'moodboards'
-                    ? project.moodboardIds.length
+                    ? linkedBoardIds.length
                     : tab.id === 'notes'
                       ? project.notes.length
                       : null
@@ -431,13 +467,39 @@ function DateWindowPopover({ project, onClose }: { project: Project; onClose: ()
 function CoverPickerPopover({
   project,
   linkedPhotos,
+  linkedBoardIds,
   onClose
 }: {
   project: Project
   linkedPhotos: Array<{ loc: Bookmark; photo: LocationPhoto }>
+  linkedBoardIds: string[]
   onClose: () => void
 }) {
   const popRef = useRef<HTMLDivElement>(null)
+  const [boardPhotos, setBoardPhotos] = useState<Array<{ boardTitle: string; photo: LocationPhoto }>>([])
+
+  useEffect(() => {
+    let active = true
+    if (linkedBoardIds.length === 0) return
+    void Promise.all(linkedBoardIds.slice(0, 6).map((id) => window.photoearth.moodboards.get(id))).then((docs) => {
+      if (!active) return
+      const out: Array<{ boardTitle: string; photo: LocationPhoto }> = []
+      for (const doc of docs) {
+        if (!doc) continue
+        for (const item of doc.items) {
+          if (item.kind === 'image') {
+            out.push({ boardTitle: doc.title, photo: item.photo })
+            if (out.length >= 9) break
+          }
+        }
+        if (out.length >= 9) break
+      }
+      setBoardPhotos(out)
+    })
+    return () => {
+      active = false
+    }
+  }, [linkedBoardIds])
 
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
@@ -466,6 +528,28 @@ function CoverPickerPopover({
       >
         <Icon name="image" size={14} /> Choose from disk…
       </button>
+
+      {boardPhotos.length > 0 && (
+        <div className="proj-cover-loc-section">
+          <div className="loc-field-label">From linked moodboards</div>
+          <div className="proj-cover-loc-grid">
+            {boardPhotos.map(({ boardTitle, photo }) => (
+              <button
+                key={`mb-${photo.id}`}
+                type="button"
+                className="proj-cover-loc-thumb"
+                title={`${boardTitle}: ${photo.name}`}
+                onClick={() => {
+                  onClose()
+                  void setProjectCoverFromLocationPhoto(project.id, photo)
+                }}
+              >
+                <img src={photoUrl(thumbFile(photo))} alt={photo.name} loading="lazy" decoding="async" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {linkedPhotos.length > 0 && (
         <div className="proj-cover-loc-section">
