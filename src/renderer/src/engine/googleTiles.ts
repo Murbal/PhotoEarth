@@ -3,9 +3,6 @@ import type { ImageryType } from '@shared/types'
 /** Google Map Tiles API: 2D tile sessions, tiles and viewport attribution. */
 export const TILES_ENDPOINT = 'https://tile.googleapis.com'
 
-/** The Google logo Cesium credits Google data with (the CSP allows assets.ion.cesium.com). */
-export const GOOGLE_LOGO_URL = 'https://assets.ion.cesium.com/google-credit.png'
-
 export interface TileSessionOptions {
   /** 2× tiles (same coverage, twice the pixels) for dense displays. */
   highDpi?: boolean

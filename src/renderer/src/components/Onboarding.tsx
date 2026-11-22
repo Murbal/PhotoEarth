@@ -3,19 +3,18 @@ import type { ApiKeys, ValidationResult } from '@shared/types'
 import { useAppInfo } from '../hooks/useAppInfo'
 import { useDialogFocus } from '../hooks/useDialogFocus'
 import { saveKeys } from '../lib/keys'
-import { useShellStore } from '../shell/shellStore'
 import { useAppStore } from '../store/appStore'
 import { KeyFields, useKeyFields } from './KeyFields'
 
 export function Onboarding() {
-  const open = useShellStore((s) => s.onboardingOpen)
+  const open = useAppStore((s) => s.onboardingOpen)
   return open ? <OnboardingDialog /> : null
 }
 
 function OnboardingDialog() {
   const initial = useAppStore((s) => s.keys)
   const secrets = useAppStore((s) => s.secrets)
-  const setShell = useShellStore((s) => s.set)
+  const set = useAppStore((s) => s.set)
   const patchSettings = useAppStore((s) => s.patchSettings)
   const info = useAppInfo()
   const { keys, setKeys, result, validating, validate } = useKeyFields(initial)
@@ -25,7 +24,7 @@ function OnboardingDialog() {
   const finish = async () => {
     await saveKeys(keys)
     patchSettings((d) => void (d.onboardingComplete = true))
-    setShell({ onboardingOpen: false })
+    set({ onboardingOpen: false })
   }
 
   // Stays open when a check fails, so the reason under the field can be read and the key fixed.
@@ -43,7 +42,7 @@ function OnboardingDialog() {
           where light and shadow fall.
         </p>
         <p>
-          PhotoEarth uses your own keys. <strong>Google Maps Platform</strong> provides the 2D maps and place search.{' '}
+          PhotoEarth uses your own keys. <strong>Google Maps Platform</strong> provides place search, place names, and the road map shown while the 3D tiles aren’t available.{' '}
           <strong>Cesium ion</strong> streams the photorealistic 3D tiles and provides the elevation data for profiles, the horizon
           panorama and viewshed. Both have free tiers.
         </p>

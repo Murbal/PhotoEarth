@@ -30,13 +30,12 @@ export class PhotoPicker {
 
   constructor(private readonly openDialog: OpenDialog) {}
 
-  async pick(title: string, opts?: { multi?: boolean }): Promise<PickedPhoto[]> {
-    const multi = opts?.multi !== false
+  async pick(title: string): Promise<PickedPhoto[]> {
     const result = await this.openDialog({
       title,
       defaultPath: this.lastDir,
-      buttonLabel: multi ? 'Add' : 'Choose',
-      properties: multi ? ['openFile', 'multiSelections'] : ['openFile'],
+      buttonLabel: 'Add',
+      properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'Images', extensions: PHOTO_EXTENSIONS }]
     })
     this.picked.clear()

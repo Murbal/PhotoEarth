@@ -3,7 +3,6 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { NO_FILTER, type LocationFilter } from '@shared/locations'
 import { defaultSettings } from '@shared/settings'
 import type { ApiKeys, Bookmark, SavedProfile, SecretsStatus, Settings } from '@shared/types'
-import type { MapSession } from '../engine/MapTiles'
 import type { BodyDay } from '../lib/celestial'
 import {
   DEFAULT_EYE_HEIGHT,
@@ -25,6 +24,17 @@ import type { ViewshedPointCheck, ViewshedStats } from '../lib/viewshed'
 import type { Forecast } from '../lib/weather'
 
 export type BannerLevel = 'error' | 'warning' | 'info'
+
+export interface Toast {
+  id: number
+  message: string
+}
+
+/** A reference photo shown full size. */
+export interface PhotoViewerState {
+  locationId: string
+  photoId: string
+}
 
 export interface BannerAction {
   label: string
@@ -50,8 +60,6 @@ export interface CameraInfo {
   heightAgl: number | null
   heading: number
   pitch: number
-  /** Horizontal angle of view, degrees (Map mode's camera wedge). */
-  fov: number
 }
 
 export interface CursorInfo {
@@ -330,6 +338,12 @@ function emptyAlignment(startDate: string): AlignmentState {
 
 export interface AppState {
   booted: boolean
+  paletteOpen: boolean
+  shortcutsOpen: boolean
+  settingsOpen: boolean
+  onboardingOpen: boolean
+  photoViewer: PhotoViewerState | null
+  toast: Toast | null
   settings: Settings
   keys: ApiKeys
   secrets: SecretsStatus | null
@@ -366,26 +380,18 @@ export interface AppState {
   profiles: SavedProfile[]
   /** What the locations panel and the map markers show. */
   locationFilter: LocationFilter
-  /** Whether the locations panel & map markers show all saved spots or only the active project's. */
-  locationScope: 'all' | 'project'
-  /** When scoped to the active project, show non-project markers dimmed instead of hiding them. */
-  dimOtherLocations: boolean
-  /** When an active project is set, saving a new location (Ctrl+B) links it automatically. */
-  saveToActiveProject: boolean
-  /** Set when the user jumped from a project's "Scout in 3D Globe" flow to add new spots. */
-  scoutingProjectId: string | null
   /** The location open in the editor, highlighted on the map. */
   activeLocation: string | null
   terrainReady: boolean
   tilesetReady: boolean
   /** Dev-only toggle (PHOTOEARTH_NO_3D_TILES=1): skip loading Photorealistic 3D Tiles. */
   disable3dTiles: boolean
-  /** Map mode's Google 2D Tiles session. */
-  mapSession: MapSession | null
   /** Heightmap terrain shadows. */
   terrainShadows: 'off' | 'loading' | 'ready' | 'unavailable'
 
   set: (partial: Partial<AppState>) => void
+  showToast: (message: string) => void
+  isModalOpen: () => boolean
   patchSettings: (recipe: (draft: Settings) => void) => void
   postBanner: (banner: Banner) => void
   dismissBanner: (id: string) => void
@@ -411,9 +417,17 @@ function todayIn(): { date: string; minutes: number } {
   }
 }
 
+let toastId = 0
+
 export const useAppStore = create<AppState>()(
   subscribeWithSelector((set, get) => ({
     booted: false,
+    paletteOpen: false,
+    shortcutsOpen: false,
+    settingsOpen: false,
+    onboardingOpen: false,
+    photoViewer: null,
+    toast: null,
     settings: defaultSettings(),
     keys: { googleApiKey: null, cesiumIonToken: null },
     secrets: null,
@@ -445,18 +459,24 @@ export const useAppStore = create<AppState>()(
     bookmarks: [],
     profiles: [],
     locationFilter: NO_FILTER,
-    locationScope: 'all',
-    dimOtherLocations: true,
-    saveToActiveProject: true,
-    scoutingProjectId: null,
     activeLocation: null,
     terrainReady: false,
     tilesetReady: false,
     disable3dTiles: false,
-    mapSession: null,
     terrainShadows: 'off',
 
     set: (partial) => set(partial),
+    showToast: (message) => {
+      const id = ++toastId
+      set({ toast: { id, message } })
+      setTimeout(() => {
+        if (get().toast?.id === id) set({ toast: null })
+      }, 2600)
+    },
+    isModalOpen: () => {
+      const s = get()
+      return s.paletteOpen || s.settingsOpen || s.shortcutsOpen || s.onboardingOpen || !!s.photoViewer
+    },
     patchSettings: (recipe) => {
       const draft = structuredClone(get().settings)
       recipe(draft)

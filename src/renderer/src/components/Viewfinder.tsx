@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { SENSOR_SIZE_RANGE } from '@shared/settings'
 import type { CompositionGuide, FrameAspect, SensorId, ViewfinderSettings } from '@shared/types'
 import {
@@ -18,11 +18,8 @@ import {
   sliderToFocal,
   type LensView
 } from '../lib/lens'
-import { captureGlobeToMoodboard, createMoodboard } from '../lib/moodboards'
 import { compassPoint } from '../lib/units'
-import { useShellStore } from '../shell/shellStore'
 import { useAppStore } from '../store/appStore'
-import { useMoodboardStore } from '../store/moodboardStore'
 import { Icon } from './Icon'
 
 function useViewportSize(): { width: number; height: number } {
@@ -196,7 +193,6 @@ export function ViewfinderPanel() {
             </>
           )}
         </div>
-        <SnapToMoodboardButton />
         <button
           className="icon-btn small"
           title={collapsed ? 'Show lens controls' : 'Hide lens controls'}
@@ -319,109 +315,6 @@ export function ViewfinderPanel() {
             </label>
           </div>
         </>
-      )}
-    </div>
-  )
-}
-
-function SnapToMoodboardButton() {
-  const summaries = useMoodboardStore((s) => s.summaries)
-  const activeProjectId = useShellStore((s) => s.activeProjectId)
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const wrapRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!menuOpen) return
-    const onDown = (e: PointerEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setMenuOpen(false)
-    }
-    window.addEventListener('pointerdown', onDown)
-    return () => window.removeEventListener('pointerdown', onDown)
-  }, [menuOpen])
-
-  const snap = async (boardId?: string | null) => {
-    setMenuOpen(false)
-    setBusy(true)
-    try {
-      await captureGlobeToMoodboard(boardId)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div ref={wrapRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-      <button
-        type="button"
-        className="btn ghost small"
-        disabled={busy}
-        title="Snap current Viewfinder frame onto a Moodboard"
-        onClick={() => {
-          if (summaries.length <= 1) void snap(summaries[0]?.id ?? null)
-          else setMenuOpen((o) => !o)
-        }}
-      >
-        <Icon name="camera" size={14} />
-        <span>{busy ? 'Snapping…' : 'Snap to Moodboard'}</span>
-      </button>
-
-      {menuOpen && (
-        <div
-          className="panel"
-          role="menu"
-          style={{
-            position: 'absolute',
-            bottom: 'calc(100% + 8px)',
-            right: 0,
-            minWidth: 220,
-            padding: 5,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2,
-            zIndex: 40
-          }}
-        >
-          <div className="small faint" style={{ padding: '4px 8px' }}>
-            Send Viewfinder snapshot to…
-          </div>
-          {summaries.slice(0, 8).map((b) => (
-            <button
-              key={b.id}
-              type="button"
-              role="menuitem"
-              className="btn ghost small"
-              style={{ justifyContent: 'flex-start', width: '100%' }}
-              onClick={() => void snap(b.id)}
-            >
-              <Icon name="moodboard" size={13} />
-              <span className="truncate">{b.title}</span>
-            </button>
-          ))}
-          <div style={{ height: 1, background: 'var(--panel-border)', margin: '3px 6px' }} />
-          <button
-            type="button"
-            role="menuitem"
-            className="btn ghost small"
-            style={{ justifyContent: 'flex-start', width: '100%', color: 'var(--accent)' }}
-            onClick={async () => {
-              setMenuOpen(false)
-              setBusy(true)
-              try {
-                const created = await createMoodboard(
-                  { title: 'Viewfinder Captures', projectId: activeProjectId, template: 'blank' },
-                  { open: false }
-                )
-                await captureGlobeToMoodboard(created.summary.id)
-              } finally {
-                setBusy(false)
-              }
-            }}
-          >
-            <Icon name="plus" size={13} />
-            <span>New Moodboard…</span>
-          </button>
-        </div>
       )}
     </div>
   )

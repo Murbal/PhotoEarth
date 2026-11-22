@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '@shared/ipc'
-import type { BrowserDrawerImageAdded, BrowserDrawerState, MenuCommand, PhotoEarthApi } from '@shared/types'
+import type { MenuCommand, PhotoEarthApi } from '@shared/types'
 
 // The only surface the sandboxed renderer gets: a typed, minimal API.
 const api: PhotoEarthApi = {
@@ -31,58 +31,6 @@ const api: PhotoEarthApi = {
     create: (profile) => ipcRenderer.invoke(IPC.profilesCreate, profile),
     update: (id, patch) => ipcRenderer.invoke(IPC.profilesUpdate, id, patch),
     remove: (id) => ipcRenderer.invoke(IPC.profilesRemove, id)
-  },
-  projects: {
-    list: () => ipcRenderer.invoke(IPC.projectsList),
-    create: (input) => ipcRenderer.invoke(IPC.projectsCreate, input),
-    update: (id, patch) => ipcRenderer.invoke(IPC.projectsUpdate, id, patch),
-    remove: (id) => ipcRenderer.invoke(IPC.projectsRemove, id),
-    setCoverPhoto: (id, photo) => ipcRenderer.invoke(IPC.projectsSetCoverPhoto, id, photo),
-    setCoverPhotoFromPhoto: (id, photo) => ipcRenderer.invoke(IPC.projectsSetCoverPhotoFromPhoto, id, photo),
-    clearCoverPhoto: (id) => ipcRenderer.invoke(IPC.projectsClearCoverPhoto, id),
-    pickCoverPhoto: (id) => ipcRenderer.invoke(IPC.projectsPickCoverPhoto, id),
-    readPickedPhoto: (token) => ipcRenderer.invoke(IPC.projectsReadPickedPhoto, token),
-    linkLocation: (projectId, locationId) => ipcRenderer.invoke(IPC.projectsLinkLocation, projectId, locationId),
-    unlinkLocation: (projectId, locationId) => ipcRenderer.invoke(IPC.projectsUnlinkLocation, projectId, locationId),
-    linkMoodboard: (projectId, moodboardId) => ipcRenderer.invoke(IPC.projectsLinkMoodboard, projectId, moodboardId),
-    unlinkMoodboard: (projectId, moodboardId) => ipcRenderer.invoke(IPC.projectsUnlinkMoodboard, projectId, moodboardId)
-  },
-  moodboards: {
-    list: () => ipcRenderer.invoke(IPC.moodboardsList),
-    get: (id) => ipcRenderer.invoke(IPC.moodboardsGet, id),
-    create: (input) => ipcRenderer.invoke(IPC.moodboardsCreate, input),
-    save: (doc) => ipcRenderer.invoke(IPC.moodboardsSave, doc),
-    flush: (doc) => ipcRenderer.send(IPC.moodboardsFlush, doc),
-    updateMeta: (id, patch) => ipcRenderer.invoke(IPC.moodboardsUpdateMeta, id, patch),
-    remove: (id) => ipcRenderer.invoke(IPC.moodboardsRemove, id),
-    addImage: (boardId, photo) => ipcRenderer.invoke(IPC.moodboardsAddImage, boardId, photo),
-    clonePhoto: (boardId, photo) => ipcRenderer.invoke(IPC.moodboardsClonePhoto, boardId, photo),
-    pickImages: (boardId) => ipcRenderer.invoke(IPC.moodboardsPickImages, boardId),
-    readPickedPhoto: (token) => ipcRenderer.invoke(IPC.moodboardsReadPickedPhoto, token),
-    exportImage: (defaultName, data, format) => ipcRenderer.invoke(IPC.moodboardsExportImage, defaultName, data, format)
-  },
-  browserDrawer: {
-    setVisible: (visible) => ipcRenderer.invoke(IPC.browserDrawerSetVisible, visible),
-    setBounds: (bounds) => ipcRenderer.invoke(IPC.browserDrawerSetBounds, bounds),
-    navigate: (urlOrQuery) => ipcRenderer.invoke(IPC.browserDrawerNavigate, urlOrQuery),
-    goBack: () => ipcRenderer.invoke(IPC.browserDrawerGoBack),
-    goForward: () => ipcRenderer.invoke(IPC.browserDrawerGoForward),
-    reload: () => ipcRenderer.invoke(IPC.browserDrawerReload),
-    onState: (listener) => {
-      const handler = (_event: Electron.IpcRendererEvent, state: BrowserDrawerState) => listener(state)
-      ipcRenderer.on(IPC.browserDrawerState, handler)
-      return () => ipcRenderer.removeListener(IPC.browserDrawerState, handler)
-    },
-    onImageAdded: (listener) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: BrowserDrawerImageAdded) => listener(payload)
-      ipcRenderer.on(IPC.browserDrawerImageAdded, handler)
-      return () => ipcRenderer.removeListener(IPC.browserDrawerImageAdded, handler)
-    },
-    onError: (listener) => {
-      const handler = (_event: Electron.IpcRendererEvent, message: string) => listener(message)
-      ipcRenderer.on(IPC.browserDrawerError, handler)
-      return () => ipcRenderer.removeListener(IPC.browserDrawerError, handler)
-    }
   },
   places: {
     autocomplete: (request) => ipcRenderer.invoke(IPC.placesAutocomplete, request),

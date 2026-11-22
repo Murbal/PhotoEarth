@@ -1,20 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MIN_QUERY_LENGTH } from '@shared/places'
-import { formatDateWindow, PROJECT_STATUS_LABELS } from '@shared/projects'
 import type { PlaceSuggestion, ResolvedMapsLink, Result } from '@shared/types'
 import { getCommands, type Command } from '../commands'
 import { getEngine } from '../engine/instance'
 import { useDialogFocus } from '../hooks/useDialogFocus'
 import { flyToBookmark, openProfile } from '../lib/locations'
-import { openMoodboard } from '../lib/moodboards'
-import { openProjectInGlobe, openProjectWorkspace } from '../lib/projects'
 import { coordinateProblem, formatLatLon, isShortMapsLink, parseLocationInput } from '@shared/coords'
 import { DEBOUNCE_MS, PlacesSession } from '../lib/places'
 import { resolveShortLink } from '../lib/shortLinks'
-import { shellState, useShellStore } from '../shell/shellStore'
-import { useAppStore } from '../store/appStore'
-import { useMoodboardStore } from '../store/moodboardStore'
-import { useProjectsStore } from '../store/projectsStore'
+import { useAppStore, appState } from '../store/appStore'
 import { Icon, type IconName } from './Icon'
 
 interface Item {
@@ -37,7 +31,7 @@ function matches(query: string, ...fields: Array<string | undefined>): number {
 }
 
 export function CommandPalette() {
-  const open = useShellStore((s) => s.paletteOpen)
+  const open = useAppStore((s) => s.paletteOpen)
   return open ? <PaletteDialog /> : null
 }
 
@@ -60,11 +54,9 @@ interface ShortLinkResult {
 const MAPS_LINK_DETAIL = 'From Google Maps link'
 
 function PaletteDialog() {
-  const setShell = useShellStore((s) => s.set)
+  const set = useAppStore((s) => s.set)
   const bookmarks = useAppStore((s) => s.bookmarks)
   const profiles = useAppStore((s) => s.profiles)
-  const projects = useProjectsStore((s) => s.projects)
-  const moodboards = useMoodboardStore((s) => s.summaries)
   const hasGoogleKey = useAppStore((s) => !!s.keys.googleApiKey)
   const target = useAppStore((s) => s.target)
   const [query, setQuery] = useState('')
@@ -75,7 +67,7 @@ function PaletteDialog() {
   const dialogRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
-  const close = () => setShell({ paletteOpen: false })
+  const close = () => set({ paletteOpen: false })
   useDialogFocus(dialogRef)
 
   const q = query.trim()
@@ -128,9 +120,6 @@ function PaletteDialog() {
 
   const items = useMemo<Item[]>(() => {
     const out: Item[] = []
-    const goToGlobe = () => {
-      if (shellState().activeModule !== 'globe') shellState().setActiveModule('globe')
-    }
     if (coords) {
       out.push({
         key: 'coords',
@@ -138,10 +127,7 @@ function PaletteDialog() {
         icon: 'pin',
         title: formatLatLon(coords.latitude, coords.longitude, 'decimal'),
         subtitle: coords.source === 'url' ? 'from Google Maps link' : coords.source === 'dms' ? 'DMS' : 'decimal degrees',
-        run: () => {
-          goToGlobe()
-          return getEngine()?.goToCoordinates(coords, coords.source === 'url' ? MAPS_LINK_DETAIL : 'Coordinates')
-        }
+        run: () => getEngine()?.goToCoordinates(coords, coords.source === 'url' ? MAPS_LINK_DETAIL : 'Coordinates')
       })
     } else if (shortCoords) {
       out.push({
@@ -150,10 +136,7 @@ function PaletteDialog() {
         icon: 'pin',
         title: formatLatLon(shortCoords.latitude, shortCoords.longitude, 'decimal'),
         subtitle: 'from Google Maps short link',
-        run: () => {
-          goToGlobe()
-          return getEngine()?.goToCoordinates(shortCoords, MAPS_LINK_DETAIL)
-        }
+        run: () => getEngine()?.goToCoordinates(shortCoords, MAPS_LINK_DETAIL)
       })
     } else if (resolving) {
       out.push({
@@ -165,12 +148,8 @@ function PaletteDialog() {
         // Enter before the answer arrives still goes there once it does.
         run: async () => {
           const res = await resolveShortLink(q)
-          if (res.ok) {
-            goToGlobe()
-            await getEngine()?.goToCoordinates(res.data.location, MAPS_LINK_DETAIL)
-          } else {
-            shellState().showToast(res.error.message)
-          }
+          if (res.ok) await getEngine()?.goToCoordinates(res.data.location, MAPS_LINK_DETAIL)
+          else appState().showToast(res.error.message)
         }
       })
     }
@@ -183,70 +162,9 @@ function PaletteDialog() {
         subtitle: p.secondaryText,
         run: async () => {
           const res = await session.details(p.placeId)
-          if (res.ok) {
-            goToGlobe()
-            await getEngine()?.goToPlace(res.data, { name: p.mainText, detail: p.secondaryText })
-          } else {
-            shellState().showToast(res.error.message)
-          }
+          if (res.ok) await getEngine()?.goToPlace(res.data, { name: p.mainText, detail: p.secondaryText })
+          else appState().showToast(res.error.message)
         }
-      })
-    }
-    // Projects, found by title, tags, concept summary, date window or status.
-    const matchedProjects = projects
-      .map((p) => ({
-        p,
-        score: matches(q, p.title, p.tags.join(' '), p.concept.summary, p.dateWindow.label, PROJECT_STATUS_LABELS[p.status])
-      }))
-      .filter((x) => x.score > 0 && (q ? true : x.p.status !== 'archived'))
-      .sort((a, b) => b.score - a.score || b.p.updatedAt.localeCompare(a.p.updatedAt))
-      .slice(0, q ? 6 : 4)
-    for (const { p } of matchedProjects) {
-      const dateStr = formatDateWindow(p.dateWindow)
-      const subtitle = [PROJECT_STATUS_LABELS[p.status], dateStr, `${p.locationIds.length} ${p.locationIds.length === 1 ? 'spot' : 'spots'}`]
-        .filter(Boolean)
-        .join(' · ')
-      out.push({
-        key: `proj-${p.id}`,
-        group: 'Projects',
-        icon: 'projects',
-        title: p.title,
-        subtitle,
-        hint: 'Workspace',
-        run: () => openProjectWorkspace(p.id)
-      })
-      if (q && p.locationIds.length > 0) {
-        out.push({
-          key: `proj-globe-${p.id}`,
-          group: 'Projects',
-          icon: 'globe',
-          title: `${p.title} — Open in 3D Globe`,
-          subtitle: `Fly to ${p.locationIds.length} linked ${p.locationIds.length === 1 ? 'spot' : 'spots'}`,
-          run: () => openProjectInGlobe(p)
-        })
-      }
-    }
-    // Moodboards, found by title or linked project title.
-    const projTitleById = new Map(projects.map((p) => [p.id, p.title]))
-    const matchedBoards = moodboards
-      .map((b) => ({
-        b,
-        score: matches(q, b.title, b.projectId ? projTitleById.get(b.projectId) : undefined, 'moodboard canvas')
-      }))
-      .filter((x) => x.score > 0)
-      .sort((a, b) => b.score - a.score || b.b.updatedAt.localeCompare(a.b.updatedAt))
-      .slice(0, q ? 6 : 4)
-    for (const { b } of matchedBoards) {
-      const projTitle = b.projectId ? projTitleById.get(b.projectId) : undefined
-      const subtitle = [projTitle, `${b.itemCount} ${b.itemCount === 1 ? 'item' : 'items'}`].filter(Boolean).join(' · ')
-      out.push({
-        key: `mb-${b.id}`,
-        group: 'Moodboards',
-        icon: 'moodboard',
-        title: b.title,
-        subtitle,
-        hint: 'Canvas',
-        run: () => void openMoodboard(b.id)
       })
     }
     // Saved locations, found by name, tags, best time or notes.
@@ -275,7 +193,7 @@ function PaletteDialog() {
       out.push({ key: `cmd-${c.id}`, group: 'Commands', icon: 'command', title: c.title, hint: c.keys, run: c.run })
     }
     return out
-  }, [q, coords, shortCoords, resolving, places, projects, moodboards, bookmarks, profiles, session])
+  }, [q, coords, shortCoords, resolving, places, bookmarks, profiles, session])
 
   useEffect(() => setSelected(0), [q, places.length])
   useEffect(() => {
@@ -319,7 +237,7 @@ function PaletteDialog() {
           <input
             ref={inputRef}
             value={query}
-            placeholder={hasGoogleKey ? 'Search projects, places, coordinates, Google Maps links, or commands' : 'Search projects, coordinates, Google Maps links, locations or commands'}
+            placeholder={hasGoogleKey ? 'Search a place, paste coordinates or a Google Maps link, or type a command' : 'Coordinates, Google Maps links, bookmarks or commands'}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'ArrowDown') setSelected((s) => Math.min(items.length - 1, s + 1))

@@ -1,18 +1,13 @@
-import type { ImageryType, QualityPreset } from '@shared/types'
+import type { QualityPreset } from '@shared/types'
 import { getEngine } from './engine/instance'
-import { getMapControl } from './engine/mapControl'
 import { saveCurrentView } from './lib/locations'
-import { captureGlobeToMoodboard } from './lib/moodboards'
 import { GUIDES, nudgeFocal, stepFocal } from './lib/lens'
 import { astroNight, LOW_MOON_ILLUMINATION } from './lib/milkyWay'
 import { shortcutLabel } from './lib/platform'
 import { addDays } from './lib/time'
-import { shellState } from './shell/shellStore'
 import { appState } from './store/appStore'
-import { moodboardState } from './store/moodboardStore'
-import { projectsState } from './store/projectsStore'
 
-export type CommandGroup = 'Workspace' | 'View' | 'Navigation' | 'Time & sun' | 'Layers' | 'Tools' | 'App'
+export type CommandGroup = 'View' | 'Navigation' | 'Time & sun' | 'Layers' | 'Tools' | 'App'
 
 export interface Command {
   id: string
@@ -45,152 +40,12 @@ function viewfinder(fn: (d: ReturnType<typeof appState>['settings']['viewfinder'
   }
 }
 
-function setMapType(type: ImageryType): () => void {
-  return () => {
-    appState().patchSettings((d) => {
-      d.map.type = type
-    })
-    void engine()?.setMode('map')
-  }
-}
-
-/** Zooms the map in Map mode, else the 3D camera. */
 function zoom(steps: number): () => void {
-  return () => {
-    const map = appState().settings.map.open ? getMapControl() : null
-    if (map) map.zoomBy(steps)
-    else void engine()?.camera.zoomBy(steps > 0 ? 0.5 : 2)
-  }
-}
-
-/**
- * Commands that act on the 3D view. In Map mode they first leave the map (the 3D view opens
- * at the map's center), then run.
- */
-const NEEDS_3D = new Set([
-  'toggle-place-labels',
-  'toggle-viewfinder',
-  'focal-longer',
-  'focal-shorter',
-  'focal-nudge-up',
-  'focal-nudge-down',
-  'viewfinder-orientation',
-  'viewfinder-guide',
-  'toggle-shadows',
-  'toggle-lighting',
-  'toggle-sun-indicator',
-  'toggle-moon-indicator',
-  'toggle-detail-shadows',
-  'toggle-time-panel',
-  'play-pause',
-  'reset-north',
-  'reset-tilt',
-  'level-horizon',
-  'eye-level',
-  'fly-mode',
-  'profile-start',
-  'profile-clear',
-  'horizon-panorama',
-  'clear-marker',
-  'exaggeration-reset',
-  'toggle-forecast',
-  'toggle-horizon-moon',
-  'toggle-horizon-peaks',
-  'viewshed-toggle',
-  'viewshed-pick',
-  'viewshed-clear',
-  'viewshed-rings',
-  'viewshed-color-mode',
-  'toggle-alignment',
-  'alignment-pick-camera',
-  'alignment-pick-subject',
-  'alignment-look',
-  'alignment-clear',
-  'snap-to-moodboard'
-])
-
-function leavingMap(command: Command): Command {
-  if (!NEEDS_3D.has(command.id)) return command
-  return {
-    ...command,
-    run: () => {
-      if (shellState().activeModule !== 'globe') shellState().setActiveModule('globe')
-      const e = engine()
-      if (!e || !appState().settings.map.open) return command.run()
-      void e.setMode('photorealistic').then(() => command.run())
-    }
-  }
+  return () => void engine()?.camera.zoomBy(steps > 0 ? 0.5 : 2)
 }
 
 export function getCommands(): Command[] {
-  return commandList().map(leavingMap)
-}
-
-function commandList(): Command[] {
   return [
-    {
-      id: 'module-projects',
-      title: 'Switch to Projects Hub',
-      group: 'Workspace',
-      keys: shortcutLabel('Mod+1'),
-      keywords: 'projects hub workspace brief notes organize',
-      run: () => shellState().setActiveModule('projects')
-    },
-    {
-      id: 'module-globe',
-      title: 'Switch to 3D Globe',
-      group: 'Workspace',
-      keys: shortcutLabel('Mod+2'),
-      keywords: 'globe 3d map earth scouting',
-      run: () => shellState().setActiveModule('globe')
-    },
-    {
-      id: 'module-moodboard',
-      title: 'Switch to Moodboards',
-      group: 'Workspace',
-      keys: shortcutLabel('Mod+3'),
-      keywords: 'moodboard canvas references inspiration palette pureref',
-      run: () => shellState().setActiveModule('moodboard')
-    },
-    {
-      id: 'new-project',
-      title: 'New project',
-      group: 'Workspace',
-      keywords: 'create project trip series brief',
-      run: () => {
-        shellState().setActiveModule('projects')
-        projectsState().set({ createDialogOpen: true })
-      }
-    },
-    {
-      id: 'new-moodboard',
-      title: 'New moodboard',
-      group: 'Workspace',
-      keywords: 'create moodboard canvas references board',
-      run: () => {
-        shellState().setActiveModule('moodboard')
-        moodboardState().setActiveBoard(null)
-        moodboardState().set({ createDialogOpen: true })
-      }
-    },
-    {
-      id: 'snap-to-moodboard',
-      title: 'Snap 3D view / Viewfinder to Moodboard',
-      group: 'Tools',
-      keywords: 'capture screenshot snapshot viewfinder moodboard reference',
-      run: () => void captureGlobeToMoodboard()
-    },
-    { id: 'mode-photorealistic', title: 'Photorealistic mode', group: 'View', keys: '1', keywords: '3d tiles google', run: () => { shellState().setActiveModule('globe'); void engine()?.setMode('photorealistic') } },
-    {
-      id: 'mode-map',
-      title: 'Map mode (2D map for getting around)',
-      group: 'View',
-      keys: '2',
-      keywords: '2d flat google maps road terrain navigate overview minimap',
-      run: () => { shellState().setActiveModule('globe'); void engine()?.setMode('map') }
-    },
-    { id: 'map-roadmap', title: 'Map mode: road map', group: 'View', keywords: '2d streets', run: setMapType('roadmap') },
-    { id: 'map-terrain', title: 'Map mode: terrain', group: 'View', keywords: '2d relief topographic', run: setMapType('terrain') },
     {
       id: 'toggle-place-labels',
       title: 'Show / hide place names',
@@ -310,7 +165,7 @@ function commandList(): Command[] {
           eng.sun.setInstant(targetUtc)
           s.togglePanel('time', true)
         } else {
-          shellState().showToast('No astronomical dark window on this night')
+          appState().showToast('No astronomical dark window on this night')
         }
       }
     },
@@ -514,8 +369,8 @@ function commandList(): Command[] {
     { id: 'toggle-units',title: 'Switch units: metric / imperial', group: 'App', run: toggleSetting((d) => void (d.units = d.units === 'metric' ? 'imperial' : 'metric')) },
     { id: 'toggle-coord-format', title: 'Switch coordinates: decimal / DMS', group: 'App', run: toggleSetting((d) => void (d.coordFormat = d.coordFormat === 'decimal' ? 'dms' : 'decimal')) },
     { id: 'toggle-theme', title: 'Switch theme: dark / light', group: 'App', run: toggleSetting((d) => void (d.theme = d.theme === 'dark' ? 'light' : 'dark')) },
-    { id: 'open-settings', title: 'Open settings', group: 'App', keys: shortcutLabel('Mod+,'), keywords: 'api key preferences', run: () => shellState().set({ settingsOpen: true }) },
-    { id: 'open-shortcuts', title: 'Keyboard shortcuts', group: 'App', keys: '?', run: () => shellState().set({ shortcutsOpen: true }) },
+    { id: 'open-settings', title: 'Open settings', group: 'App', keys: shortcutLabel('Mod+,'), keywords: 'api key preferences', run: () => appState().set({ settingsOpen: true }) },
+    { id: 'open-shortcuts', title: 'Keyboard shortcuts', group: 'App', keys: '?', run: () => appState().set({ shortcutsOpen: true }) },
     { id: 'retry-providers', title: 'Retry loading map data', group: 'App', run: () => void engine()?.retryProviders() },
     { id: 'reload-window', title: 'Reload window', group: 'App', keywords: 'restart refresh', run: () => window.location.reload() }
   ]

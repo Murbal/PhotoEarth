@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { MAX_PHOTO_BYTES, MAX_THUMB_BYTES, PHOTO_FILE, sanitizeName, thumbFile } from '@shared/locations'
 import type { LocationPhoto } from '@shared/types'
@@ -23,17 +23,7 @@ export function sniffImage(bytes: Uint8Array): PhotoType | null {
   if (bytes[0] === 0x89 && ascii(bytes, 1, 4) === 'PNG' && bytes[4] === 0x0d && bytes[5] === 0x0a) return 'png'
   if (ascii(bytes, 0, 6) === 'GIF87a' || ascii(bytes, 0, 6) === 'GIF89a') return 'gif'
   if (ascii(bytes, 0, 4) === 'RIFF' && ascii(bytes, 8, 12) === 'WEBP') return 'webp'
-  if (ascii(bytes, 4, 8) === 'ftyp') {
-    const major = ascii(bytes, 8, 12)
-    if (major === 'avif' || major === 'avis') return 'avif'
-    if (major === 'mif1' || major === 'msf1') {
-      const end = Math.min(bytes.length, 64)
-      for (let i = 16; i + 4 <= end; i += 4) {
-        const brand = ascii(bytes, i, i + 4)
-        if (brand === 'avif' || brand === 'avis') return 'avif'
-      }
-    }
-  }
+  if (ascii(bytes, 4, 8) === 'ftyp' && ['avif', 'avis'].includes(ascii(bytes, 8, 12))) return 'avif'
   return null
 }
 
@@ -103,21 +93,6 @@ export class PhotoStore {
     }
   }
 
-  /**
-   * Duplicates an already-stored photo under a fresh UUID so another store (e.g. a project
-   * cover picked from a location) owns an independent copy that survives deletions of the source.
-   */
-  clone(source: Pick<LocationPhoto, 'id' | 'file' | 'name' | 'width' | 'height'>): LocationPhoto {
-    const srcPath = this.resolve(source.file)
-    const srcThumbPath = this.resolve(thumbFile(source))
-    if (!srcPath || !srcThumbPath || !existsSync(srcPath) || !existsSync(srcThumbPath)) {
-      throw new PhotoError('The source photo is no longer available.')
-    }
-    const data = new Uint8Array(readFileSync(srcPath))
-    const thumb = new Uint8Array(readFileSync(srcThumbPath))
-    return this.save({ name: source.name, data, thumb, width: source.width, height: source.height })
-  }
-
   /** The path of a stored file, or null for any name the store wouldn't have written. */
   resolve(file: string): string | null {
     return PHOTO_FILE.test(file) ? join(this.dir, file) : null
@@ -146,33 +121,5 @@ export class PhotoStore {
     const tmp = `${target}.tmp`
     writeFileSync(tmp, bytes)
     renameSync(tmp, target)
-  }
-}
-
-/** A store that references assets inside the shared PhotoStore. */
-export interface PhotoOwner {
-  /** False when the store's file was corrupt/unreadable or from a newer schema version. */
-  readonly canCleanOrphans: boolean
-  referencedPhotos(): Iterable<Pick<LocationPhoto, 'id' | 'file'>>
-}
-
-/**
- * Deletes stored photo files not referenced by any owner, only if every owner loaded cleanly.
- * Run once at startup after all photo-owning stores (bookmarks, projects, moodboards) have loaded.
- */
-export function cleanOrphanPhotos(photos: PhotoStore, owners: readonly PhotoOwner[]): number {
-  if (owners.some((o) => !o.canCleanOrphans)) {
-    console.error('[photoearth] Keeping all stored photos: at least one store was not fully read.')
-    return 0
-  }
-  const kept: Array<Pick<LocationPhoto, 'id' | 'file'>> = []
-  for (const owner of owners) {
-    for (const photo of owner.referencedPhotos()) kept.push(photo)
-  }
-  try {
-    return photos.removeOrphans(kept)
-  } catch (err) {
-    console.error('[photoearth] Could not clean up the photo directory:', err)
-    return 0
   }
 }

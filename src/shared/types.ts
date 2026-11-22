@@ -2,12 +2,11 @@
 
 import type { ParsedLocation } from './coords'
 
-export type ModuleId = 'globe' | 'projects' | 'moodboard'
 export type QualityPreset = 'low' | 'medium' | 'high' | 'ultra'
 export type Units = 'metric' | 'imperial'
 export type CoordFormat = 'decimal' | 'dms'
 export type Theme = 'dark' | 'light'
-/** Google 2D map types. Satellite isn't offered: Google doesn't serve it to EEA accounts. */
+/** Google 2D map types draped on the terrain globe. Satellite isn't offered: Google doesn't serve it to EEA accounts. */
 export type ImageryType = 'roadmap' | 'terrain'
 export type LightingMode = 'sun' | 'flat'
 
@@ -95,16 +94,6 @@ export interface LightPollutionSettings {
   source: LightPollutionSourceId
 }
 
-/** Map mode: a full-window 2D map, shown instead of the 3D view while `open`. */
-export interface MapModeSettings {
-  open: boolean
-  /** Center and fractional Web Mercator zoom of the map. */
-  longitude: number
-  latitude: number
-  zoom: number
-  type: ImageryType
-}
-
 /** Horizon panorama: what the strip chart draws over the skyline. */
 export interface HorizonSettings {
   /** The moon's path for the same date. */
@@ -149,7 +138,6 @@ export interface Settings {
   quality: QualitySettings
   navigation: NavigationSettings
   lastCamera: CameraView | null
-  map: MapModeSettings
   imagery: ImageryType
   /** Google place names on the map (a labels-only Map Tiles layer). */
   placeLabels: boolean
@@ -175,10 +163,6 @@ export interface Settings {
   bookmarkIncludeTime: boolean
   /** Markers for the saved locations on the map. */
   showLocationMarkers: boolean
-  /** Last active project context (restored on startup if it still exists). */
-  lastProjectId: string | null
-  /** Last open moodboard ID (restored if it still exists). */
-  lastMoodboardId: string | null
   onboardingComplete: boolean
 }
 
@@ -306,241 +290,6 @@ export interface ProfilePatch {
   name?: string
   locationId?: string | null
 }
-
-// ───────────────────────────── projects ─────────────────────────────
-
-export type ProjectStatus = 'brainstorming' | 'scouting' | 'ready' | 'shot' | 'archived'
-
-export interface ProjectDateWindow {
-  /** ISO calendar date 'YYYY-MM-DD' (date-only, independent of timezone). */
-  start: string | null
-  end: string | null
-  /** Optional free text, e.g. "Late October, first snow" when exact dates aren't fixed yet. */
-  label: string
-}
-
-export interface ProjectConcept {
-  /** Short 1-2 sentence premise or visual goal. */
-  summary: string
-  /** Lighting / weather mood keywords or prose (e.g. "low-angle fog, blue hour"). */
-  lightingMood: string
-  /** Optional self-imposed constraints (e.g. "35mm prime only", "square 1:1"). */
-  constraints: string
-  /** Dominant target hex colors (manually picked or synced from a linked Moodboard). */
-  colorStory: string[]
-}
-
-export interface ProjectNote {
-  id: string
-  title: string
-  /** Markdown text. */
-  body: string
-  pinned: boolean
-  createdAt: string
-  updatedAt: string
-}
-
-export interface Project {
-  id: string
-  title: string
-  status: ProjectStatus
-  createdAt: string
-  updatedAt: string
-  /** Optional cover image stored in the shared PhotoStore. */
-  coverPhoto: LocationPhoto | null
-  /** Lowercase, unique tags (e.g. 'landscape', 'astro', 'italy'). */
-  tags: string[]
-  dateWindow: ProjectDateWindow
-  concept: ProjectConcept
-  /** Ordered list of linked Bookmark IDs from bookmarks.json. */
-  locationIds: string[]
-  /** Ordered list of linked Moodboard IDs from moodboards/index.json. */
-  moodboardIds: string[]
-  /** Free-form scratchpad / concept cards. */
-  notes: ProjectNote[]
-}
-
-export interface NewProject {
-  title: string
-  status?: ProjectStatus
-  tags?: string[]
-  dateWindow?: Partial<ProjectDateWindow>
-  concept?: Partial<ProjectConcept>
-  locationIds?: string[]
-  moodboardIds?: string[]
-  notes?: Array<{ title: string; body: string; pinned?: boolean }>
-}
-
-export interface ProjectPatch {
-  title?: string
-  status?: ProjectStatus
-  tags?: string[]
-  dateWindow?: Partial<ProjectDateWindow>
-  concept?: Partial<ProjectConcept>
-  locationIds?: string[]
-  moodboardIds?: string[]
-  notes?: ProjectNote[]
-}
-
-export type ProjectPhotoResult = { ok: true; project: Project } | { ok: false; error: string }
-
-// ───────────────────────────── moodboards ─────────────────────────────
-
-export type MoodboardNoteTint = 'neutral' | 'amber' | 'blue' | 'rose' | 'emerald' | 'transparent'
-export type MoodboardTemplateId = 'blank' | 'three-column' | 'shot-study'
-
-export interface MoodboardSummary {
-  id: string
-  title: string
-  /** Optional primary project link (projects can also link boards via moodboardIds). */
-  projectId: string | null
-  createdAt: string
-  updatedAt: string
-  itemCount: number
-  /** Up to 4 photo file names from the board, used to render a 2×2 preview collage in lists. */
-  previewFiles: string[]
-}
-
-export interface MoodboardViewport {
-  x: number
-  y: number
-  zoom: number
-}
-
-export interface MoodboardItemBase {
-  id: string
-  x: number
-  y: number
-  width: number
-  height: number
-  zIndex: number
-  locked: boolean
-  groupId?: string | null
-}
-
-/** 3D Globe view state captured onto a Moodboard Image Card so one click jumps back to it. */
-export interface MoodboardGlobeSnapshot {
-  camera: CameraView
-  time?: BookmarkTime
-  viewfinder?: ViewfinderSettings
-  locationId?: string | null
-  label?: string
-}
-
-export interface MoodboardImageItem extends MoodboardItemBase {
-  kind: 'image'
-  photo: LocationPhoto
-  caption: string
-  borderless: boolean
-  sourceTitle?: string
-  sourceUrl?: string
-  globe?: MoodboardGlobeSnapshot
-}
-
-export interface MoodboardPaletteItem extends MoodboardItemBase {
-  kind: 'palette'
-  title: string
-  colors: string[]
-  sourceItemId?: string | null
-}
-
-export interface MoodboardNoteItem extends MoodboardItemBase {
-  kind: 'note'
-  title: string
-  body: string
-  tint: MoodboardNoteTint
-  isHeading?: boolean
-}
-
-export interface MoodboardGroupItem extends MoodboardItemBase {
-  kind: 'group'
-  title: string
-  tint: MoodboardNoteTint
-  collapsed: boolean
-}
-
-export interface MoodboardLocationItem extends MoodboardItemBase {
-  kind: 'location'
-  locationId: string
-}
-
-export type MoodboardItem =
-  | MoodboardImageItem
-  | MoodboardPaletteItem
-  | MoodboardNoteItem
-  | MoodboardGroupItem
-  | MoodboardLocationItem
-
-export interface MoodboardConnector {
-  id: string
-  fromId: string
-  toId: string
-  label: string
-  directed: boolean
-}
-
-export interface MoodboardDocument {
-  version: 1
-  id: string
-  title: string
-  projectId: string | null
-  viewport: MoodboardViewport
-  items: MoodboardItem[]
-  connectors: MoodboardConnector[]
-}
-
-export interface NewMoodboard {
-  title?: string
-  projectId?: string | null
-  template?: MoodboardTemplateId
-}
-
-export interface MoodboardMetaPatch {
-  title?: string
-  projectId?: string | null
-}
-
-export interface MoodboardCreateResult {
-  summary: MoodboardSummary
-  document: MoodboardDocument
-}
-
-export type MoodboardImageResult = { ok: true; photo: LocationPhoto } | { ok: false; error: string }
-export type MoodboardExportFormat = 'png' | 'jpg'
-export type MoodboardExportResult =
-  | { ok: true; path: string }
-  | { ok: false; canceled?: boolean; error?: string }
-
-export interface BrowserDrawerBounds {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
-export interface BrowserDrawerState {
-  url: string
-  title: string
-  canGoBack: boolean
-  canGoForward: boolean
-  loading: boolean
-}
-
-export type BrowserDrawerImageAdded =
-  | {
-      kind: 'photo'
-      photo: LocationPhoto
-      sourceUrl: string
-      sourceTitle: string
-    }
-  | {
-      kind: 'raw'
-      data: Uint8Array
-      mimeType: string
-      name: string
-      sourceUrl: string
-      sourceTitle: string
-    }
 
 export interface ApiKeys {
   googleApiKey: string | null
@@ -689,10 +438,6 @@ export type MenuCommand =
   | 'open-settings'
   | 'open-palette'
   | 'open-shortcuts'
-  | 'open-projects'
-  | 'open-moodboards'
-  | 'mode-photorealistic'
-  | 'mode-map'
   | 'toggle-fps'
   | 'save-bookmark'
   | 'toggle-bookmarks'
@@ -732,47 +477,6 @@ export interface PhotoEarthApi {
     create(profile: NewProfile): Promise<SavedProfile | null>
     update(id: string, patch: ProfilePatch): Promise<SavedProfile | null>
     remove(id: string): Promise<boolean>
-  }
-  projects: {
-    list(): Promise<Project[]>
-    create(input: NewProject): Promise<Project>
-    update(id: string, patch: ProjectPatch): Promise<Project | null>
-    remove(id: string): Promise<boolean>
-    setCoverPhoto(id: string, photo: PhotoUpload): Promise<ProjectPhotoResult>
-    setCoverPhotoFromPhoto(id: string, photo: LocationPhoto): Promise<ProjectPhotoResult>
-    clearCoverPhoto(id: string): Promise<Project | null>
-    pickCoverPhoto(id: string): Promise<PickedPhoto | null>
-    readPickedPhoto(token: string): Promise<PickedPhotoData>
-    linkLocation(projectId: string, locationId: string): Promise<Project | null>
-    unlinkLocation(projectId: string, locationId: string): Promise<Project | null>
-    linkMoodboard(projectId: string, moodboardId: string): Promise<Project | null>
-    unlinkMoodboard(projectId: string, moodboardId: string): Promise<Project | null>
-  }
-  moodboards: {
-    list(): Promise<MoodboardSummary[]>
-    get(id: string): Promise<MoodboardDocument | null>
-    create(input?: NewMoodboard): Promise<MoodboardCreateResult>
-    save(doc: MoodboardDocument): Promise<MoodboardCreateResult | null>
-    /** Best-effort synchronous flush, used while the window unloads. */
-    flush(doc: MoodboardDocument): void
-    updateMeta(id: string, patch: MoodboardMetaPatch): Promise<MoodboardSummary | null>
-    remove(id: string): Promise<boolean>
-    addImage(boardId: string, photo: PhotoUpload): Promise<MoodboardImageResult>
-    clonePhoto(boardId: string, photo: LocationPhoto): Promise<MoodboardImageResult>
-    pickImages(boardId: string): Promise<PickedPhoto[]>
-    readPickedPhoto(token: string): Promise<PickedPhotoData>
-    exportImage(defaultName: string, data: Uint8Array, format: MoodboardExportFormat): Promise<MoodboardExportResult>
-  }
-  browserDrawer: {
-    setVisible(visible: boolean): Promise<void>
-    setBounds(bounds: BrowserDrawerBounds): Promise<void>
-    navigate(urlOrQuery: string): Promise<void>
-    goBack(): Promise<void>
-    goForward(): Promise<void>
-    reload(): Promise<void>
-    onState(listener: (state: BrowserDrawerState) => void): () => void
-    onImageAdded(listener: (payload: BrowserDrawerImageAdded) => void): () => void
-    onError(listener: (message: string) => void): () => void
   }
   places: {
     autocomplete(request: AutocompleteRequest): Promise<Result<PlaceSuggestion[]>>

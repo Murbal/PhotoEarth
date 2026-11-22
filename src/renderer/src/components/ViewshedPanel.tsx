@@ -11,8 +11,7 @@ import {
   VIEWSHED_VIEWER_PRESETS,
   viewshedRingInterval
 } from '../lib/viewshed'
-import { shellState } from '../shell/shellStore'
-import { useAppStore } from '../store/appStore'
+import { useAppStore, appState } from '../store/appStore'
 import { Icon } from './Icon'
 
 function formatRadiusLabel(meters: number, units: Units): string {
@@ -157,7 +156,7 @@ export function ViewshedPanel() {
         <div className="notice row" style={{ marginTop: 6 }}>
           <span className="grow">{state.error}</span>
           {!hasIon && (
-            <button className="btn ghost vs-btn" onClick={() => shellState().set({ settingsOpen: true })}>
+            <button className="btn ghost vs-btn" onClick={() => appState().set({ settingsOpen: true })}>
               Settings
             </button>
           )}

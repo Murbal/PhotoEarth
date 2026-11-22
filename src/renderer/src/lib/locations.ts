@@ -3,9 +3,7 @@
 import { MAX_PHOTO_BYTES, MAX_PHOTOS_PER_LOCATION } from '@shared/locations'
 import type { Bookmark, BookmarkPatch, SavedProfile } from '@shared/types'
 import { getEngine } from '../engine/instance'
-import { shellState } from '../shell/shellStore'
 import { appState } from '../store/appStore'
-import { projectsState } from '../store/projectsStore'
 import { formatLatLon } from '@shared/coords'
 import { makeThumbnail } from './photos'
 import { haversine } from './profile'
@@ -16,49 +14,23 @@ function replaceBookmark(updated: Bookmark): void {
 }
 
 /**
- * Saves the current view (or inspected/search spot) as a location (Ctrl/Cmd+B).
- * `edit` opens it in the editor; `openPanel: false` keeps the map uncluttered (used when
- * adding spots straight from the inspect card or search chip); `projectId` explicitly links
- * the saved spot to that project.
+ * Saves the current view as a location (Ctrl/Cmd+B). `edit` opens it in the editor, as the
+ * panel's button does; the shortcut only opens the list, so the keyboard stays on the map.
  */
-export async function saveCurrentView(
-  opts: { name?: string; edit?: boolean; projectId?: string | null; openPanel?: boolean } = {}
-): Promise<Bookmark | null> {
+export async function saveCurrentView(opts: { name?: string; edit?: boolean } = {}): Promise<Bookmark | null> {
   const engine = getEngine()
   if (!engine) return null
-  const { settings, destination, inspect, bookmarks, set, togglePanel } = appState()
-  const { showToast } = shellState()
-  // In Map mode the location is at the map's center.
-  const target = settings.map.open ? engine.mapView() : appState().target
-  const trimmedName = opts.name?.trim()
+  const { settings, destination, bookmarks, set, togglePanel, showToast, target } = appState()
   const label =
-    trimmedName ||
-    (inspect && !settings.map.open
-      ? formatLatLon(inspect.latitude, inspect.longitude, 'decimal')
-      : destination?.name ??
-        (target ? `View ${formatLatLon(target.latitude, target.longitude, 'decimal')}` : `View ${bookmarks.length + 1}`))
-  const saved = await window.photoearth.bookmarks.create(await engine.bookmarkFromView(label, settings.bookmarkIncludeTime))
+    opts.name ??
+    destination?.name ??
+    (target ? `View ${formatLatLon(target.latitude, target.longitude, 'decimal')}` : `View ${bookmarks.length + 1}`)
+  const saved = await window.photoearth.bookmarks.create(engine.bookmarkFromView(label, settings.bookmarkIncludeTime))
   // Opens on the new location, or on the list where it now is: never on another location's
   // details left open from before.
-  set({
-    bookmarks: [...appState().bookmarks, saved],
-    activeLocation: opts.edit ? saved.id : opts.openPanel === false ? appState().activeLocation : null
-  })
-  if (opts.openPanel !== false) togglePanel('bookmarks', true)
-  const targetProjectId =
-    opts.projectId !== undefined
-      ? opts.projectId
-      : appState().saveToActiveProject
-        ? shellState().activeProjectId
-        : null
-  const targetProject = targetProjectId ? projectsState().projects.find((p) => p.id === targetProjectId) ?? null : null
-  if (targetProject) {
-    const updated = await window.photoearth.projects.linkLocation(targetProject.id, saved.id)
-    if (updated) projectsState().replaceProject(updated)
-    showToast(`Added “${saved.name}” to “${targetProject.title}”`)
-  } else {
-    showToast('Location saved')
-  }
+  set({ bookmarks: [...appState().bookmarks, saved], activeLocation: opts.edit ? saved.id : null })
+  togglePanel('bookmarks', true)
+  showToast('Location saved')
   return saved
 }
 
@@ -73,27 +45,24 @@ export async function setLocationToCurrentView(id: string): Promise<void> {
   const engine = getEngine()
   const b = appState().bookmarks.find((x) => x.id === id)
   if (!engine || !b) return
-  const view = await engine.bookmarkFromView(b.name, appState().settings.bookmarkIncludeTime)
+  const view = engine.bookmarkFromView(b.name, appState().settings.bookmarkIncludeTime)
   await updateLocation(id, { ...view, time: view.time ?? null, viewfinder: view.viewfinder ?? null })
-  shellState().showToast('Location updated to the current view')
+  appState().showToast('Location updated to the current view')
 }
 
 /** Deletes a location with its photos and attached profiles. */
 export async function deleteLocation(id: string): Promise<void> {
   await window.photoearth.bookmarks.remove(id)
   const s = appState()
-  const sh = shellState()
   s.set({
     bookmarks: s.bookmarks.filter((b) => b.id !== id),
     profiles: s.profiles.filter((p) => p.locationId !== id),
     activeLocation: s.activeLocation === id ? null : s.activeLocation
   })
-  projectsState().unlinkLocationFromState(id)
-  if (sh.photoViewer?.locationId === id) sh.set({ photoViewer: null })
+  if (s.photoViewer?.locationId === id) s.set({ photoViewer: null })
 }
 
 export function flyToBookmark(b: Bookmark): void {
-  if (shellState().activeModule !== 'globe') shellState().setActiveModule('globe')
   void getEngine()?.flyToBookmark(b)
 }
 
@@ -111,7 +80,7 @@ interface PhotoSource {
  * main process, which checks it again.
  */
 async function importPhotos(id: string, sources: Iterable<PhotoSource>): Promise<void> {
-  const { showToast } = shellState()
+  const { showToast } = appState()
   let added = 0
   const problems: string[] = []
   for (const source of sources) {
@@ -175,8 +144,8 @@ export async function pickPhotos(id: string): Promise<void> {
 export async function removePhoto(id: string, photoId: string): Promise<void> {
   const updated = await window.photoearth.bookmarks.removePhoto(id, photoId)
   if (updated) replaceBookmark(updated)
-  const viewer = shellState().photoViewer
-  if (viewer?.photoId === photoId) shellState().set({ photoViewer: null })
+  const viewer = appState().photoViewer
+  if (viewer?.photoId === photoId) appState().set({ photoViewer: null })
 }
 
 // ───────────────────────────── profiles ─────────────────────────────
@@ -196,17 +165,16 @@ export async function saveProfile(name: string, locationId: string | null): Prom
   const points = engine.profile.vertexPositions()
   const saved = await window.photoearth.profiles.create({ name, points, locationId })
   if (!saved) {
-    shellState().showToast('A profile needs at least two points')
+    appState().showToast('A profile needs at least two points')
     return null
   }
   appState().set({ profiles: [...appState().profiles, saved] })
   appState().patchProfile({ savedId: saved.id })
-  shellState().showToast(saved.locationId ? 'Profile saved with the location' : 'Profile saved')
+  appState().showToast(saved.locationId ? 'Profile saved with the location' : 'Profile saved')
   return saved
 }
 
 export function openProfile(p: SavedProfile): void {
-  if (shellState().activeModule !== 'globe') shellState().setActiveModule('globe')
   void getEngine()?.openSavedProfile(p)
 }
 

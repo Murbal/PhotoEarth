@@ -33,9 +33,8 @@ export function registerAppScheme(): void {
       scheme: APP_SCHEME,
       privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true }
     },
-    // Reference photos of saved locations, projects and moodboards; images only (corsEnabled so
-    // offscreen canvas palette extraction and board PNG/JPEG export can read photo:// pixels).
-    { scheme: PHOTO_SCHEME, privileges: { standard: true, secure: true, corsEnabled: true } }
+    // Reference photos of saved locations; images only (no fetch, no scripts).
+    { scheme: PHOTO_SCHEME, privileges: { standard: true, secure: true } }
   ])
 }
 
@@ -52,16 +51,10 @@ export function handlePhotoScheme(photos: PhotoStore): void {
       const data = await readFile(path)
       const type = sniffImage(data)
       if (!type) return new Response('Not found', { status: 404 })
-      const headers: Record<string, string> = {
-        'Content-Type': PHOTO_MIME[type],
-        'X-Content-Type-Options': 'nosniff',
-        'Cache-Control': 'private, max-age=31536000, immutable'
-      }
-      const origin = req.headers.get('origin')
-      if (origin && (origin === `${APP_SCHEME}://${APP_HOST}` || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin))) {
-        headers['Access-Control-Allow-Origin'] = origin
-      }
-      return new Response(new Uint8Array(data), { status: 200, headers })
+      return new Response(new Uint8Array(data), {
+        status: 200,
+        headers: { 'Content-Type': PHOTO_MIME[type], 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, max-age=31536000, immutable' }
+      })
     } catch {
       return new Response('Not found', { status: 404 })
     }
