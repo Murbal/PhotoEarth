@@ -1,29 +1,13 @@
-import { writeFile } from 'node:fs/promises'
 import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { IPC } from '@shared/ipc'
-import { MAX_PHOTO_BYTES } from '@shared/locations'
 import { ALL_NEARBY_KINDS, CITIES_MAX_SPAN_DEG } from '@shared/places'
 import { sanitizeSettings } from '@shared/settings'
-import type {
-  ApiKeys,
-  AppInfo,
-  AutocompleteRequest,
-  BrowserDrawerBounds,
-  CitiesRequest,
-  MoodboardExportFormat,
-  MoodboardExportResult,
-  NearbyRequest,
-  Settings,
-  WeatherRequest
-} from '@shared/types'
+import type { ApiKeys, AppInfo, AutocompleteRequest, CitiesRequest, NearbyRequest, Settings, WeatherRequest } from '@shared/types'
 import { MAX_FORECAST_POINTS } from '@shared/weather'
 import type { BookmarkStore } from './bookmarks'
-import type { BrowserDrawerController } from './browserDrawer'
 import type { JsonFile } from './jsonStore'
-import type { MoodboardStore } from './moodboards'
 import { PhotoPicker } from './photoPicker'
-import { asBytes, sniffImage, type PhotoInput } from './photos'
-import type { ProjectStore } from './projects'
+import type { PhotoInput } from './photos'
 import {
   GOOGLE_REFERER,
   mapsShortLink,
@@ -41,9 +25,6 @@ interface Stores {
   settings: JsonFile<Settings>
   secrets: SecretStore
   bookmarks: BookmarkStore
-  projects: ProjectStore
-  moodboards: MoodboardStore
-  browserDrawer: BrowserDrawerController
   disable3dTiles?: boolean
   isTrustedSender: (event: IpcMainInvokeEvent | Electron.IpcMainEvent) => boolean
   /** Called after the stored keys change. */
@@ -52,7 +33,7 @@ interface Stores {
 
 const str = (v: unknown, max = 500): string => (typeof v === 'string' ? v.slice(0, max) : '')
 
-export function registerIpc({ settings, secrets, bookmarks, projects, moodboards, browserDrawer, disable3dTiles, isTrustedSender, onKeysChanged }: Stores): void {
+export function registerIpc({ settings, secrets, bookmarks, disable3dTiles, isTrustedSender, onKeysChanged }: Stores): void {
   const handle = <A extends unknown[], R>(channel: string, fn: (...args: A) => R) => {
     ipcMain.handle(channel, (event, ...args) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender')
@@ -115,113 +96,6 @@ export function registerIpc({ settings, secrets, bookmarks, projects, moodboards
   handle(IPC.profilesCreate, (input: unknown) => bookmarks.createProfile(input))
   handle(IPC.profilesUpdate, (id: unknown, patch: unknown) => bookmarks.updateProfile(str(id, 100), patch))
   handle(IPC.profilesRemove, (id: unknown) => bookmarks.removeProfile(str(id, 100)))
-
-  // Projects: payloads sanitized in shared/projects.ts; cover photos stored in shared PhotoStore.
-  handle(IPC.projectsList, () => projects.list())
-  handle(IPC.projectsCreate, (input: unknown) => projects.create(input))
-  handle(IPC.projectsUpdate, (id: unknown, patch: unknown) => projects.update(str(id, 100), patch))
-  handle(IPC.projectsRemove, (id: unknown) => projects.remove(str(id, 100)))
-  handle(IPC.projectsSetCoverPhoto, (id: unknown, photo: unknown) => {
-    const p = (photo ?? {}) as Partial<PhotoInput>
-    return projects.setCoverPhoto(str(id, 100), { name: p.name, data: p.data, thumb: p.thumb, width: p.width, height: p.height })
-  })
-  handle(IPC.projectsSetCoverPhotoFromPhoto, (id: unknown, photo: unknown) => projects.setCoverPhotoFromPhoto(str(id, 100), photo))
-  handle(IPC.projectsClearCoverPhoto, (id: unknown) => projects.clearCoverPhoto(str(id, 100)))
-  ipcMain.handle(IPC.projectsPickCoverPhoto, async (event, id: unknown) => {
-    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender')
-    const project = projects.get(str(id, 100))
-    if (!project) return null
-    pickerWindow = BrowserWindow.fromWebContents(event.sender)
-    const picked = await picker.pick(`Choose cover photo for “${project.title}”`, { multi: false })
-    return picked[0] ?? null
-  })
-  handle(IPC.projectsReadPickedPhoto, (token: unknown) => picker.read(str(token, 100)))
-  handle(IPC.projectsLinkLocation, (projectId: unknown, locationId: unknown) => {
-    const locId = str(locationId, 100)
-    if (!bookmarks.list().some((b) => b.id === locId)) return null
-    return projects.linkLocation(str(projectId, 100), locId)
-  })
-  handle(IPC.projectsUnlinkLocation, (projectId: unknown, locationId: unknown) => projects.unlinkLocation(str(projectId, 100), str(locationId, 100)))
-  handle(IPC.projectsLinkMoodboard, (projectId: unknown, moodboardId: unknown) => {
-    const mbId = str(moodboardId, 100)
-    if (!moodboards.getSummary(mbId)) return null
-    return projects.linkMoodboard(str(projectId, 100), mbId)
-  })
-  handle(IPC.projectsUnlinkMoodboard, (projectId: unknown, moodboardId: unknown) => projects.unlinkMoodboard(str(projectId, 100), str(moodboardId, 100)))
-
-  // Moodboards: index + per-board JSON files under <userData>/moodboards/, images in shared PhotoStore.
-  handle(IPC.moodboardsList, () => moodboards.list())
-  handle(IPC.moodboardsGet, (id: unknown) => moodboards.get(str(id, 100)))
-  handle(IPC.moodboardsCreate, (input: unknown) => moodboards.create(input))
-  handle(IPC.moodboardsSave, (doc: unknown) => moodboards.save(doc))
-  ipcMain.on(IPC.moodboardsFlush, (event, doc: unknown) => {
-    if (!isTrustedSender(event)) return
-    moodboards.save(doc)
-    moodboards.flush()
-  })
-  handle(IPC.moodboardsUpdateMeta, (id: unknown, patch: unknown) => moodboards.updateMeta(str(id, 100), patch))
-  handle(IPC.moodboardsRemove, (id: unknown) => moodboards.remove(str(id, 100)))
-  handle(IPC.moodboardsAddImage, (boardId: unknown, photo: unknown) => {
-    const p = (photo ?? {}) as Partial<PhotoInput>
-    return moodboards.addImage(str(boardId, 100), { name: p.name, data: p.data, thumb: p.thumb, width: p.width, height: p.height })
-  })
-  handle(IPC.moodboardsClonePhoto, (boardId: unknown, photo: unknown) => moodboards.clonePhoto(str(boardId, 100), photo))
-  ipcMain.handle(IPC.moodboardsPickImages, (event, boardId: unknown) => {
-    if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender')
-    const board = moodboards.getSummary(str(boardId, 100))
-    if (!board) return []
-    pickerWindow = BrowserWindow.fromWebContents(event.sender)
-    return picker.pick(`Add images to “${board.title}”`, { multi: true })
-  })
-  handle(IPC.moodboardsReadPickedPhoto, (token: unknown) => picker.read(str(token, 100)))
-  ipcMain.handle(
-    IPC.moodboardsExportImage,
-    async (event, defaultName: unknown, rawData: unknown, rawFormat: unknown): Promise<MoodboardExportResult> => {
-      if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender')
-      const format: MoodboardExportFormat = rawFormat === 'jpg' ? 'jpg' : 'png'
-      const bytes = asBytes(rawData)
-      if (!bytes || bytes.byteLength === 0 || bytes.byteLength > MAX_PHOTO_BYTES) {
-        return { ok: false, error: 'Export image is empty or too large.' }
-      }
-      const sniffed = sniffImage(bytes)
-      if (sniffed !== format) {
-        return { ok: false, error: 'Export image format mismatch.' }
-      }
-      const safeName =
-        str(defaultName, 120)
-          .replace(/[^a-zA-Z0-9._ -]+/g, '')
-          .trim() || 'moodboard'
-      const ext = format === 'jpg' ? 'jpg' : 'png'
-      const win = BrowserWindow.fromWebContents(event.sender)
-      const saveOpts: Electron.SaveDialogOptions = {
-        title: 'Export Moodboard',
-        defaultPath: safeName.endsWith(`.${ext}`) ? safeName : `${safeName}.${ext}`,
-        filters: format === 'jpg' ? [{ name: 'JPEG Image', extensions: ['jpg', 'jpeg'] }] : [{ name: 'PNG Image', extensions: ['png'] }]
-      }
-      const res = win ? await dialog.showSaveDialog(win, saveOpts) : await dialog.showSaveDialog(saveOpts)
-      if (res.canceled || !res.filePath) return { ok: false, canceled: true }
-      try {
-        await writeFile(res.filePath, bytes)
-        return { ok: true, path: res.filePath }
-      } catch (err) {
-        console.error('[photoearth] Could not export moodboard:', err)
-        return { ok: false, error: 'Could not write exported file.' }
-      }
-    }
-  )
-
-  // Embedded Inspiration Browser (sandboxed WebContentsView in isolated partition).
-  handle(IPC.browserDrawerSetVisible, (visible: unknown) => browserDrawer.setVisible(!!visible))
-  handle(IPC.browserDrawerSetBounds, (bounds: unknown) => {
-    const b = (bounds ?? {}) as Partial<BrowserDrawerBounds>
-    if ([b.x, b.y, b.width, b.height].every((n) => typeof n === 'number' && Number.isFinite(n))) {
-      browserDrawer.setBounds({ x: b.x!, y: b.y!, width: b.width!, height: b.height! })
-    }
-  })
-  handle(IPC.browserDrawerNavigate, (urlOrQuery: unknown) => browserDrawer.navigate(str(urlOrQuery, 2000)))
-  handle(IPC.browserDrawerGoBack, () => browserDrawer.goBack())
-  handle(IPC.browserDrawerGoForward, () => browserDrawer.goForward())
-  handle(IPC.browserDrawerReload, () => browserDrawer.reload())
 
   handle(IPC.placesAutocomplete, (req: unknown) => {
     const r = (req ?? {}) as Partial<AutocompleteRequest>

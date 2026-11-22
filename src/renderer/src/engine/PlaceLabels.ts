@@ -128,7 +128,6 @@ export class PlaceLabels {
   private generation = 0
   private key: string | null = null
   private enabled = false
-  private suspended = false
   private settleTimer: number | null = null
   private trailingTimer: number | null = null
   private lastUpdate = 0
@@ -158,22 +157,7 @@ export class PlaceLabels {
   }
 
   private get active(): boolean {
-    return this.enabled && !!this.key && !this.suspended
-  }
-
-  /** Hibernates network queries and label updates while the Globe module is hidden. */
-  setSuspended(suspended: boolean): void {
-    if (suspended === this.suspended) return
-    this.suspended = suspended
-    if (suspended) {
-      if (this.settleTimer !== null) window.clearTimeout(this.settleTimer)
-      if (this.trailingTimer !== null) window.clearTimeout(this.trailingTimer)
-      if (this.limitTimer !== null) window.clearTimeout(this.limitTimer)
-      this.settleTimer = this.trailingTimer = this.limitTimer = null
-    } else if (this.active) {
-      this.plan()
-      this.poke()
-    }
+    return this.enabled && !!this.key
   }
 
   /**
@@ -255,7 +239,7 @@ export class PlaceLabels {
   }
 
   private pump(): void {
-    while (this.inflight < MAX_CONCURRENT && this.queue.length && !this.blocked && !this.suspended) {
+    while (this.inflight < MAX_CONCURRENT && this.queue.length && !this.blocked) {
       // A region city query is one Text Search request per CITY_QUERIES entry.
       const cost = this.queue[0].rect ? CITY_QUERIES.length : 1
       const wait = this.limiter.wait(cost, performance.now())

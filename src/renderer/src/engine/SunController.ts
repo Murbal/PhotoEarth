@@ -53,7 +53,8 @@ export class SunController {
   /** Heightmap terrain shadows are shading the view (the shadow map then only adds detail). */
   private terrainShadows = false
   /** A data overlay is on the globe: don't darken it by night. */
-  private unlitGlobe = false
+  /** A data overlay shows: no day/night shading on the globe or the 3D Tiles. */
+  private unlit = false
   private cameraNear = true
   private cameraAgl: number | null = null
   private detailDistance = 1200
@@ -124,9 +125,9 @@ export class SunController {
    * While a data overlay (light pollution) is drawn on the globe, the globe isn't shaded by
    * day and night, so its colors read as its legend says, also for a night-time simulation.
    */
-  setUnlitGlobe(unlit: boolean): void {
-    if (unlit === this.unlitGlobe) return
-    this.unlitGlobe = unlit
+  setUnlit(unlit: boolean): void {
+    if (unlit === this.unlit) return
+    this.unlit = unlit
     this.applyLighting()
   }
 
@@ -221,7 +222,7 @@ export class SunController {
     const globe = scene.globe
     const simulated = this.lighting === 'sun'
     scene.light = this.sunLight
-    const globeLit = simulated && !this.unlitGlobe
+    const globeLit = simulated && !this.unlit
     globe.enableLighting = globeLit
     globe.dynamicAtmosphereLighting = globeLit
     globe.dynamicAtmosphereLightingFromSun = globeLit
@@ -229,7 +230,7 @@ export class SunController {
       ? DynamicAtmosphereLightingType.SUNLIGHT
       : DynamicAtmosphereLightingType.NONE
     // Night / twilight dimming for the (unlit) photorealistic mesh.
-    this.tiles.setDaylight(simulated ? 0.08 + 0.92 * smoothstep(-7, 2, this.altitude) : 1)
+    this.tiles.setDaylight(simulated && !this.unlit ? 0.08 + 0.92 * smoothstep(-7, 2, this.altitude) : 1)
     const wanted = simulated && this.shadowsWanted
     let enabled: boolean
     let distance: number

@@ -2,14 +2,10 @@ import { join } from 'node:path'
 import { app, BrowserWindow, session, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { sanitizeSettings } from '@shared/settings'
 import { BookmarkStore } from './bookmarks'
-import { BrowserDrawerController } from './browserDrawer'
 import { DEV_ENV_KEYS, loadDevEnvFlags, loadDevEnvKeys } from './devEnv'
 import { registerIpc } from './ipc'
 import { JsonFile } from './jsonStore'
 import { buildMenu } from './menu'
-import { MoodboardStore } from './moodboards'
-import { cleanOrphanPhotos, PhotoStore } from './photos'
-import { ProjectStore } from './projects'
 import { handleAppScheme, handlePhotoScheme, registerAppScheme } from './protocol'
 import { SecretStore } from './secrets'
 import { mapTilesNeedsReferer } from './network'
@@ -90,35 +86,11 @@ void app.whenReady().then(async () => {
     disable3dTiles = loadDevEnvFlags(app.getAppPath()).disable3dTiles
     if (disable3dTiles) console.log('[photoearth] dev: 3D Tiles disabled (PHOTOEARTH_NO_3D_TILES)')
   }
-  const userData = app.getPath('userData')
-  const photos = new PhotoStore(join(userData, 'photos'))
-  const moodboards = new MoodboardStore(userData, {
-    photos,
-    onRemove: (boardId) => {
-      projects.unlinkMoodboardFromAll(boardId)
-    },
-    onCreate: (summary) => {
-      if (summary.projectId) projects.linkMoodboard(summary.projectId, summary.id)
-    }
-  })
-  const projects = new ProjectStore(userData, {
-    photos,
-    onRemove: (projectId) => {
-      moodboards.unlinkProjectFromAll(projectId)
-    }
-  })
-  const bookmarks = new BookmarkStore(userData, {
-    photos,
-    onRemove: (locationId) => {
-      projects.unlinkLocationFromAll(locationId)
-    }
-  })
-  cleanOrphanPhotos(photos, [bookmarks, projects, moodboards])
-  const browserDrawer = new BrowserDrawerController(() => mainWindow, photos)
+  const bookmarks = new BookmarkStore(app.getPath('userData'))
 
   hardenSession(session.defaultSession, devServer)
   handleAppScheme(join(__dirname, '../renderer'))
-  handlePhotoScheme(photos)
+  handlePhotoScheme(bookmarks.photos)
 
   // Drop the per-request Referer hook when the key doesn't need it. It goes back on while a
   // new key is probed, so requests never go out without it while that's unknown.
@@ -144,9 +116,6 @@ void app.whenReady().then(async () => {
     settings,
     secrets,
     bookmarks,
-    projects,
-    moodboards,
-    browserDrawer,
     disable3dTiles,
     isTrustedSender,
     onKeysChanged: (keys) => updateRefererHook(keys.googleApiKey)
@@ -166,8 +135,7 @@ void app.whenReady().then(async () => {
   })
 
   app.on('before-quit', () => {
-    browserDrawer.destroy()
-    for (const store of [settings, bookmarks, projects, moodboards]) {
+    for (const store of [settings, bookmarks]) {
       try {
         store.flush()
       } catch (err) {

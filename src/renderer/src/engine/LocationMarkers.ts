@@ -53,7 +53,7 @@ export class LocationMarkers {
   /** Sampled heights of locations stored without one, by id and coordinates. */
   private readonly heights = new Map<string, number>()
   private sampling = false
-  private last: { locations: Bookmark[]; active: string | null; dimmed?: ReadonlySet<string> } = { locations: [], active: null }
+  private last: { locations: Bookmark[]; active: string | null } = { locations: [], active: null }
 
   constructor(
     private readonly scene: Scene,
@@ -77,8 +77,8 @@ export class LocationMarkers {
   }
 
   /** Rebuilds the pins (a handful to a few hundred: cheap, and only when the list changes). */
-  update(locations: Bookmark[], active: string | null, dimmed?: ReadonlySet<string>): void {
-    this.last = { locations, active, dimmed }
+  update(locations: Bookmark[], active: string | null): void {
+    this.last = { locations, active }
     this.billboards.removeAll()
     this.labels.removeAll()
     this.markers = []
@@ -87,15 +87,12 @@ export class LocationMarkers {
       const known = b.position.height ?? this.heights.get(key)
       const position = Cartesian3.fromDegrees(b.position.longitude, b.position.latitude, known ?? 0)
       const isActive = b.id === active
-      const isDimmed = !isActive && !!dimmed?.has(b.id)
-      const scale = isActive ? 1.25 : isDimmed ? 0.8 : 1
       const billboard = this.billboards.add({
         position,
         image: pinImage(COLORS[b.status]),
-        color: isDimmed ? Color.WHITE.withAlpha(0.38) : Color.WHITE,
         width: PIN.width,
         height: PIN.height,
-        scale,
+        scale: isActive ? 1.25 : 1,
         verticalOrigin: VerticalOrigin.BOTTOM,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
         id: b.id
@@ -104,13 +101,13 @@ export class LocationMarkers {
         position,
         text: b.name,
         font: `${isActive ? 700 : 600} 12px system-ui, -apple-system, "Segoe UI", sans-serif`,
-        fillColor: isDimmed ? Color.WHITE.withAlpha(0.42) : Color.WHITE,
-        outlineColor: Color.BLACK.withAlpha(isDimmed ? 0.35 : 0.75),
+        fillColor: Color.WHITE,
+        outlineColor: Color.BLACK.withAlpha(0.75),
         outlineWidth: 3,
         style: LabelStyle.FILL_AND_OUTLINE,
         horizontalOrigin: HorizontalOrigin.CENTER,
         verticalOrigin: VerticalOrigin.BOTTOM,
-        pixelOffset: new Cartesian2(0, -PIN.height * scale - 3),
+        pixelOffset: new Cartesian2(0, -PIN.height * (isActive ? 1.25 : 1) - 3),
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
         distanceDisplayCondition: isActive ? undefined : LABEL_RANGE
       })
@@ -123,7 +120,7 @@ export class LocationMarkers {
   /** Forgets sampled heights (e.g. once terrain loads, so estimates made without it improve). */
   resample(): void {
     this.heights.clear()
-    this.update(this.last.locations, this.last.active, this.last.dimmed)
+    this.update(this.last.locations, this.last.active)
   }
 
   /** The location whose pin is under a window position (CSS pixels), nearest first. */
@@ -182,7 +179,7 @@ export class LocationMarkers {
         this.heights.set(heightKey(b), h)
         changed = true
       })
-      if (changed) this.update(this.last.locations, this.last.active, this.last.dimmed)
+      if (changed) this.update(this.last.locations, this.last.active)
     } catch {
       /* stay at the estimate */
     } finally {

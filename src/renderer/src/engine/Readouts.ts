@@ -1,6 +1,5 @@
 import { Cartesian2, Cartesian3, Cartographic, Ellipsoid, IntersectionTests, PerspectiveFrustum, Ray, type Scene } from 'cesium'
 import { toMsl } from '../lib/geoid'
-import { horizontalFov } from '../lib/webMercator'
 import { niceScale } from '../lib/units'
 import { appState } from '../store/appStore'
 import { cameraTarget, pickSurface, surfaceHeight, toDeg } from './util'
@@ -150,18 +149,16 @@ export class Readouts {
         heightMsl: toMsl(latitude, longitude, c.height),
         heightAgl: ground !== undefined ? c.height - ground : null,
         heading: (toDeg(cam.heading) + 360) % 360,
-        pitch: toDeg(cam.pitch),
-        fov: this.fov()
+        pitch: toDeg(cam.pitch)
       },
       scale: this.computeScale(ground ?? this.targetHeight ?? 0)
     })
   }
 
-  /** Horizontal angle of view in degrees (the viewfinder narrows it). */
+  /** Angle of view in degrees (the viewfinder narrows it, which changes the scale bar). */
   private fov(): number {
     const f = this.scene.camera.frustum
-    if (!(f instanceof PerspectiveFrustum) || f.fov === undefined) return 60
-    return horizontalFov(toDeg(f.fov), f.aspectRatio ?? 1)
+    return f instanceof PerspectiveFrustum && f.fov !== undefined ? toDeg(f.fov) : 60
   }
 
   private updateTarget(fast = false): void {

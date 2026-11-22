@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { haversine } from '../lib/profile'
 import { forecastPoints, twilightAzimuths, type Forecast } from '../lib/weather'
-import { shellState, useShellStore } from '../shell/shellStore'
 import { appState, useAppStore } from '../store/appStore'
 
 /** A forecast serves the view center within this distance (Open-Meteo's grids are 2–25 km). */
@@ -68,7 +67,7 @@ export function useForecastFeed(): void {
 
     const check = () => {
       const s = appState()
-      if (shellState().activeModule !== 'globe' || !s.panels.time || !s.settings.forecast || !s.target) {
+      if (!s.panels.time || !s.settings.forecast || !s.target) {
         cancel()
         // A request in flight is dropped, not shown later.
         seq++
@@ -92,13 +91,11 @@ export function useForecastFeed(): void {
       check,
       { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2] }
     )
-    const unsubscribeShell = useShellStore.subscribe((s) => s.activeModule, check)
     // Forecasts age out while the panel stays open.
     const interval = window.setInterval(check, 5 * 60 * 1000)
     check()
     return () => {
       unsubscribe()
-      unsubscribeShell()
       window.clearInterval(interval)
       cancel()
       seq++

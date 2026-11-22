@@ -45,8 +45,6 @@ export const COMPOSITION_GUIDES: readonly CompositionGuide[] = ['none', 'thirds'
 export const FOCAL_RANGE = { min: 8, max: 800 } as const
 /** Custom sensor dimension range, mm. */
 export const SENSOR_SIZE_RANGE = { min: 1, max: 120 } as const
-/** Map mode's zoom range (Web Mercator, fractional). */
-export const MAP_ZOOM_RANGE = { min: 2, max: 20 } as const
 export const VIEWSHED_COLOR_MODES: readonly ViewshedColorMode[] = ['distance', 'solid']
 /** Viewshed analysis radius range, meters (1 km – 100 km). */
 export const VIEWSHED_RADIUS_RANGE = { min: 1000, max: 100000 } as const
@@ -102,7 +100,6 @@ export function defaultSettings(): Settings {
       scrollGesture: 'auto'
     },
     lastCamera: null,
-    map: { open: false, longitude: DEFAULT_VIEW.longitude, latitude: DEFAULT_VIEW.latitude, zoom: 12, type: 'roadmap' },
     imagery: 'roadmap',
     placeLabels: true,
     lightPollution: { enabled: false, opacity: 0.6, source: 'atlas-2025' },
@@ -120,8 +117,6 @@ export function defaultSettings(): Settings {
     viewshed: defaultViewshed(),
     bookmarkIncludeTime: true,
     showLocationMarkers: true,
-    lastProjectId: null,
-    lastMoodboardId: null,
     onboardingComplete: false
   }
 }
@@ -200,7 +195,6 @@ export function sanitizeSettings(raw: Json): Settings {
   const astro = isObject(r.astro) ? r.astro : {}
   const vs = isObject(r.viewshed) ? r.viewshed : {}
   const lp = isObject(r.lightPollution) ? r.lightPollution : {}
-  const map = isObject(r.map) ? r.map : {}
   const cascades = o.shadowCascades === 1 || o.shadowCascades === 4 ? o.shadowCascades : null
 
   return {
@@ -232,13 +226,6 @@ export function sanitizeSettings(raw: Json): Settings {
       scrollGesture: oneOf(n.scrollGesture, SCROLL_GESTURES, d.navigation.scrollGesture)
     },
     lastCamera: sanitizeCameraView(r.lastCamera),
-    map: {
-      open: bool(map.open, d.map.open),
-      longitude: num(map.longitude, d.map.longitude, -180, 180),
-      latitude: num(map.latitude, d.map.latitude, -85, 85),
-      zoom: num(map.zoom, d.map.zoom, MAP_ZOOM_RANGE.min, MAP_ZOOM_RANGE.max),
-      type: oneOf(map.type, IMAGERY_TYPES, d.map.type)
-    },
     imagery: oneOf(r.imagery, IMAGERY_TYPES, d.imagery),
     placeLabels: bool(r.placeLabels, d.placeLabels),
     lightPollution: {
@@ -274,8 +261,6 @@ export function sanitizeSettings(raw: Json): Settings {
     },
     bookmarkIncludeTime: bool(r.bookmarkIncludeTime, d.bookmarkIncludeTime),
     showLocationMarkers: bool(r.showLocationMarkers, d.showLocationMarkers),
-    lastProjectId: typeof r.lastProjectId === 'string' && r.lastProjectId.trim() ? r.lastProjectId.slice(0, 100) : null,
-    lastMoodboardId: typeof r.lastMoodboardId === 'string' && r.lastMoodboardId.trim() ? r.lastMoodboardId.slice(0, 100) : null,
     onboardingComplete: bool(r.onboardingComplete, d.onboardingComplete)
   }
 }

@@ -26,6 +26,7 @@ declare module 'cesium' {
       wrapT?: number
       minificationFilter?: TextureMinificationFilter
       magnificationFilter?: TextureMagnificationFilter
+      maximumAnisotropy?: number
     })
     static readonly NEAREST: Sampler
   }
@@ -37,12 +38,13 @@ declare module 'cesium' {
       height?: number
       pixelFormat?: PixelFormat
       pixelDatatype?: PixelDatatype
-      source?: { arrayBufferView: ArrayBufferView; width: number; height: number }
+      source?: { arrayBufferView: ArrayBufferView; width: number; height: number } | HTMLCanvasElement | ImageBitmap
       flipY?: boolean
       sampler?: Sampler
     })
     readonly width: number
     readonly height: number
+    generateMipmap(hint?: number): void
     copyFrom(options: {
       source: { arrayBufferView: ArrayBufferView; width: number; height: number }
       xOffset?: number

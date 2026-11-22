@@ -13,7 +13,6 @@ import type { GeoPosition } from '@shared/types'
 import { toMsl } from '../lib/geoid'
 import { densifyPath, profileStats, type GeoPoint, type ProfileSample } from '../lib/profile'
 import { appState } from '../store/appStore'
-import { shellState } from '../shell/shellStore'
 import { toDeg } from './util'
 
 export type ElevationSampler = (
@@ -148,7 +147,7 @@ export class ProfileTool {
       return
     }
     if (this.vertices.length < 2) {
-      shellState().showToast('Click a second point on the map to finish the profile (Esc cancels).')
+      appState().showToast('Click a second point on the map to finish the profile (Esc cancels).')
       return
     }
     this.rubber = null
@@ -165,7 +164,7 @@ export class ProfileTool {
     }
     const hadPoint = this.vertices.length > 0
     this.clear()
-    if (hadPoint) shellState().showToast('Elevation profile cancelled')
+    if (hadPoint) appState().showToast('Elevation profile cancelled')
   }
 
   clear(): void {

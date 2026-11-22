@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GLOBE_SHADER } from '@renderer/engine/GlobeMaterial'
+import { LIGHT_POLLUTION_RECEIVER_GLSL } from '@renderer/engine/LightPollution'
 import { COMPUTE_FS, COMPUTE_VS, RECEIVER_GLSL } from '@renderer/engine/shadows/shaders'
 import { VIEWSHED_COMPUTE_FS, VIEWSHED_RECEIVER_GLSL } from '@renderer/engine/viewshed/shaders'
 
@@ -26,7 +27,15 @@ function declaredNames(source: string): string[] {
 }
 
 describe('GLSL sources', () => {
-  const sources = { GLOBE_SHADER, COMPUTE_VS, COMPUTE_FS, RECEIVER_GLSL, VIEWSHED_COMPUTE_FS, VIEWSHED_RECEIVER_GLSL }
+  const sources = {
+    GLOBE_SHADER,
+    COMPUTE_VS,
+    COMPUTE_FS,
+    RECEIVER_GLSL,
+    VIEWSHED_COMPUTE_FS,
+    VIEWSHED_RECEIVER_GLSL,
+    LIGHT_POLLUTION_RECEIVER_GLSL
+  }
   it.each(Object.entries(sources))('%s names nothing with a reserved word', (_, source) => {
     const names = declaredNames(source)
     expect(names.length).toBeGreaterThan(0)

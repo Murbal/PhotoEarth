@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { defaultSettings, LIGHT_POLLUTION_ORIGINS, LIGHT_POLLUTION_SOURCES, sanitizeSettings } from '@shared/settings'
 import {
-  creditText,
   LIGHT_POLLUTION_SOURCE_LIST,
   lightPollutionSource,
-  mapLightPollutionZoom,
+  MOSAIC_MIN_REACH_M,
+  mosaicReach,
+  mosaicTilesAcross,
+  planMosaic,
+  planOverlay,
   readoutSource,
+  tileRowInBounds,
   tileUrl
 } from '../../src/renderer/src/lib/lightPollutionSources'
 import {
@@ -293,24 +297,95 @@ describe('light pollution sources', () => {
   })
 })
 
-describe('light pollution in Map mode', () => {
+describe('light pollution on the 3D Tiles', () => {
   const atlas = lightPollutionSource('atlas-2025').imagery
   const marble = lightPollutionSource('black-marble').imagery
+  const EQUATOR = 40_075_016.686
+  /** Meters from a point to the nearest edge of the plan's block, along the parallel and the meridian. */
+  function margin(plan: ReturnType<typeof planMosaic>, longitude: number, latitude: number): number {
+    const n = 2 ** plan.z
+    const lat = (latitude * Math.PI) / 180
+    const x = ((longitude + 180) / 360) * n
+    const y = ((1 - Math.log(Math.tan(lat) + 1 / Math.cos(lat)) / Math.PI) / 2) * n
+    const dx = (((x - plan.x0) % n) + n) % n
+    const tile = (EQUATOR * Math.cos(lat)) / n
+    return tile * Math.min(dx, plan.nx - dx, y - plan.y0, plan.y0 + plan.ny - y)
+  }
 
-  it('draws 1024 px atlas tiles two zooms below the map tiles, enlarged past the last level', () => {
-    expect(mapLightPollutionZoom(2, atlas)).toBe(0)
-    expect(mapLightPollutionZoom(7, atlas)).toBe(5)
-    expect(mapLightPollutionZoom(8, atlas)).toBe(6)
-    expect(mapLightPollutionZoom(15, atlas)).toBe(6)
+  it('uses an odd number of tiles across, about 2048 px', () => {
+    expect(mosaicTilesAcross(1024)).toBe(3)
+    expect(mosaicTilesAcross(512)).toBe(3)
+    expect(mosaicTilesAcross(256)).toBe(7)
   })
 
-  it('draws 256 px tiles at the map zoom, up to their last level', () => {
-    expect(mapLightPollutionZoom(5, marble)).toBe(5)
-    expect(mapLightPollutionZoom(12, marble)).toBe(8)
+  it('reaches the horizon, and at least 150 km', () => {
+    expect(mosaicReach(0)).toBe(MOSAIC_MIN_REACH_M)
+    expect(mosaicReach(-20)).toBe(MOSAIC_MIN_REACH_M)
+    expect(mosaicReach(6500) / 1000).toBeCloseTo(287.8, 0)
   })
 
-  it('shows credits as plain text', () => {
-    expect(creditText('Sky: <a href="https://x" target="_blank">Atlas 2025</a>,  D. Lorenz')).toBe('Sky: Atlas 2025, D. Lorenz')
-    expect(creditText(atlas.credit)).not.toContain('<')
+  it('puts the view center in the middle tile at the most detailed zoom near the ground', () => {
+    const plan = planMosaic(atlas, 7.75, 46, mosaicReach(2000))
+    expect(plan).toEqual({ z: 6, x0: 32, y0: 21, nx: 3, ny: 3, rect: [32 / 64, 21 / 64, 3 / 64, 3 / 64] })
+    expect(planMosaic(marble, 7.75, 46, mosaicReach(2000)).z).toBe(8)
+  })
+
+  it('reaches as far as asked, at the most detailed zoom that does', () => {
+    for (const [lon, lat] of [[7.75, 46], [-122.4, 37.8], [151.2, -33.9], [18.9, 69.6], [-68.3, -54.8], [0.01, 0.01]]) {
+      for (const height of [0, 2000, 30_000, 400_000, 3_000_000]) {
+        for (const imagery of [atlas, marble]) {
+          const reach = mosaicReach(height)
+          const plan = planMosaic(imagery, lon, lat, reach)
+          if (plan.nx === 2 ** plan.z) continue
+          // The block contains the point with at least `reach` around it…
+          expect(margin(plan, lon, lat)).toBeGreaterThanOrEqual(reach * 0.999)
+          // …and no more detailed zoom would.
+          if (plan.z < imagery.maximumLevel) {
+            const half = (mosaicTilesAcross(imagery.tileSize) - 1) / 2
+            expect((half * EQUATOR * Math.cos((lat * Math.PI) / 180)) / 2 ** (plan.z + 1)).toBeLessThan(reach)
+          }
+        }
+      }
+    }
+  })
+
+  it('wraps columns around the antimeridian', () => {
+    const plan = planMosaic(atlas, 179.9, -17, MOSAIC_MIN_REACH_M)
+    expect([plan.z, plan.x0, plan.nx]).toEqual([6, 62, 3])
+    expect(plan.rect[0]).toBeCloseTo(62 / 64)
+    expect(planMosaic(atlas, -179.9, -17, MOSAIC_MIN_REACH_M).x0).toBe(63)
+  })
+
+  it('keeps rows inside the world near the poles', () => {
+    const north = planMosaic(atlas, 15, 84, MOSAIC_MIN_REACH_M)
+    expect(north.y0).toBe(0)
+    const south = planMosaic(atlas, 15, -84, MOSAIC_MIN_REACH_M)
+    expect(south.y0 + south.ny).toBe(2 ** south.z)
+  })
+
+  it('takes the whole world when the view is that wide', () => {
+    expect(planMosaic(atlas, 7.75, 46, mosaicReach(20_000_000))).toEqual({ z: 0, x0: 0, y0: 0, nx: 1, ny: 1, rect: [0, 0, 1, 1] })
+    const world = planMosaic(marble, 7.75, 46, 12_000_000)
+    expect([world.z, world.nx, world.ny, world.rect]).toEqual([2, 4, 4, [0, 0, 1, 1]])
+  })
+
+  it('adds a coarser level out to the horizon only when the camera is high', () => {
+    expect(planOverlay(atlas, 7.75, 46, 2000)).toEqual({ near: planMosaic(atlas, 7.75, 46, MOSAIC_MIN_REACH_M), far: null })
+    expect(planOverlay(atlas, 7.75, 46, 10_000).far).toBeNull()
+    const high = planOverlay(atlas, 7.75, 46, 520_000)
+    expect([high.near.z, high.far?.z]).toEqual([6, 3])
+    expect(planOverlay(marble, 7.75, 46, 20_000).far?.z).toBe(7)
+  })
+
+  it('requests no rows outside the source coverage', () => {
+    // Atlas: 65° S – 75° N. Row 0 at zoom 6 is above 84° N; row 32 starts at the equator.
+    expect(tileRowInBounds(6, 0, atlas.bounds)).toBe(false)
+    expect(tileRowInBounds(6, 32, atlas.bounds)).toBe(true)
+    expect(tileRowInBounds(6, 63, atlas.bounds)).toBe(false)
+    expect(tileRowInBounds(6, 0, marble.bounds)).toBe(true)
+    // A row straddling the edge is requested.
+    const n = 64
+    const rowOf = (lat: number) => Math.floor(((1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2) * n)
+    expect(tileRowInBounds(6, rowOf(75), atlas.bounds)).toBe(true)
   })
 })

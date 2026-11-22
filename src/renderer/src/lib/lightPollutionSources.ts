@@ -86,16 +86,95 @@ export function tileUrl(template: string, z: number, x: number, y: number): stri
   return template.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y))
 }
 
+// ───────────────────────────── 3D Tiles mosaic ─────────────────────────────
+
+/** Web Mercator's latitude limit, degrees. */
+const MERCATOR_MAX_LAT = 85.05112878
+const EQUATOR_M = 40_075_016.686
+const EARTH_RADIUS_M = 6_371_000
+/** Rough longest side of the mosaic, pixels (at least 3 × 3 tiles). */
+const MOSAIC_PIXELS = 2048
+/** The mosaic covers at least this far around the view center, meters. */
+export const MOSAIC_MIN_REACH_M = 150_000
+
 /**
- * The source zoom Map mode draws under its tile zoom `tileZoom` (256-pixel map tiles): a
- * `tileSize`-pixel source tile at zoom z covers what map tiles do at z + log2(tileSize / 256).
- * Past the source's last level, that level's tiles are drawn enlarged.
+ * The source tiles the overlay on the 3D Tiles is drawn from: a block of tiles around the
+ * view center, drawn into one texture. Columns wrap around the antimeridian.
  */
-export function mapLightPollutionZoom(tileZoom: number, imagery: Pick<LightPollutionSource['imagery'], 'tileSize' | 'maximumLevel'>): number {
-  return Math.max(0, Math.min(imagery.maximumLevel, Math.round(tileZoom - Math.log2(imagery.tileSize / 256))))
+export interface MosaicPlan {
+  z: number
+  /** First column (0 … 2^z − 1) and row (from the north). */
+  x0: number
+  y0: number
+  /** Tiles across and down. */
+  nx: number
+  ny: number
+  /** The block in world Web Mercator units (0–1 across the world, y from the north): west, north, width, height. */
+  rect: [number, number, number, number]
 }
 
-/** An HTML credit as plain text (Map mode's attribution line isn't interactive). */
-export function creditText(html: string): string {
-  return html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+/** Tiles across a mosaic of `tileSize`-pixel tiles: odd, so the view center's tile sits in the middle. */
+export function mosaicTilesAcross(tileSize: number): number {
+  const n = Math.floor(MOSAIC_PIXELS / tileSize)
+  return Math.max(3, n % 2 === 1 ? n : n - 1)
+}
+
+/** How far the overlay should reach from the view center: to the horizon of a camera `heightAgl` meters up. */
+export function mosaicReach(heightAgl: number): number {
+  return Math.max(MOSAIC_MIN_REACH_M, Math.sqrt(2 * EARTH_RADIUS_M * Math.max(0, heightAgl)))
+}
+
+/** Fractional Web Mercator tile coordinates of a point at zoom `z` (y from the north). */
+function mercatorTile(longitude: number, latitude: number, z: number): { x: number; y: number } {
+  const n = 2 ** z
+  const lat = Math.max(-MERCATOR_MAX_LAT, Math.min(MERCATOR_MAX_LAT, latitude)) * (Math.PI / 180)
+  const x = ((((longitude + 180) / 360) % 1) + 1) % 1
+  const y = (1 - Math.log(Math.tan(lat) + 1 / Math.cos(lat)) / Math.PI) / 2
+  return { x: x * n, y: y * n }
+}
+
+/**
+ * The most detailed block of tiles that still reaches `reach` meters from the view center in
+ * every direction: the tiles on each side of the center's tile span at least that much.
+ */
+export function planMosaic(
+  imagery: Pick<LightPollutionSource['imagery'], 'tileSize' | 'maximumLevel'>,
+  longitude: number,
+  latitude: number,
+  reach: number
+): MosaicPlan {
+  const across = mosaicTilesAcross(imagery.tileSize)
+  const half = (across - 1) / 2
+  const cos = Math.max(0.05, Math.cos(Math.min(MERCATOR_MAX_LAT, Math.abs(latitude)) * (Math.PI / 180)))
+  const fit = Math.floor(Math.log2((half * EQUATOR_M * cos) / Math.max(1, reach)))
+  const z = Math.max(0, Math.min(imagery.maximumLevel, fit))
+  const n = 2 ** z
+  if (n <= across) return { z, x0: 0, y0: 0, nx: n, ny: n, rect: [0, 0, 1, 1] }
+  const t = mercatorTile(longitude, latitude, z)
+  const x0 = (((Math.floor(t.x) - half) % n) + n) % n
+  const y0 = Math.max(0, Math.min(n - across, Math.floor(t.y) - half))
+  return { z, x0, y0, nx: across, ny: across, rect: [x0 / n, y0 / n, across / n, across / n] }
+}
+
+/**
+ * The overlay's mosaics on the 3D Tiles: `near`, the most detailed block that reaches
+ * MOSAIC_MIN_REACH_M around the view center, and `far`, a coarser one out to the horizon,
+ * only when the camera is high enough to see past `near`.
+ */
+export function planOverlay(
+  imagery: Pick<LightPollutionSource['imagery'], 'tileSize' | 'maximumLevel'>,
+  longitude: number,
+  latitude: number,
+  heightAgl: number
+): { near: MosaicPlan; far: MosaicPlan | null } {
+  const near = planMosaic(imagery, longitude, latitude, MOSAIC_MIN_REACH_M)
+  const far = planMosaic(imagery, longitude, latitude, mosaicReach(heightAgl))
+  return { near, far: far.z < near.z ? far : null }
+}
+
+/** Whether row `y` at zoom `z` overlaps the source's latitude coverage (no requests outside it). */
+export function tileRowInBounds(z: number, y: number, bounds: LightPollutionSource['imagery']['bounds']): boolean {
+  const n = 2 ** z
+  const lat = (row: number) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * row) / n))) * 180) / Math.PI
+  return lat(y) > bounds.south && lat(y + 1) < bounds.north
 }

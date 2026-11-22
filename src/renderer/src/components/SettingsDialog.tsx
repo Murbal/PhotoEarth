@@ -5,7 +5,6 @@ import { PRESETS } from '../engine/quality'
 import { useAppInfo } from '../hooks/useAppInfo'
 import { useDialogFocus } from '../hooks/useDialogFocus'
 import { saveKeys } from '../lib/keys'
-import { useShellStore } from '../shell/shellStore'
 import { useAppStore } from '../store/appStore'
 import { Icon } from './Icon'
 import { KeyFields, useKeyFields } from './KeyFields'
@@ -25,14 +24,14 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 export function SettingsDialog() {
-  const open = useShellStore((s) => s.settingsOpen)
+  const open = useAppStore((s) => s.settingsOpen)
   return open ? <SettingsContent /> : null
 }
 
 function KeysSection() {
   const initial = useAppStore((s) => s.keys)
   const secrets = useAppStore((s) => s.secrets)
-  const showToast = useShellStore((s) => s.showToast)
+  const showToast = useAppStore((s) => s.showToast)
   const info = useAppInfo()
   const { keys, setKeys, result, validating, validate, setResult } = useKeyFields(initial)
   return (
@@ -128,9 +127,9 @@ function SettingsContent() {
   const [section, setSection] = useState<Section>('keys')
   const settings = useAppStore((s) => s.settings)
   const patch = useAppStore((s) => s.patchSettings)
-  const setShell = useShellStore((s) => s.set)
+  const set = useAppStore((s) => s.set)
   const info = useAppInfo()
-  const close = () => setShell({ settingsOpen: false })
+  const close = () => set({ settingsOpen: false })
   const dialogRef = useRef<HTMLDivElement>(null)
   useDialogFocus(dialogRef)
   const nav = settings.navigation

@@ -1,5 +1,4 @@
 import type { LightPollutionSourceId } from '@shared/types'
-import { getEngine } from '../engine/instance'
 import { LIGHT_POLLUTION_SOURCE_LIST, lightPollutionSource, readoutSource } from '../lib/lightPollutionSources'
 import { estimateFromZone, ratioToMpsas, rgbCss, ZONES, type SkyEstimate } from '../lib/skyBrightness'
 import { useAppStore } from '../store/appStore'
@@ -65,8 +64,6 @@ function Opacity({ value, onChange, disabled }: { value: number; onChange: (v: n
 /** The overlay's toggle, opacity, source and legend, in the Layers panel. */
 export function LightPollutionSection() {
   const lp = useAppStore((s) => s.settings.lightPollution)
-  // Drawn over Map mode's map, and on the 3D view only where the terrain globe stands in for the 3D Tiles.
-  const shown = useAppStore((s) => s.settings.map.open || !s.tilesetReady)
   const patch = useAppStore((s) => s.patchSettings)
   const source = lightPollutionSource(lp.source)
   return (
@@ -92,14 +89,6 @@ export function LightPollutionSection() {
           ))}
         </select>
       </div>
-      {lp.enabled && !shown && (
-        <div className="notice" style={{ margin: '4px 0' }}>
-          The map layer shows in Map mode. In the 3D view, clicked points get a sky brightness estimate.{' '}
-          <a href="#" onClick={(ev) => (ev.preventDefault(), getEngine()?.setMode('map'))}>
-            Show map
-          </a>
-        </div>
-      )}
       {lp.enabled &&
         (source.kind === 'sky-brightness' ? (
           <SkyBrightnessLegend />
