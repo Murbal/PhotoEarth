@@ -321,7 +321,7 @@ function SettingsContent() {
                   <strong>PhotoEarth {info?.version}</strong> — a 3D globe for photography location scouting.
                 </p>
                 <p className="muted">
-                  Map data: Google Photorealistic 3D Tiles and 2D Tiles (Map Tiles API), Google Places API (New). Elevation: Cesium World
+                  Map data: Google Photorealistic 3D Tiles (via Cesium ion), Google 2D Tiles (Map Tiles API) and Google Places API (New). Elevation: Cesium World
                   Terrain via Cesium ion. Sun positions: SunCalc. Time zones resolved offline. Geoid: EGM96.
                 </p>
                 <p className="muted">

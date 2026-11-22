@@ -383,6 +383,8 @@ export interface AppState {
   autoRange: { min: number; max: number } | null
   terrainReady: boolean
   tilesetReady: boolean
+  /** Dev-only toggle (PHOTOEARTH_NO_3D_TILES=1): skip loading Photorealistic 3D Tiles. */
+  disable3dTiles: boolean
   /** Map mode's Google 2D Tiles session. */
   mapSession: MapSession | null
   /** Heightmap terrain shadows. */
@@ -462,6 +464,7 @@ export const useAppStore = create<AppState>()(
     autoRange: null,
     terrainReady: false,
     tilesetReady: false,
+    disable3dTiles: false,
     mapSession: null,
     terrainShadows: 'off',
     toast: null,

@@ -129,10 +129,10 @@ export function KeyFields({
           onChange={(v) => setKeys({ ...keys, cesiumIonToken: v || null })}
         />
         <div className="checks">
-          <Check name="Cesium World Terrain" check={result?.ion} />
+          <Check name="Cesium ion (3D Tiles & Terrain)" check={result?.ion} />
         </div>
         {result && result.ion.status !== 'ok' && result.ion.status !== 'missing' && <div className="small muted">{result.ion.message}</div>}
-        <div className="small faint">Powers Elevation mode (contours, tint, slope, hillshade), profiles and long-range terrain shadows. The free tier has usage limits.</div>
+        <div className="small faint">Powers Photorealistic 3D Tiles, Elevation mode (contours, tint, slope, hillshade), profiles and long-range terrain shadows. The free tier has usage limits.</div>
       </div>
     </div>
   )

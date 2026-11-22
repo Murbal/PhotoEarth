@@ -28,7 +28,8 @@ import { appState, useAppStore } from './store/appStore'
 
 async function boot(): Promise<void> {
   const api = window.photoearth
-  const [settings, keys, secrets, bookmarks, profiles] = await Promise.all([
+  const [info, settings, keys, secrets, bookmarks, profiles] = await Promise.all([
+    api.info(),
     api.settings.get(),
     api.keys.get(),
     api.keys.status(),
@@ -41,6 +42,7 @@ async function boot(): Promise<void> {
     secrets,
     bookmarks,
     profiles,
+    disable3dTiles: !!info.disable3dTiles,
     mode: settings.lastMode,
     onboardingOpen: !settings.onboardingComplete,
     booted: true

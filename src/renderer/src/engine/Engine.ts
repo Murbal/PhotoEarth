@@ -109,6 +109,7 @@ export class Engine {
   private pendingMove: Cartesian2 | null = null
   private terrainOnGlobe: unknown = null
   private keys: ApiKeys = { googleApiKey: null, cesiumIonToken: null }
+  private tilesTokenLoaded: string | null = null
   private failed = { tiles: false, terrain: false, imagery: false, labels: false, map: false }
   private destroyed = false
 
@@ -317,22 +318,27 @@ export class Engine {
       ion: keys.cesiumIonToken !== this.keys.cesiumIonToken
     }
     this.keys = { ...keys }
-    const { postBanner, dismissBanner, set } = appState()
-    if (!keys.googleApiKey) {
+    const { postBanner, dismissBanner, set, disable3dTiles } = appState()
+    if (!keys.cesiumIonToken && !disable3dTiles) {
       postBanner({
         id: 'tiles',
         level: 'info',
-        title: 'No Google Maps Platform key',
-        message: 'Add a key to see Photorealistic 3D Tiles and satellite imagery.',
-        actions: [{ label: 'Add key', command: 'open-settings' }]
+        title: 'No Cesium ion access token',
+        message: 'Add a Cesium ion token to see Photorealistic 3D Tiles and terrain.',
+        actions: [{ label: 'Add token', command: 'open-settings' }]
       })
     }
     const jobs: Array<Promise<void>> = []
-    if (changed.google || this.failed.tiles) {
-      if (keys.googleApiKey) dismissBanner('tiles')
-      set({ tilesetReady: false })
-      this.failed.tiles = false
-      jobs.push(this.tiles.load(keys.googleApiKey).then(() => this.applyMode()))
+    if (changed.ion || this.failed.tiles) {
+      if (keys.cesiumIonToken || disable3dTiles) dismissBanner('tiles')
+      if (changed.ion) {
+        this.tilesTokenLoaded = null
+        if (!keys.cesiumIonToken) {
+          this.tiles.unload()
+          set({ tilesetReady: false })
+        }
+      }
+      jobs.push(this.ensure3dTiles())
     }
     if (changed.google || this.failed.imagery) {
       this.failed.imagery = false
@@ -356,6 +362,23 @@ export class Engine {
       jobs.push(this.terrain.load(keys.cesiumIonToken).then(() => this.applyMode()))
     }
     await Promise.all(jobs)
+  }
+
+  /**
+   * Loads Google Photorealistic 3D Tiles via Cesium ion on demand: skipped when the dev toggle
+   * `PHOTOEARTH_NO_3D_TILES=1` is active or while the 3D Photorealistic view isn't shown.
+   */
+  private async ensure3dTiles(): Promise<void> {
+    const { disable3dTiles, mode, settings, set } = appState()
+    if (disable3dTiles || mode !== 'photorealistic' || settings.map.open) return
+    const token = this.keys.cesiumIonToken
+    if (!token) return
+    if (this.tilesTokenLoaded === token && !this.failed.tiles) return
+    this.tilesTokenLoaded = token
+    this.failed.tiles = false
+    set({ tilesetReady: false })
+    await this.tiles.load(token)
+    this.applyMode()
   }
 
   retryProviders(): Promise<void> {
@@ -505,6 +528,7 @@ export class Engine {
     if (this.destroyed) return
     const { mode, tilesetReady, settings } = appState()
     const photo = mode === 'photorealistic'
+    if (photo && !settings.map.open) void this.ensure3dTiles()
     const globe = this.scene.globe
     this.tiles.setVisible(photo)
     // In Photorealistic mode the globe is hidden so it never z-fights with the mesh; it only
@@ -861,6 +885,7 @@ export class Engine {
       d.map.zoom = view.zoom
     })
     this.widget.useDefaultRenderLoop = true
+    void this.ensure3dTiles()
     // The depth buffer still holds the 3D view from before the map opened, so a command run
     // right after this (U, N, a tilt) would pick its pivot there and fling the camera away.
     // Wait for one frame drawn from the new position.

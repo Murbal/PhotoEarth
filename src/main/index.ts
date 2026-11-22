@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow, session, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { sanitizeSettings } from '@shared/settings'
 import { BookmarkStore } from './bookmarks'
-import { DEV_ENV_KEYS, loadDevEnvKeys } from './devEnv'
+import { DEV_ENV_KEYS, loadDevEnvFlags, loadDevEnvKeys } from './devEnv'
 import { registerIpc } from './ipc'
 import { JsonFile } from './jsonStore'
 import { buildMenu } from './menu'
@@ -77,11 +77,14 @@ void app.whenReady().then(async () => {
   if (relaunching) return
   const settings = new JsonFile(join(app.getPath('userData'), 'settings.json'), sanitizeSettings, 500)
   const secrets = await SecretStore.create()
+  let disable3dTiles = false
   if (devServer) {
     const keys = loadDevEnvKeys(app.getAppPath())
     secrets.useSessionKeys(keys)
     const loaded = Object.entries(DEV_ENV_KEYS).filter(([, key]) => keys[key]).map(([variable]) => variable)
     if (loaded.length) console.log(`[photoearth] dev: using ${loaded.join(', ')} from .env`)
+    disable3dTiles = loadDevEnvFlags(app.getAppPath()).disable3dTiles
+    if (disable3dTiles) console.log('[photoearth] dev: 3D Tiles disabled (PHOTOEARTH_NO_3D_TILES)')
   }
   const bookmarks = new BookmarkStore(app.getPath('userData'))
 
@@ -113,6 +116,7 @@ void app.whenReady().then(async () => {
     settings,
     secrets,
     bookmarks,
+    disable3dTiles,
     isTrustedSender,
     onKeysChanged: (keys) => updateRefererHook(keys.googleApiKey)
   })

@@ -25,6 +25,7 @@ interface Stores {
   settings: JsonFile<Settings>
   secrets: SecretStore
   bookmarks: BookmarkStore
+  disable3dTiles?: boolean
   isTrustedSender: (event: IpcMainInvokeEvent | Electron.IpcMainEvent) => boolean
   /** Called after the stored keys change. */
   onKeysChanged?: (keys: ApiKeys) => void
@@ -32,7 +33,7 @@ interface Stores {
 
 const str = (v: unknown, max = 500): string => (typeof v === 'string' ? v.slice(0, max) : '')
 
-export function registerIpc({ settings, secrets, bookmarks, isTrustedSender, onKeysChanged }: Stores): void {
+export function registerIpc({ settings, secrets, bookmarks, disable3dTiles, isTrustedSender, onKeysChanged }: Stores): void {
   const handle = <A extends unknown[], R>(channel: string, fn: (...args: A) => R) => {
     ipcMain.handle(channel, (event, ...args) => {
       if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender')
@@ -40,7 +41,7 @@ export function registerIpc({ settings, secrets, bookmarks, isTrustedSender, onK
     })
   }
 
-  handle(IPC.info, (): AppInfo => ({ version: app.getVersion(), platform: process.platform, googleReferer: GOOGLE_REFERER }))
+  handle(IPC.info, (): AppInfo => ({ version: app.getVersion(), platform: process.platform, googleReferer: GOOGLE_REFERER, disable3dTiles: !!disable3dTiles }))
   handle(IPC.openExternal, (url: unknown) => openExternalSafely(str(url, 2000)))
 
   handle(IPC.settingsGet, () => settings.get())

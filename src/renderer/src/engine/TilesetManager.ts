@@ -1,8 +1,8 @@
 import {
   Cartesian3,
   Cesium3DTileset,
-  createGooglePhotorealistic3DTileset,
   CustomShader,
+  IonResource,
   LightingModel,
   Matrix4,
   ShadowMode,
@@ -10,7 +10,7 @@ import {
   UniformType,
   type Scene
 } from 'cesium'
-import { classifyGoogleError } from '@shared/apiErrors'
+import { classifyIonError } from '@shared/apiErrors'
 import type { ApiCheck } from '@shared/types'
 import { RECEIVER_GLSL } from './shadows/shaders'
 import type { ShadowBinding } from './shadows/ShadowCompute'
@@ -103,9 +103,12 @@ export interface TilesetEvents {
   onProgress: (pending: number) => void
 }
 
+/** Cesium ion asset ID for Google Photorealistic 3D Tiles. */
+const GOOGLE_3D_TILES_ION_ASSET = 2275207
+
 /**
- * Google Photorealistic 3D Tiles. The mesh is both what you see and the shadow caster:
- * its geometry already contains Google's elevation.
+ * Google Photorealistic 3D Tiles, streamed via Cesium ion. The mesh is both what you see
+ * and the shadow caster: its geometry already contains Google's elevation.
  */
 /** Screen-space error multiplier while the camera moves (see setMoving). */
 const MOVING_SSE_FACTOR = 1.5
@@ -131,29 +134,30 @@ export class TilesetManager {
     this.gate = new ContentGate(scene)
   }
 
-  async load(key: string | null): Promise<void> {
+  async load(token: string | null): Promise<void> {
     const generation = ++this.generation
     this.unload()
-    if (!key) return
+    if (!token) return
     this.failures = 0
     try {
-      const tileset = await createGooglePhotorealistic3DTileset(
-        { key, onlyUsingWithGoogleGeocoder: true },
-        {
-          // Google requires its attributions to be visible on screen, not in a lightbox.
-          showCreditsOnScreen: true,
-          maximumScreenSpaceError: this.moving ? this.sse * MOVING_SSE_FACTOR : this.sse,
-          enableCollision: true,
-          // Keep CPU copies of tile geometry for picking (collision, surface heights, ray
-          // casts). Without them every pick reads buffers back from the GPU and stalls the
-          // frame; vite/cesium.ts makes Cesium honor this on WebGL 2.
-          enablePick: true,
-          shadows: this.shadows ? ShadowMode.ENABLED : ShadowMode.DISABLED,
-          dynamicScreenSpaceError: true,
-          foveatedScreenSpaceError: true,
-          preloadFlightDestinations: true
-        }
-      )
+      const resource = await IonResource.fromAssetId(GOOGLE_3D_TILES_ION_ASSET, { accessToken: token })
+      if (generation !== this.generation) return
+      const tileset = await Cesium3DTileset.fromUrl(resource, {
+        // Google requires its attributions to be visible on screen, not in a lightbox.
+        showCreditsOnScreen: true,
+        cacheBytes: 1536 * 1024 * 1024,
+        maximumCacheOverflowBytes: 1024 * 1024 * 1024,
+        maximumScreenSpaceError: this.moving ? this.sse * MOVING_SSE_FACTOR : this.sse,
+        enableCollision: true,
+        // Keep CPU copies of tile geometry for picking (collision, surface heights, ray
+        // casts). Without them every pick reads buffers back from the GPU and stalls the
+        // frame; vite/cesium.ts makes Cesium honor this on WebGL 2.
+        enablePick: true,
+        shadows: this.shadows ? ShadowMode.ENABLED : ShadowMode.DISABLED,
+        dynamicScreenSpaceError: true,
+        foveatedScreenSpaceError: true,
+        preloadFlightDestinations: true
+      })
       if (generation !== this.generation) {
         tileset.destroy()
         return
@@ -170,9 +174,7 @@ export class TilesetManager {
       this.events.onReady()
     } catch (error) {
       if (generation !== this.generation) return
-      this.events.onError(
-        classifyGoogleError('Map Tiles API', httpStatusOf(error), responseTextOf(error), navigator.onLine)
-      )
+      this.events.onError(classifyIonError(httpStatusOf(error), responseTextOf(error), navigator.onLine))
     }
   }
 
@@ -180,9 +182,9 @@ export class TilesetManager {
     this.failures++
     const message = err.message ?? ''
     // Individual tile failures are normal on flaky networks; report persistent ones.
-    if (this.failures === 8 || /403|429/.test(message)) {
-      const status = /429/.test(message) ? 429 : /403/.test(message) ? 403 : 0
-      this.events.onError(classifyGoogleError('Map Tiles API', status || undefined, message, navigator.onLine))
+    if (this.failures === 8 || /401|403|429/.test(message)) {
+      const status = /429/.test(message) ? 429 : /401/.test(message) ? 401 : /403/.test(message) ? 403 : 0
+      this.events.onError(classifyIonError(status || undefined, message, navigator.onLine))
     }
   }
 

@@ -469,6 +469,8 @@ export interface AppInfo {
   platform: string
   /** Referer sent with Google requests (for referrer-restricted keys). */
   googleReferer: string
+  /** Dev-only toggle (PHOTOEARTH_NO_3D_TILES=1): skip loading Photorealistic 3D Tiles. */
+  disable3dTiles?: boolean
 }
 
 /** Commands sent from the main-process menu to the renderer. */

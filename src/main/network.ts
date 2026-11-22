@@ -67,11 +67,11 @@ function googleHeaders(key: string, fieldMask?: string): Record<string, string> 
 const okStatus = (s: number): boolean => s >= 200 && s < 300
 
 async function checkMapTiles(key: string): Promise<ApiCheck> {
-  // A 2D session request exercises the Map Tiles API without a billable 3D root request.
+  // A 2D roadmap session exercises the Map Tiles API (satellite is restricted for EEA accounts).
   const res = await request(`${MAP_TILES_SESSION_URL}?key=${encodeURIComponent(key)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Referer: GOOGLE_REFERER },
-    body: JSON.stringify({ mapType: 'satellite', language: 'en-US', region: 'US' })
+    body: JSON.stringify({ mapType: 'roadmap', language: 'en-US', region: 'US' })
   })
   return okStatus(res.status) ? OK : classifyGoogleError('Map Tiles API', res.status, res.body, net.isOnline())
 }
@@ -88,7 +88,7 @@ export async function mapTilesNeedsReferer(key: string): Promise<boolean> {
     const res = await session.fromPartition('photoearth-referer-probe').fetch(`${MAP_TILES_SESSION_URL}?key=${encodeURIComponent(key)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mapType: 'satellite', language: 'en-US', region: 'US' }),
+      body: JSON.stringify({ mapType: 'roadmap', language: 'en-US', region: 'US' }),
       signal: AbortSignal.timeout(10000)
     })
     return !okStatus(res.status)
