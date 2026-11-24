@@ -121,6 +121,8 @@ export class CameraController {
   private eyeLevelReturn: { position: Cartesian3; heading: number; pitch: number; roll: number; spot: Cartesian3 } | null = null
   private settings: NavigationSettings = { inertia: 0.8, speedMultiplier: 1, invertFlyY: false, minClearance: 2, scrollGesture: 'auto' }
   private headingDrag: { pivot: Cartesian3; lastX: number; pointerId: number } | null = null
+  /** A drag at eye level: turns the view in place, like looking around while standing. */
+  private lookDrag: { lastX: number; lastY: number; pointerId: number } | null = null
   private headingVelocity = 0
   private headingPivot: Cartesian3 | null = null
   private animationToken = 0
@@ -263,6 +265,14 @@ export class CameraController {
   }
 
   private onPointerDown(e: PointerEvent): void {
+    // Eye level: every drag looks around from where you stand (Cesium's orbit inputs are off).
+    if (this.eyeLevel && !this.flyMode && e.button <= 2) {
+      this.userInput()
+      this.headingVelocity = 0
+      this.lookDrag = { lastX: e.clientX, lastY: e.clientY, pointerId: e.pointerId }
+      this.scene.canvas.setPointerCapture?.(e.pointerId)
+      return
+    }
     const exit = e.button === 2 || (e.button === 0 && e.ctrlKey) || e.button === 1
     this.userInput({ exitEyeLevel: exit })
     this.headingVelocity = 0
@@ -285,6 +295,18 @@ export class CameraController {
   }
 
   private onPointerMove(e: PointerEvent): void {
+    const look = this.lookDrag
+    if (look && e.pointerId === look.pointerId) {
+      const dx = e.clientX - look.lastX
+      const dy = e.clientY - look.lastY
+      look.lastX = e.clientX
+      look.lastY = e.clientY
+      const cam = this.scene.camera
+      if (!Matrix4.equals(cam.transform, Matrix4.IDENTITY)) cam.lookAtTransform(Matrix4.IDENTITY)
+      // Grab the view: the scene follows the cursor, as in a panorama viewer.
+      this.lookBy(-dx, -dy)
+      return
+    }
     const drag = this.headingDrag
     if (!drag || e.pointerId !== drag.pointerId) return
     const dx = e.clientX - drag.lastX
@@ -297,6 +319,7 @@ export class CameraController {
 
   private onPointerUp(e: PointerEvent): void {
     if (e.pointerId === this.followPointer) this.followPointer = null
+    if (this.lookDrag && e.pointerId === this.lookDrag.pointerId) this.lookDrag = null
     if (!this.headingDrag || e.pointerId !== this.headingDrag.pointerId) return
     this.headingDrag = null
     if (Math.abs(this.headingVelocity) > 1e-4 && this.settings.inertia > 0) this.startLoop()
@@ -440,7 +463,7 @@ export class CameraController {
     this.enforceClearance(false)
   }
 
-  /** Eye level: scroll drags the view like a panorama. */
+  /** Eye level: scroll and drags move the view like a panorama, turning in place. */
   private lookBy(dx: number, dy: number): void {
     const frustum = this.scene.camera.frustum
     const fov = frustum instanceof PerspectiveFrustum ? (frustum.fov ?? ORBIT_FOV) : ORBIT_FOV
@@ -855,7 +878,12 @@ export class CameraController {
   private setEyeLevel(active: boolean): void {
     if (this.eyeLevel === active) return
     this.eyeLevel = active
-    this.scene.screenSpaceCameraController.minimumZoomDistance = active ? EYE_HEIGHT * 0.8 : this.settings.minClearance
+    const c = this.scene.screenSpaceCameraController
+    c.minimumZoomDistance = active ? EYE_HEIGHT * 0.8 : this.settings.minClearance
+    // Drags look around in place at eye level (onPointerDown) instead of orbiting a ground point.
+    c.enableRotate = !active
+    c.enableTilt = !active
+    if (!active) this.lookDrag = null
     this.callbacks.onEyeLevelChange(active)
   }
 

@@ -29,7 +29,7 @@ export function StatusChips() {
         </span>
       )}
       {lighting === 'flat' && <span className="panel chip">Flat lighting</span>}
-      {eyeLevel && !flyMode && <span className="panel chip">Eye level · 1.7 m — WASD to walk</span>}
+      {eyeLevel && !flyMode && <span className="panel chip">Eye level · 1.7 m — drag to look around, WASD to walk</span>}
       {flyMode && <span className="panel chip">Fly mode — WASD move · Q/E down/up · mouse look · Esc exit</span>}
       {profileDrawing && (
         <span className="panel chip" role="status">

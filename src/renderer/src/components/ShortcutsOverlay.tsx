@@ -13,7 +13,8 @@ const GROUPS: Array<[string, Array<[string, string]>]> = [
       ['Middle-drag / Shift+Left-drag', 'Rotate heading around the point'],
       ['Scroll wheel', 'Zoom toward the cursor'],
       ['Double-click', 'Fly closer to the point'],
-      ['Click', 'Inspect point (coordinates, elevation, sky brightness)']
+      ['Click', 'Inspect point (coordinates, elevation, sky brightness)'],
+      ['Drag at eye level', 'Look around from where you stand']
     ]
   ],
   [
