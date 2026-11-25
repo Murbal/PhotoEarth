@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "description": "A desktop 3D globe for photography location scouting.",
   "main": "./out/main/index.js",
-  "author": "PhotoEarth",
-  "license": "UNLICENSED",
+  "author": "Emirhan Güler",
+  "license": "MIT",
   "private": true,
   "engines": {
     "node": ">=22.12"

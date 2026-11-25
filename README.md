@@ -4,6 +4,8 @@
 
 A desktop 3D globe for photography location scouting: explore photorealistic terrain, read elevation, and simulate the sun, moon and Milky Way for any date and time to see where light and shadow fall, when the moon rises, and when the Galactic Core clears the skyline in dark skies.
 
+> **Status:** a personal project, shared as is under the [MIT License](LICENSE). It isn't maintained for others: issues and pull requests won't be answered, and there are no prebuilt releases. Fork it freely. You'll need your own Google Maps Platform key and Cesium ion token (see [API keys](#api-keys)).
+
 ## Getting started
 
 Requires Node.js 22.12+ (CI uses Node 24).
@@ -27,7 +29,7 @@ On first launch PhotoEarth asks for two keys, validates them with a test request
 | Google Maps Platform API key | Place search and the place names on the map (Places API (New)), and the road map draped on the terrain globe while the 3D Tiles aren't available (Map Tiles API; satellite isn't offered because Google doesn't serve it to EEA accounts) | [Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials). Enable **Map Tiles API** and **Places API (New)**. |
 | Cesium ion access token | Photorealistic 3D Tiles (streamed through Cesium ion) and Cesium World Terrain: profiles, long-range terrain shadows, horizon panorama, viewshed analysis | [ion.cesium.com/tokens](https://ion.cesium.com/tokens) |
 
-Both work on their free tiers. Either can be skipped and added later in **Settings → API keys**.
+Both work on their free tiers. Either can be skipped and added later in **Settings → API keys**. Cesium ion's free Community plan allows 1,000 Photorealistic 3D Tiles sessions a month, and each app launch starts one. For UI work that doesn't need the tiles, set `PHOTOEARTH_NO_3D_TILES=1` (see `.env.example`) and the terrain globe shows instead.
 
 For development, `npm run dev` also reads keys from a `.env` file in the project root (gitignored). Variables already set in the environment win:
 
@@ -193,7 +195,7 @@ Cesium's shadow maps on Google's 3D tiles miss off-screen and distant ridges, lo
 
 ## Known limitations
 
-- Visual behavior with live Google and Cesium data, the 60 fps target, and the shadow spike must be checked on Windows with real keys. The automated suite runs without keys.
+- It's developed and tested mainly on Windows (RTX 3060). The automated suite is unit tests only and runs without keys, so rendering with live Google and Cesium data is checked by hand.
 - The first time a new shader variant is needed (a new kind of tile, a setting change) Cesium compiles it synchronously, a 60–120 ms hitch with a cold GPU shader cache. Chromium's on-disk shader cache makes later sessions much faster.
 - Terrain shadows cover ±80 km around the view. Wider views (camera above ~100 km) get no cast shadows outside that area, where they'd be sub-pixel anyway. They follow Cesium World Terrain, so they're only as accurate as its heights (bare earth in most places, so forest canopy doesn't cast).
 - Place names are billed as Places API Nearby Search Pro and Text Search Pro requests: about 10 per newly explored close view and up to about 17 per newly explored wide view, at most 60 per minute (a guard against runaway requests, not a spending limit: set a daily quota on Places API (New) in Cloud Console for that). Results are cached in memory for the session only, never on disk. Switch them off with `M`. Nearby Search doesn't support neighborhoods, so cities show their town name and named hills only.
@@ -206,3 +208,7 @@ Cesium's shadow maps on Google's 3D tiles miss off-screen and distant ridges, lo
 Google imagery and 3D geometry can't be exported, cached beyond the standard HTTP cache, or bulk-downloaded. Google, Cesium ion and imagery attributions are always shown in the status bar.
 
 Weather data is by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0), credited in the time panel next to the forecast. Its free API is for non-commercial use (up to 10,000 requests a day); commercial use needs one of its API plans.
+
+## License
+
+[MIT](LICENSE). The license covers this code only. Google Maps Platform, Cesium ion and Open-Meteo each have their own terms, which apply to whoever supplies the keys and runs the app.

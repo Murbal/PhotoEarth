@@ -1,6 +1,6 @@
 appId: app.photoearth.desktop
 productName: PhotoEarth
-copyright: Copyright © 2026 PhotoEarth
+copyright: Copyright © 2026 Emirhan Güler
 directories:
   output: release/${version}
   buildResources: build
