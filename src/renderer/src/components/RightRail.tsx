@@ -238,7 +238,7 @@ export function RightRail() {
         />
         <RailButton
           icon="night"
-          label={lightPollution ? 'Light pollution: hide' : 'Light pollution: sky brightness & Bortle estimate'}
+          label={lightPollution ? 'Light pollution: hide' : 'Light pollution: sky brightness'}
           keys="K"
           active={lightPollution}
           pressed={lightPollution}

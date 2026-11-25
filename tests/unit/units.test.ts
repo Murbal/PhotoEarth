@@ -40,8 +40,8 @@ describe('formatPointForClipboard', () => {
 
   it('leaves out an unknown elevation and appends extra readouts', () => {
     expect(formatPointForClipboard(-33.9, 18.4, null, 'imperial')).toBe('-33.900000, 18.400000')
-    expect(formatPointForClipboard(46.5577, 7.9586, 1234, 'metric', ['21.10 mag/arcsec² (Bortle ≈ 4, estimate)'])).toBe(
-      '46.557700, 7.958600, 1234 m, 21.10 mag/arcsec² (Bortle ≈ 4, estimate)'
+    expect(formatPointForClipboard(46.5577, 7.9586, 1234, 'metric', ['21.10 mag/arcsec² (estimate)'])).toBe(
+      '46.557700, 7.958600, 1234 m, 21.10 mag/arcsec² (estimate)'
     )
   })
 })

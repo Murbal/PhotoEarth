@@ -16,8 +16,6 @@ import {
   ATLAS_GRID,
   atlasCell,
   atlasRatioAt,
-  BORTLE_CLASSES,
-  bortleFromMpsas,
   compressedToRatio,
   decodeZoneColor,
   estimateFromRatio,
@@ -92,53 +90,16 @@ describe('tile color decoding', () => {
   })
 })
 
-describe('Bortle estimate', () => {
-  it('follows the SQM ranges of the Bortle table', () => {
-    const cases: Array<[number, string]> = [
-      [22.0, '1'],
-      [21.76, '1'],
-      [21.75, '2'],
-      [21.6, '2'],
-      [21.59, '3'],
-      [21.3, '3'],
-      [21.29, '4'],
-      [20.8, '4'],
-      [20.79, '4.5'],
-      [20.3, '4.5'],
-      [20.29, '5'],
-      [19.25, '5'],
-      [19.24, '6'],
-      [18.5, '6'],
-      [18.49, '7'],
-      [18.0, '7'],
-      [17.99, '8–9'],
-      [16, '8–9']
-    ]
-    for (const [mpsas, label] of cases) expect(bortleFromMpsas(mpsas).label, `${mpsas}`).toBe(label)
-  })
-
-  it('never gets darker as the sky gets brighter', () => {
-    let last = 0
-    for (let m = 22.2; m > 15; m -= 0.01) {
-      const v = bortleFromMpsas(m).value
-      expect(v).toBeGreaterThanOrEqual(last)
-      last = v
-    }
-    expect(BORTLE_CLASSES.map((c) => c.value)).toEqual([1, 2, 3, 4, 4.5, 5, 6, 7, 8])
-  })
-
+describe('Sky estimates', () => {
   it('estimates from a modeled value', () => {
     // Zermatt village in the 2025 atlas: 1.29× natural.
     const e = estimateFromRatio(1.291)
     expect(e.zone.id).toBe('4a')
     expect(e.mpsas).toBeCloseTo(21.1, 1)
-    expect(e.bortle.label).toBe('4')
     expect(e.precision).toBe('data')
     expect(e.mpsasRange).toBeNull()
-    // A pristine sky.
-    expect(estimateFromRatio(0).bortle.label).toBe('1')
-    // Milan: 59× natural.
-    expect(estimateFromRatio(59).bortle.label).toBe('8–9')
+    // A pristine sky is the natural 22.0.
+    expect(estimateFromRatio(0).mpsas).toBeCloseTo(22.0, 5)
   })
 
   it('estimates from a zone alone, inside that zone', () => {

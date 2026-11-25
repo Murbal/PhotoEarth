@@ -56,17 +56,17 @@ export function getCommands(): Command[] {
     },
     {
       id: 'toggle-light-pollution',
-      title: 'Light pollution overlay on / off (sky brightness, Bortle estimate)',
+      title: 'Light pollution overlay on / off (sky brightness)',
       group: 'View',
       keys: 'K',
-      keywords: 'night sky dark sky astrophotography astro milky way stars bortle sqm viirs black marble atlas',
+      keywords: 'night sky dark sky astrophotography astro milky way stars sqm viirs black marble atlas',
       run: toggleSetting((d) => void (d.lightPollution.enabled = !d.lightPollution.enabled))
     },
     {
       id: 'light-pollution-atlas',
       title: 'Light pollution: sky brightness atlas (2025)',
       group: 'View',
-      keywords: 'night sky bortle lorenz falchi zenith',
+      keywords: 'night sky sqm lorenz falchi zenith',
       run: toggleSetting((d) => {
         d.lightPollution.enabled = true
         d.lightPollution.source = 'atlas-2025'
