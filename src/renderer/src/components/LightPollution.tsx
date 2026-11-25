@@ -17,7 +17,7 @@ function zoneTitle(i: number): string {
   const [dark, bright] = e.mpsasRange!
   const range = Number.isFinite(bright) ? `${fmtMpsas(dark)}–${fmtMpsas(bright)}` : `< ${fmtMpsas(dark)}`
   const ratio = Number.isFinite(z.max) ? `${z.min}–${z.max}×` : `> ${z.min}×`
-  return `Zone ${z.id}: ${range} mag/arcsec², artificial light ${ratio} the natural sky · Bortle ≈ ${e.bortle.label}`
+  return `Zone ${z.id}: ${range} mag/arcsec², artificial light ${ratio} the natural sky`
 }
 
 /** The atlas color scale: one chip per zone, zenith brightness under it. */
@@ -106,7 +106,7 @@ export function LightPollutionSection() {
         ))}
       <div className="small faint" style={{ marginTop: 4 }}>
         {source.kind === 'sky-brightness'
-          ? 'Modeled artificial sky brightness on a clear, moonless night. Click a point for its estimate and Bortle class. '
+          ? 'Modeled artificial sky brightness on a clear, moonless night. Click a point for its estimate. '
           : ''}
         <a href={source.info} target="_blank" rel="noreferrer">
           About the data
@@ -116,12 +116,12 @@ export function LightPollutionSection() {
   )
 }
 
-/** One line for the clipboard: "21.10 mag/arcsec² (Bortle ≈ 4, estimate)". No unit setting applies to it. */
+/** One line for the clipboard: "21.10 mag/arcsec² (estimate)". No unit setting applies to it. */
 export function skySummary(e: SkyEstimate): string {
-  return `${fmtMpsas(e.mpsas)} mag/arcsec² (Bortle ≈ ${e.bortle.label}, estimate)`
+  return `${fmtMpsas(e.mpsas)} mag/arcsec² (estimate)`
 }
 
-/** Sky brightness and a Bortle estimate at the inspected point. */
+/** Sky brightness at the inspected point. */
 export function SkyReadout() {
   const sky = useAppStore((s) => s.sky)
   if (!sky) return null
@@ -145,10 +145,6 @@ export function SkyReadout() {
               : fmtMpsas(e.mpsas)}{' '}
             mag/arcsec²
           </span>
-          <span className="k">Bortle</span>
-          <span title={e.bortle.title}>
-            ≈ <b>{e.bortle.label}</b> <span className="faint">{e.bortle.title}</span>
-          </span>
           <span className="k">Zone</span>
           <span>
             <span className="zone-chip" style={{ background: rgbCss(e.zone.rgb) }} /> {e.zone.id}
@@ -161,8 +157,8 @@ export function SkyReadout() {
         </div>
         <div className="small faint" style={{ marginTop: 4 }}>
           Estimate: modeled zenith brightness on a clear, moonless night ({sky.source}
-          {e.precision === 'zone' ? ', from the map colors' : ''}). Bortle rates the whole sky by eye; light domes on the horizon can
-          make it a class worse.
+          {e.precision === 'zone' ? ', from the map colors' : ''}). Light domes near the horizon don’t
+          show in it.
         </div>
       </>
     )

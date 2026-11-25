@@ -1,6 +1,6 @@
 /**
  * Artificial night sky brightness: the Light Pollution Atlas's data and color scales,
- * conversions to magnitudes per square arcsecond, and a Bortle class estimate.
+ * and conversions to magnitudes per square arcsecond.
  *
  * All brightness here is at the zenith. The atlas models artificial light scattered back down
  * by the atmosphere from VIIRS night lights; it is not a measurement. Its "light pollution
@@ -101,38 +101,6 @@ export function decodeZoneColor(r: number, g: number, b: number): number | null 
   return bestDist <= COLOR_TOLERANCE ? best : null
 }
 
-// ───────────────────────────── Bortle ─────────────────────────────
-
-export interface BortleEstimate {
-  /** 1–9; 4.5 is the transition class between rural and suburban skies. */
-  value: number
-  label: string
-  title: string
-}
-
-/**
- * Approximate zenith brightness of each Bortle class, darkest first (the commonly quoted
- * SQM ranges, Dark Skies Awareness nomogram via Wikipedia's Bortle scale table). Bortle is a
- * visual whole-sky scale, so this is only a rough correspondence.
- */
-export const BORTLE_CLASSES: ReadonlyArray<{ value: number; label: string; title: string; minMpsas: number }> = [
-  { value: 1, label: '1', title: 'Excellent dark-sky site', minMpsas: 21.76 },
-  { value: 2, label: '2', title: 'Typical truly dark site', minMpsas: 21.6 },
-  { value: 3, label: '3', title: 'Rural sky', minMpsas: 21.3 },
-  { value: 4, label: '4', title: 'Brighter rural', minMpsas: 20.8 },
-  { value: 4.5, label: '4.5', title: 'Semi-suburban / transition', minMpsas: 20.3 },
-  { value: 5, label: '5', title: 'Suburban sky', minMpsas: 19.25 },
-  { value: 6, label: '6', title: 'Bright suburban sky', minMpsas: 18.5 },
-  { value: 7, label: '7', title: 'Suburban / urban transition', minMpsas: 18.0 },
-  { value: 8, label: '8–9', title: 'City or inner-city sky', minMpsas: -Infinity }
-]
-
-/** Bortle class whose zenith brightness range contains `mpsas`. */
-export function bortleFromMpsas(mpsas: number): BortleEstimate {
-  const c = BORTLE_CLASSES.find((k) => mpsas >= k.minMpsas) ?? BORTLE_CLASSES[BORTLE_CLASSES.length - 1]
-  return { value: c.value, label: c.label, title: c.title }
-}
-
 // ───────────────────────────── estimates ─────────────────────────────
 
 export interface SkyEstimate {
@@ -143,14 +111,13 @@ export interface SkyEstimate {
   /** When decoded from a color: the zone's brightness range, darkest first. */
   mpsasRange: [number, number] | null
   zone: LightPollutionZone
-  bortle: BortleEstimate
   /** `data`: a modeled value for the ~1 km cell; `zone`: only the zone, from a tile color. */
   precision: 'data' | 'zone'
 }
 
 export function estimateFromRatio(ratio: number): SkyEstimate {
   const mpsas = ratioToMpsas(ratio)
-  return { ratio, mpsas, mpsasRange: null, zone: ZONES[zoneIndexForRatio(ratio)], bortle: bortleFromMpsas(mpsas), precision: 'data' }
+  return { ratio, mpsas, mpsasRange: null, zone: ZONES[zoneIndexForRatio(ratio)], precision: 'data' }
 }
 
 /** An estimate from a zone alone: the geometric middle of its ratio range (the top zone: its floor). */
@@ -163,7 +130,6 @@ export function estimateFromZone(index: number): SkyEstimate {
     mpsas,
     mpsasRange: [ratioToMpsas(zone.min), Number.isFinite(zone.max) ? ratioToMpsas(zone.max) : -Infinity],
     zone,
-    bortle: bortleFromMpsas(mpsas),
     precision: 'zone'
   }
 }
