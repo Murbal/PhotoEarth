@@ -12,10 +12,10 @@ Requires Node.js 22.12+ (CI uses Node 24).
 
 ```bash
 npm install
-npm run dev        # electron-vite dev server with hot reload
-npm run build      # production bundles in out/
-npm start          # run the production build
-npm run package    # Windows x64 NSIS installer in release/ (package:linux for an AppImage, package:mac for an Apple Silicon DMG)
+npm run dev          # electron-vite dev server with hot reload
+npm run build        # production bundles in out/
+npm start            # run the production build
+npm run package:win  # Windows x64 NSIS installer in release/ (works from WSL too; package:linux for an AppImage, package:mac for an Apple Silicon DMG)
 ```
 
 The Electron binary is downloaded on the first run.
