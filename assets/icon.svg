@@ -1,4 +1,183 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#2563eb"/>
-  <text x="32" y="32" dy="0.35em" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="32" font-weight="600" fill="#ffffff">P</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- App icon background: deep night sky to twilight navy -->
+    <linearGradient id="bgGrad" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="55%" stop-color="#0a1120"/>
+      <stop offset="100%" stop-color="#060a12"/>
+    </linearGradient>
+
+    <!-- Subtle top-edge sheen on the rounded square -->
+    <linearGradient id="bgRim" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#7dd3fc" stop-opacity="0.3"/>
+      <stop offset="38%" stop-color="#38bdf8" stop-opacity="0.07"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.4"/>
+    </linearGradient>
+
+    <!-- Ambient atmospheric glow behind the globe -->
+    <radialGradient id="ambientGlow" cx="0.5" cy="0.46" r="0.48">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.24"/>
+      <stop offset="65%" stop-color="#1d4ed8" stop-opacity="0.07"/>
+      <stop offset="100%" stop-color="#0a1120" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Globe / lens sky gradient -->
+    <linearGradient id="skyGrad" x1="0.25" y1="0.05" x2="0.75" y2="0.88">
+      <stop offset="0%" stop-color="#0b1933"/>
+      <stop offset="48%" stop-color="#163663"/>
+      <stop offset="78%" stop-color="#2b5a8c"/>
+      <stop offset="100%" stop-color="#e59745"/>
+    </linearGradient>
+
+    <!-- Golden hour atmospheric horizon bloom -->
+    <radialGradient id="sunHalo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#fff0b3" stop-opacity="0.95"/>
+      <stop offset="32%" stop-color="#ffc94d" stop-opacity="0.5"/>
+      <stop offset="65%" stop-color="#f59e0b" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Sun disc gradient -->
+    <linearGradient id="sunDisc" x1="0.3" y1="0" x2="0.7" y2="1">
+      <stop offset="0%" stop-color="#fff9db"/>
+      <stop offset="45%" stop-color="#ffd56b"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+
+    <!-- Back mountain range -->
+    <linearGradient id="mtnBack" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#2a4f80"/>
+      <stop offset="100%" stop-color="#11223b"/>
+    </linearGradient>
+
+    <!-- Main peak: sunlit right facet -->
+    <linearGradient id="mtnLit" x1="0.72" y1="0.08" x2="0.28" y2="1">
+      <stop offset="0%" stop-color="#ffd479"/>
+      <stop offset="36%" stop-color="#dc8842"/>
+      <stop offset="100%" stop-color="#364666"/>
+    </linearGradient>
+
+    <!-- Main peak: shadowed left facet -->
+    <linearGradient id="mtnShadow" x1="0.3" y1="0" x2="0.6" y2="1">
+      <stop offset="0%" stop-color="#1c3457"/>
+      <stop offset="100%" stop-color="#091221"/>
+    </linearGradient>
+
+    <!-- Foreground ridge: sunlit facet -->
+    <linearGradient id="mtnFrontLit" x1="0.62" y1="0" x2="0.38" y2="1">
+      <stop offset="0%" stop-color="#f7b756"/>
+      <stop offset="44%" stop-color="#8c5944"/>
+      <stop offset="100%" stop-color="#142138"/>
+    </linearGradient>
+
+    <!-- Foreground ridge: deep shadow -->
+    <linearGradient id="mtnFrontShadow" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#13233d"/>
+      <stop offset="100%" stop-color="#070d18"/>
+    </linearGradient>
+
+    <!-- Seamless bottom spherical shadow inside globe -->
+    <linearGradient id="globeBottomShade" x1="0.5" y1="0.62" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#060c17" stop-opacity="0"/>
+      <stop offset="65%" stop-color="#060c17" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#040810" stop-opacity="0.9"/>
+    </linearGradient>
+
+    <!-- Atmospheric rim stroke around the globe (blue top-left, golden near sun at top-right) -->
+    <linearGradient id="globeRing" x1="0.1" y1="0.85" x2="0.9" y2="0.15">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="38%" stop-color="#4fb3ff"/>
+      <stop offset="72%" stop-color="#7dd3fc"/>
+      <stop offset="100%" stop-color="#ffd56b"/>
+    </linearGradient>
+
+    <!-- Outer metallic lens bezel -->
+    <linearGradient id="lensBezel" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#334155" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#1e293b" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0.95"/>
+    </linearGradient>
+
+    <!-- Optical glass sheen across upper-left of lens -->
+    <linearGradient id="glassSheen" x1="0.15" y1="0.05" x2="0.65" y2="0.55">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="45%" stop-color="#bae6fd" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Viewfinder corner brackets -->
+    <linearGradient id="bracketGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f1f5f9"/>
+      <stop offset="100%" stop-color="#93c5fd"/>
+    </linearGradient>
+
+    <clipPath id="globeClip">
+      <circle cx="256" cy="256" r="154"/>
+    </clipPath>
+  </defs>
+
+  <!-- Rounded-square icon base -->
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#bgGrad)"/>
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#ambientGlow)"/>
+  <rect x="19" y="19" width="474" height="474" rx="105" fill="none" stroke="url(#bgRim)" stroke-width="6"/>
+
+  <!-- Subtle outer lens barrel ring -->
+  <circle cx="256" cy="256" r="170" fill="url(#lensBezel)" stroke="#475569" stroke-opacity="0.35" stroke-width="2.5"/>
+
+  <!-- Globe / Lens Interior -->
+  <g clip-path="url(#globeClip)">
+    <!-- Twilight sky -->
+    <rect x="100" y="100" width="312" height="312" fill="url(#skyGrad)"/>
+
+    <!-- Subtle star specks in upper-left dark sky (astrophotography nod) -->
+    <circle cx="176" cy="158" r="2.2" fill="#e2e8f0" opacity="0.85"/>
+    <circle cx="208" cy="134" r="1.6" fill="#bae6fd" opacity="0.72"/>
+    <circle cx="152" cy="196" r="1.5" fill="#e2e8f0" opacity="0.6"/>
+    <circle cx="242" cy="144" r="1.5" fill="#c084fc" opacity="0.8"/>
+
+    <!-- Subtle globe graticule (latitude & longitude arcs) -->
+    <g fill="none" stroke="#93c5fd" stroke-opacity="0.16" stroke-width="2">
+      <ellipse cx="256" cy="256" rx="76" ry="154"/>
+      <ellipse cx="256" cy="256" rx="154" ry="52"/>
+      <line x1="256" y1="102" x2="256" y2="410"/>
+    </g>
+
+    <!-- Golden-hour sun glow & sun disc -->
+    <circle cx="308" cy="212" r="138" fill="url(#sunHalo)"/>
+    <circle cx="308" cy="212" r="34" fill="url(#sunDisc)"/>
+
+    <!-- Distant mountain silhouette -->
+    <path d="M96 324 L152 254 L204 294 L272 224 L338 278 L382 246 L420 290 L420 420 L96 420 Z" fill="url(#mtnBack)"/>
+
+    <!-- Main alpine peak (center-left) with lit right face & shadowed left face -->
+    <path d="M96 356 L214 204 L344 360 L344 420 L96 420 Z" fill="url(#mtnShadow)"/>
+    <path d="M214 204 L344 360 L262 360 L224 274 L214 204 Z" fill="url(#mtnLit)"/>
+    <path d="M214 204 L225 274 L262 360" fill="none" stroke="#ffe8a3" stroke-opacity="0.5" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <!-- Secondary alpine peak (right foreground) -->
+    <path d="M226 374 L322 256 L422 364 L422 420 L226 420 Z" fill="url(#mtnFrontShadow)"/>
+    <path d="M322 256 L422 364 L352 364 L332 308 Z" fill="url(#mtnFrontLit)"/>
+    <path d="M322 256 L332 308 L352 364" fill="none" stroke="#ffd88a" stroke-opacity="0.38" stroke-width="2" stroke-linejoin="round"/>
+
+    <!-- Smooth spherical lower shading inside globe -->
+    <rect x="100" y="100" width="312" height="312" fill="url(#globeBottomShade)"/>
+
+    <!-- Optical lens glass reflection -->
+    <path d="M108 228 C126 144 206 102 292 112 C238 144 176 196 132 276 C116 264 108 248 108 228 Z" fill="url(#glassSheen)"/>
+  </g>
+
+  <!-- Crisp atmospheric globe ring -->
+  <circle cx="256" cy="256" r="154" fill="none" stroke="url(#globeRing)" stroke-width="7"/>
+
+  <!-- Camera viewfinder corner brackets -->
+  <g fill="none" stroke="url(#bracketGrad)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity="0.94">
+    <!-- Top-left -->
+    <path d="M78 134 L78 96 Q78 78 96 78 L134 78"/>
+    <!-- Top-right -->
+    <path d="M378 78 L416 78 Q434 78 434 96 L434 134"/>
+    <!-- Bottom-left -->
+    <path d="M78 378 L78 416 Q78 434 96 434 L134 434"/>
+    <!-- Bottom-right -->
+    <path d="M378 434 L416 434 Q434 434 434 416 L434 378"/>
+  </g>
 </svg>
