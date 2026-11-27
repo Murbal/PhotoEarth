@@ -102,6 +102,7 @@ export function defaultSettings(): Settings {
     lastCamera: null,
     imagery: 'roadmap',
     placeLabels: true,
+    placesApi: true,
     lightPollution: { enabled: false, opacity: 0.6, source: 'atlas-2025' },
     verticalExaggeration: 1,
     lighting: 'sun',
@@ -228,6 +229,7 @@ export function sanitizeSettings(raw: Json): Settings {
     lastCamera: sanitizeCameraView(r.lastCamera),
     imagery: oneOf(r.imagery, IMAGERY_TYPES, d.imagery),
     placeLabels: bool(r.placeLabels, d.placeLabels),
+    placesApi: bool(r.placesApi, d.placesApi),
     lightPollution: {
       enabled: bool(lp.enabled, d.lightPollution.enabled),
       opacity: num(lp.opacity, d.lightPollution.opacity, 0, 1),

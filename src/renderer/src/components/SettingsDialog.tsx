@@ -33,6 +33,8 @@ function KeysSection() {
   const secrets = useAppStore((s) => s.secrets)
   const showToast = useAppStore((s) => s.showToast)
   const info = useAppInfo()
+  const placesApi = useAppStore((s) => s.settings.placesApi)
+  const patch = useAppStore((s) => s.patchSettings)
   const { keys, setKeys, result, validating, validate, setResult } = useKeyFields(initial)
   return (
     <div>
@@ -44,6 +46,9 @@ function KeysSection() {
         </div>
       )}
       <KeyFields keys={keys} setKeys={setKeys} result={result} referer={info?.googleReferer ?? ''} />
+      <Field label="Use Places API" hint="Place search, map place names and horizon peak names. Turn off to stop all Places requests, e.g. when the free quota runs out.">
+        <input type="checkbox" checked={placesApi} onChange={(e) => patch((d) => void (d.placesApi = e.target.checked))} />
+      </Field>
       <div className="row" style={{ justifyContent: 'flex-end' }}>
         <button
           className="btn danger"

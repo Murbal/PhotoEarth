@@ -14,7 +14,7 @@ import {
 } from 'cesium'
 import { estimateTarget, matchesFilter } from '@shared/locations'
 import { DEFAULT_VIEW } from '@shared/settings'
-import type { ApiCheck, ApiKeys, Bookmark, CameraView, GeoPosition, NewBookmark, PlaceDetails, SavedProfile } from '@shared/types'
+import type { ApiCheck, ApiKeys, Bookmark, CameraView, GeoPosition, NewBookmark, PlaceDetails, SavedProfile, Settings } from '@shared/types'
 import { formatLatLon, type ParsedLocation } from '@shared/coords'
 import { loadGeoid } from '../lib/geoid'
 import type { GeoPoint } from '../lib/profile'
@@ -58,6 +58,9 @@ function subscribeJson<T>(selector: (s: AppState) => T, listener: (value: T) => 
     equalityFn: (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b)
   })
 }
+
+/** Map labels show when turned on and the Places API setting allows the requests. */
+const labelsOn = (s: Settings): boolean => s.placeLabels && s.placesApi
 
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([promise, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))])
@@ -212,7 +215,7 @@ export class Engine {
       provider: () => this.terrain.provider,
       nearby: (req) => window.photoearth.places.nearby(req),
       knownPeaks: () => this.labels.knownPeaks(),
-      canNamePeaks: () => !!this.keys.googleApiKey
+      canNamePeaks: () => !!this.keys.googleApiKey && appState().settings.placesApi
     })
     this.alignment = new AlignmentTool(this.widget, {
       sampleGround: (lon, lat) => this.preciseGround(lon, lat),
@@ -330,7 +333,7 @@ export class Engine {
     }
     if (changed.google || this.failed.labels) {
       dismissBanner('labels')
-      this.labels.configure(keys.googleApiKey, appState().settings.placeLabels, this.failed.labels)
+      this.labels.configure(keys.googleApiKey, labelsOn(appState().settings), this.failed.labels)
       this.failed.labels = false
     }
     if (changed.ion || this.failed.terrain) {
@@ -420,7 +423,7 @@ export class Engine {
     )
     s.push(
       subscribeJson(
-        (st) => st.settings.placeLabels,
+        (st) => labelsOn(st.settings),
         (on) => this.labels.configure(this.keys.googleApiKey, on)
       )
     )
@@ -441,7 +444,12 @@ export class Engine {
       )
     )
     s.push(useAppStore.subscribe((st) => st.profile.hoverIndex, () => this.requestRender()))
-    s.push(useAppStore.subscribe((st) => st.settings.horizon.peakNames, () => void this.horizon.namePeaks()))
+    s.push(
+      subscribeJson(
+        (st) => [st.settings.horizon.peakNames, st.settings.placesApi],
+        () => void this.horizon.namePeaks()
+      )
+    )
     // A token added while the panorama or viewshed shows "needs terrain" retries it.
     s.push(
       useAppStore.subscribe(

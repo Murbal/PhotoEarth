@@ -4,6 +4,12 @@ import { buildAutocompleteBody, parseAutocomplete, parsePlaceDetails } from '@sh
 import { DETAIL_SHADOW_RANGE, MIN_CORE_ALTITUDE_RANGE, defaultSettings, sanitizeSettings } from '@shared/settings'
 
 describe('settings sanitization', () => {
+  it('the Places API is on by default and the switch survives sanitizing', () => {
+    expect(defaultSettings().placesApi).toBe(true)
+    expect(sanitizeSettings({ placesApi: false }).placesApi).toBe(false)
+    expect(sanitizeSettings({ placesApi: 'off' }).placesApi).toBe(true)
+  })
+
   it('returns defaults for garbage', () => {
     expect(sanitizeSettings(undefined)).toEqual(defaultSettings())
     expect(sanitizeSettings('nope')).toEqual(defaultSettings())

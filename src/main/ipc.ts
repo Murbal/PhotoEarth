@@ -97,7 +97,12 @@ export function registerIpc({ settings, secrets, bookmarks, disable3dTiles, isTr
   handle(IPC.profilesUpdate, (id: unknown, patch: unknown) => bookmarks.updateProfile(str(id, 100), patch))
   handle(IPC.profilesRemove, (id: unknown) => bookmarks.removeProfile(str(id, 100)))
 
+  // Turned off in Settings: answer without a request so nothing counts toward the quota.
+  const placesOff = () => !settings.get().placesApi
+  const PLACES_OFF = { ok: false, error: { status: 'error', message: 'Places API is turned off in Settings.' } } as const
+
   handle(IPC.placesAutocomplete, (req: unknown) => {
+    if (placesOff()) return PLACES_OFF
     const r = (req ?? {}) as Partial<AutocompleteRequest>
     const bias =
       r.bias && Number.isFinite(r.bias.latitude) && Number.isFinite(r.bias.longitude)
@@ -110,9 +115,10 @@ export function registerIpc({ settings, secrets, bookmarks, disable3dTiles, isTr
     })
   })
   handle(IPC.placesDetails, (placeId: unknown, token: unknown) =>
-    placeDetails(secrets.get().googleApiKey, str(placeId, 300), str(token, 100))
+    placesOff() ? PLACES_OFF : placeDetails(secrets.get().googleApiKey, str(placeId, 300), str(token, 100))
   )
   handle(IPC.placesNearby, (req: unknown) => {
+    if (placesOff()) return PLACES_OFF
     const r = (req ?? {}) as Partial<NearbyRequest>
     const { latitude, longitude } = r.center ?? {}
     if (
@@ -130,6 +136,7 @@ export function registerIpc({ settings, secrets, bookmarks, disable3dTiles, isTr
     })
   })
   handle(IPC.placesCities, (req: unknown) => {
+    if (placesOff()) return PLACES_OFF
     const r = (req ?? {}) as Partial<CitiesRequest>
     const { south, west, north, east } = r
     if (

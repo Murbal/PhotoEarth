@@ -139,8 +139,13 @@ export interface Settings {
   navigation: NavigationSettings
   lastCamera: CameraView | null
   imagery: ImageryType
-  /** Google place names on the map (a labels-only Map Tiles layer). */
+  /** Google place names on the map (Places API Nearby / Text Search). */
   placeLabels: boolean
+  /**
+   * Whether the app calls Google Places API (New) at all: place search, map labels and
+   * horizon peak names. Off keeps those requests from counting toward the key's quota.
+   */
+  placesApi: boolean
   /** Artificial night sky brightness overlay. */
   lightPollution: LightPollutionSettings
   verticalExaggeration: number
