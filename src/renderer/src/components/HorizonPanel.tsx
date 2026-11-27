@@ -555,7 +555,7 @@ function HorizonPanelBody() {
               onPick={(utc) => engine?.sun.setInstant(utc)}
             />
           )}
-          {state.peakStatus === 'unavailable' && prefs.peakNames && <span className="faint">Peak names need a Google Maps Platform key with Places API (New).</span>}
+          {state.peakStatus === 'unavailable' && prefs.peakNames && <span className="faint">Peak names need a Google Maps Platform key with Places API (New), turned on in Settings.</span>}
           {hover && (
             <span className="horizon-hover">
               <span className="mono">

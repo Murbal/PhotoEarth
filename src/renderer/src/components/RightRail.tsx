@@ -167,6 +167,7 @@ export function RightRail() {
   const camera = useAppStore((s) => s.camera)
   const pinElsewhere = !!pin && (!camera || haversine(pin, camera) > 5)
   const placeLabels = useAppStore((s) => s.settings.placeLabels)
+  const placesApi = useAppStore((s) => s.settings.placesApi)
   const lightPollution = useAppStore((s) => s.settings.lightPollution.enabled)
   const viewfinder = useAppStore((s) => s.viewfinder)
   const patchSettings = useAppStore((s) => s.patchSettings)
@@ -230,9 +231,9 @@ export function RightRail() {
         />
         <RailButton
           icon="labels"
-          label="Place names"
+          label={placesApi ? 'Place names' : 'Place names (Places API is off in Settings)'}
           keys="M"
-          active={placeLabels}
+          active={placeLabels && placesApi}
           pressed={placeLabels}
           onClick={() => patchSettings((d) => void (d.placeLabels = !d.placeLabels))}
         />

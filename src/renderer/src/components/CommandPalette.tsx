@@ -57,7 +57,8 @@ function PaletteDialog() {
   const set = useAppStore((s) => s.set)
   const bookmarks = useAppStore((s) => s.bookmarks)
   const profiles = useAppStore((s) => s.profiles)
-  const hasGoogleKey = useAppStore((s) => !!s.keys.googleApiKey)
+  // Place search needs a Google key and the Places API setting on.
+  const hasGoogleKey = useAppStore((s) => !!s.keys.googleApiKey && s.settings.placesApi)
   const target = useAppStore((s) => s.target)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
